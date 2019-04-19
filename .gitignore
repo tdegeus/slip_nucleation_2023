@@ -1,3 +1,9 @@
+# Build directories
+build*
+
+# Data-files
+*.hdf5
+
 # Prerequisites
 *.d
 
