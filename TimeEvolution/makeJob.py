@@ -37,6 +37,15 @@ for i in [6]:
   p_sigc  = data['sig_c'   ][...]
   p_incc  = data['inc_c'   ][...]
 
+  idx = np.where(p_elem == 0)
+
+  p_file  = p_file[idx]
+  p_elem  = p_elem[idx]
+  p_A     = p_A   [idx]
+  p_sig   = p_sig [idx]
+  p_sigc  = p_sigc[idx]
+  p_incc  = p_incc[idx]
+
   data.close()
 
   idx = np.where(p_A == N)[0]
@@ -49,22 +58,22 @@ for i in [6]:
   p_incc = p_incc[idx]
 
   idx = np.argsort(np.abs(p_sigc - sigc))
-  i = idx[0]
 
-  command = {
-    'file'   : os.path.join(dbase, 'nx=3^6x2', p_files[p_file[i]]),
-    'element': p_elem[i],
-    'incc'   : p_incc[i],
-    'stress' : stress,
-  }
+  for i in idx[:20]:
 
-  command['output'] = '{nx:s}_{fname:s}_elem={element:d}_incc={incc:d}_stress=6d6.hdf5'.format(nx='nx=3^6x2', fname=p_files[p_file[i]].replace('.hdf5', ''), **command)
+    command = {
+      'file'   : os.path.join(dbase, 'nx=3^6x2', p_files[p_file[i]]),
+      'element': p_elem[i],
+      'incc'   : p_incc[i],
+      'stress' : stress,
+    }
 
-  commands += [command]
+    command['output'] = '{nx:s}_{fname:s}_elem={element:d}_incc={incc:d}_stress=6d6.hdf5'.format(nx='nx=3^6x2', fname=p_files[p_file[i]].replace('.hdf5', ''), **command)
+
+    commands += [command]
 
 # convert to commands
 lines = ['./Run --file {file:s} --element {element:d} --incc {incc:d} --stress {stress:.8e} --output {output:s}'.format(**c) for c in commands]
-command = '\n'.join(lines)
 
 # --------------------------------------------------------------------------------------------------
 
@@ -80,20 +89,24 @@ export OMP_NUM_THREADS=1
 
 # --------------------------------------------------------------------------------------------------
 
-# job-options
-sbatch = {
-  'job-name'      : 'job',
-  'out'           : 'job.out',
-  'nodes'         : 1,
-  'ntasks'        : 1,
-  'cpus-per-task' : 1,
-  'time'          : '6h',
-  'account'       : 'pcsl',
-  'partition'     : 'serial',
-}
+for i, line in enumerate(lines):
 
-# write SLURM file
-open('job.slurm','w').write(gs.scripts.plain(command=slurm.format(command=command),**sbatch))
+  fbase = 'job_{0:02d}'.format(i)
+
+  # job-options
+  sbatch = {
+    'job-name'      : fbase,
+    'out'           : fbase+'.out',
+    'nodes'         : 1,
+    'ntasks'        : 1,
+    'cpus-per-task' : 1,
+    'time'          : '6h',
+    'account'       : 'pcsl',
+    'partition'     : 'serial',
+  }
+
+  # write SLURM file
+  open(fbase+'.slurm','w').write(gs.scripts.plain(command=slurm.format(command=line),**sbatch))
 
 # open('job.txt')
 
