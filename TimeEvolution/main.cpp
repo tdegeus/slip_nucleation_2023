@@ -696,12 +696,11 @@ void runPushAndStop(size_t element, const std::string& output)
     {
       // - yield strain to the right side
       xt::xtensor<size_t,2> jdx       = material.Find(Eps);
-      xt::xtensor<size_t,2> jdx_store = xt::view(jdx, xt::keep(plastic));
+      xt::xtensor<size_t,2> jdx_store = xt::view(jdx, xt::keep(plastic), xt::keep(0));
       xt::xtensor<double,2> epsy_p    = material.Epsy(jdx+size_t(1));
       xt::xtensor<double,2> epseq     = GM::Epsd(Eps);
       xt::xtensor<double,2> x         = epsy_p - epseq;
-      xt::xtensor<double,1> x_elem    = xt::average(x, dV_scalar, {1});
-      xt::xtensor<double,1> x_store   = xt::view(x_elem, xt::keep(plastic));
+      xt::xtensor<double,1> x_store   = xt::view(x, xt::keep(plastic), xt::keep(0));
 
       // - element stress tensor
       xt::xtensor<double,3> Sig_elem  = xt::average(Sig, dV, {1});
