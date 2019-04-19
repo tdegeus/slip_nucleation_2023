@@ -692,30 +692,33 @@ void runPushAndStop(size_t element, const std::string& output)
   // quench: force equilibrium
   for ( iiter = 0 ; ; ++iiter )
   {
-    // - yield strain to the right side
-    xt::xtensor<size_t,2> jdx       = material.Find(Eps);
-    xt::xtensor<size_t,2> jdx_store = xt::view(jdx, xt::keep(plastic));
-    xt::xtensor<double,2> epsy_p    = material.Epsy(jdx+size_t(1));
-    xt::xtensor<double,2> epseq     = GM::Epsd(Eps);
-    xt::xtensor<double,2> x         = epsy_p - epseq;
-    xt::xtensor<double,1> x_elem    = xt::average(x, dV_scalar, {1});
-    xt::xtensor<double,1> x_store   = xt::view(x_elem, xt::keep(plastic));
+    if (iiter % 100 == 0)
+    {
+      // - yield strain to the right side
+      xt::xtensor<size_t,2> jdx       = material.Find(Eps);
+      xt::xtensor<size_t,2> jdx_store = xt::view(jdx, xt::keep(plastic));
+      xt::xtensor<double,2> epsy_p    = material.Epsy(jdx+size_t(1));
+      xt::xtensor<double,2> epseq     = GM::Epsd(Eps);
+      xt::xtensor<double,2> x         = epsy_p - epseq;
+      xt::xtensor<double,1> x_elem    = xt::average(x, dV_scalar, {1});
+      xt::xtensor<double,1> x_store   = xt::view(x_elem, xt::keep(plastic));
 
-    // - element stress tensor
-    xt::xtensor<double,3> Sig_elem  = xt::average(Sig, dV, {1});
-    xt::xtensor<double,3> Sig_store = xt::view(Sig_elem, xt::keep(store), xt::all(), xt::all());
+      // - element stress tensor
+      xt::xtensor<double,3> Sig_elem  = xt::average(Sig, dV, {1});
+      xt::xtensor<double,3> Sig_store = xt::view(Sig_elem, xt::keep(store), xt::all(), xt::all());
 
-    // - macroscopic stress/strain tensor
-    xt::xtensor_fixed<double, xt::xshape<2,2>> Sig_bar = xt::average(Sig, dV, {0,1});
+      // - macroscopic stress/strain tensor
+      xt::xtensor_fixed<double, xt::xshape<2,2>> Sig_bar = xt::average(Sig, dV, {0,1});
 
-    // - equivalent deviatoric stress/strain
-    double sigeq_bar = GM::Sigd(Sig_bar);
+      // - equivalent deviatoric stress/strain
+      double sigeq_bar = GM::Sigd(Sig_bar);
 
-    // - store output
-    xt::dump(data, "/sigbar", sigeq_bar, {iiter});
-    xt::dump(data, fmt::format("/Sig/{0:d}", iiter), Sig_store);
-    xt::dump(data, fmt::format("/x/{0:d}"  , iiter), x_store);
-    xt::dump(data, fmt::format("/idx/{0:d}", iiter), jdx_store);
+      // - store output
+      xt::dump(data, "/sigbar", sigeq_bar, {iiter/100});
+      xt::dump(data, fmt::format("/Sig/{0:d}", iiter/100), Sig_store);
+      xt::dump(data, fmt::format("/x/{0:d}"  , iiter/100), x_store);
+      xt::dump(data, fmt::format("/idx/{0:d}", iiter/100), jdx_store);
+    }
 
     // - time increment
     timeStep();
@@ -731,6 +734,8 @@ void runPushAndStop(size_t element, const std::string& output)
     if ( xt::sum(xt::not_equal(idx,idx_n))[0] == N )
       break;
   }
+
+  xt::dump(data, "/completed", 1);
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -762,7 +767,7 @@ void run(size_t element, size_t inc_c, const std::string& output)
 
   // set increment
   inc = inc_push(ipush);
-  
+
   // check
   MYASSERT(inc >= inc_c);
 
