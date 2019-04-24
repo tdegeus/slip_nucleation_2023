@@ -661,8 +661,16 @@ void triggerElement(size_t element)
 // apply push and minimise energy
 // -------------------------------------------------------------------------------------------------
 
-void runPushAndStop(size_t element, const std::string& output)
+void runPushAndStop(size_t element, size_t inc_c, const std::string& output)
 {
+  // id
+  std::string id = cpppath::split(cpppath::filename(file.getName()), ".")[0];
+  size_t id_num = static_cast<size_t>(std::stoi(cpppath::split(id, "=")[1]));
+
+  // basic name
+  std::string root = fmt::format("{0:s}_element={1:04d}_incc={2:03d}",
+    id, element, inc_c);
+
   // integration point volume
   xt::xtensor<double,4> dV = quad.DV(2);
   xt::xtensor<double,2> dV_scalar = quad.DV();
@@ -696,11 +704,11 @@ void runPushAndStop(size_t element, const std::string& output)
     {
       // - yield strain to the right side
       xt::xtensor<size_t,2> jdx       = material.Find(Eps);
-      xt::xtensor<size_t,2> jdx_store = xt::view(jdx, xt::keep(plastic), xt::keep(0));
       xt::xtensor<double,2> epsy_p    = material.Epsy(jdx+size_t(1));
       xt::xtensor<double,2> epseq     = GM::Epsd(Eps);
       xt::xtensor<double,2> x         = epsy_p - epseq;
-      xt::xtensor<double,1> x_store   = xt::view(x, xt::keep(plastic), xt::keep(0));
+      xt::xtensor<size_t,1> jdx_store = xt::view(jdx, xt::keep(plastic), xt::keep(0));
+      xt::xtensor<double,1> x_store   = xt::view(x,   xt::keep(plastic), xt::keep(0));
 
       // - element stress tensor
       xt::xtensor<double,3> Sig_elem  = xt::average(Sig, dV, {1});
@@ -713,10 +721,12 @@ void runPushAndStop(size_t element, const std::string& output)
       double sigeq_bar = GM::Sigd(Sig_bar);
 
       // - store output
-      xt::dump(data, "/sigbar", sigeq_bar, {iiter/100});
-      xt::dump(data, fmt::format("/Sig/{0:d}", iiter/100), Sig_store);
-      xt::dump(data, fmt::format("/x/{0:d}"  , iiter/100), x_store);
-      xt::dump(data, fmt::format("/idx/{0:d}", iiter/100), jdx_store);
+      xt::dump(data, fmt::format("/{0:s}/stored"   , root           ), iiter/100, {iiter/100});
+      xt::dump(data, fmt::format("/{0:s}/iiter"    , root           ), iiter    , {iiter/100});
+      xt::dump(data, fmt::format("/{0:s}/sigbar"   , root           ), sigeq_bar, {iiter/100});
+      xt::dump(data, fmt::format("/{0:s}/Sig/{1:d}", root, iiter/100), Sig_store             );
+      xt::dump(data, fmt::format("/{0:s}/x/{1:d}"  , root, iiter/100), x_store               );
+      xt::dump(data, fmt::format("/{0:s}/idx/{1:d}", root, iiter/100), jdx_store             );
     }
 
     // - time increment
@@ -734,7 +744,12 @@ void runPushAndStop(size_t element, const std::string& output)
       break;
   }
 
-  xt::dump(data, "/completed", 1);
+  xt::dump(data, fmt::format("/{0:s}/completed", root), 1                                   );
+  xt::dump(data, fmt::format("/{0:s}/uuid"     , root), xt::load<std::string>(file, "/uuid"));
+  xt::dump(data, fmt::format("/{0:s}/id"       , root), id_num                              );
+  xt::dump(data, fmt::format("/{0:s}/inc_c"    , root), inc_c                               );
+  xt::dump(data, fmt::format("/{0:s}/element"  , root), element                             );
+  xt::dump(data, fmt::format("/{0:s}/dt"       , root), dt                                  );
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -780,7 +795,7 @@ void run(size_t element, size_t inc_c, const std::string& output)
   moveForwardToFixedStress();
 
   // apply push, quench, measure output parameters
-  return runPushAndStop(element, output);
+  return runPushAndStop(element, inc_c, output);
 }
 
 // -------------------------------------------------------------------------------------------------
