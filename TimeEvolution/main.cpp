@@ -725,9 +725,9 @@ void runPushAndStop(size_t element, size_t inc_c, const std::string& output)
       xt::dump(data, "/iiter" , iiter    , {iiter/100});
       xt::dump(data, "/sigbar", sigeq_bar, {iiter/100});
       // -
-      xt::dump(data, fmt::format("/Sig/{1:d}", iiter/100), Sig_store);
-      xt::dump(data, fmt::format("/x/{1:d}"  , iiter/100), x_store  );
-      xt::dump(data, fmt::format("/idx/{1:d}", iiter/100), jdx_store);
+      xt::dump(data, fmt::format("/Sig/{0:d}", iiter/100), Sig_store);
+      xt::dump(data, fmt::format("/x/{0:d}"  , iiter/100), x_store  );
+      xt::dump(data, fmt::format("/idx/{0:d}", iiter/100), jdx_store);
     }
 
     // - time increment
