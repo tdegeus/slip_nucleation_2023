@@ -688,8 +688,8 @@ void runPushAndStop(size_t element, size_t inc_c, const std::string& output)
   ));
 
   // store state
-  xt::xtensor<int,1> idx_n  = xt::view(material.Find(Eps), xt::keep(plastic), 0);
-  xt::xtensor<int,1> idx    = xt::view(material.Find(Eps), xt::keep(plastic), 0);
+  xt::xtensor<int,1> idx_n = xt::view(material.Find(Eps), xt::keep(plastic), 0);
+  xt::xtensor<int,1> idx   = xt::view(material.Find(Eps), xt::keep(plastic), 0);
 
   // perturb the displacement of the set element, to try to trigger an avalanche
   triggerElement(element);
@@ -707,8 +707,8 @@ void runPushAndStop(size_t element, size_t inc_c, const std::string& output)
       xt::xtensor<double,2> epsy_p    = material.Epsy(jdx+size_t(1));
       xt::xtensor<double,2> epseq     = GM::Epsd(Eps);
       xt::xtensor<double,2> x         = epsy_p - epseq;
-      xt::xtensor<size_t,1> jdx_store = xt::view(jdx, xt::keep(plastic), xt::keep(0));
-      xt::xtensor<double,1> x_store   = xt::view(x,   xt::keep(plastic), xt::keep(0));
+      xt::xtensor<size_t,1> jdx_store = xt::view(jdx, xt::keep(plastic), 0);
+      xt::xtensor<double,1> x_store   = xt::view(x,   xt::keep(plastic), 0);
 
       // - element stress tensor
       xt::xtensor<double,3> Sig_elem  = xt::average(Sig, dV, {1});
@@ -740,7 +740,7 @@ void runPushAndStop(size_t element, size_t inc_c, const std::string& output)
     idx = xt::view(material.Find(Eps), xt::keep(plastic), 0);
 
     // - truncate at area == 1
-    if ( xt::sum(xt::not_equal(idx,idx_n))[0] == N )
+    if ( xt::sum(xt::not_equal(idx, idx_n))[0] == N )
       break;
   }
 
