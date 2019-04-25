@@ -1,3 +1,12 @@
+# Temporary files/folder
+tmp*
+
+# Python
+*__pycache__*
+
+# macOS crap
+.DS_Store
+
 # Build directories
 build*
 
