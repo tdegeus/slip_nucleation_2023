@@ -721,12 +721,13 @@ void runPushAndStop(size_t element, size_t inc_c, const std::string& output)
       double sigeq_bar = GM::Sigd(Sig_bar);
 
       // - store output
-      xt::dump(data, fmt::format("/{0:s}/stored"   , root           ), iiter/100, {iiter/100});
-      xt::dump(data, fmt::format("/{0:s}/iiter"    , root           ), iiter    , {iiter/100});
-      xt::dump(data, fmt::format("/{0:s}/sigbar"   , root           ), sigeq_bar, {iiter/100});
-      xt::dump(data, fmt::format("/{0:s}/Sig/{1:d}", root, iiter/100), Sig_store             );
-      xt::dump(data, fmt::format("/{0:s}/x/{1:d}"  , root, iiter/100), x_store               );
-      xt::dump(data, fmt::format("/{0:s}/idx/{1:d}", root, iiter/100), jdx_store             );
+      xt::dump(data, "/stored", iiter/100, {iiter/100});
+      xt::dump(data, "/iiter" , iiter    , {iiter/100});
+      xt::dump(data, "/sigbar", sigeq_bar, {iiter/100});
+      // -
+      xt::dump(data, fmt::format("/Sig/{1:d}", iiter/100), Sig_store);
+      xt::dump(data, fmt::format("/x/{1:d}"  , iiter/100), x_store  );
+      xt::dump(data, fmt::format("/idx/{1:d}", iiter/100), jdx_store);
     }
 
     // - time increment
@@ -744,12 +745,12 @@ void runPushAndStop(size_t element, size_t inc_c, const std::string& output)
       break;
   }
 
-  xt::dump(data, fmt::format("/{0:s}/completed", root), 1                                   );
-  xt::dump(data, fmt::format("/{0:s}/uuid"     , root), xt::load<std::string>(file, "/uuid"));
-  xt::dump(data, fmt::format("/{0:s}/id"       , root), id_num                              );
-  xt::dump(data, fmt::format("/{0:s}/inc_c"    , root), inc_c                               );
-  xt::dump(data, fmt::format("/{0:s}/element"  , root), element                             );
-  xt::dump(data, fmt::format("/{0:s}/dt"       , root), dt                                  );
+  xt::dump(data, "/completed", 1);
+  xt::dump(data, "/uuid"     , xt::load<std::string>(file, "/uuid"));
+  xt::dump(data, "/id"       , id_num);
+  xt::dump(data, "/inc_c"    , inc_c);
+  xt::dump(data, "/element"  , element);
+  xt::dump(data, "/dt"       , dt);
 }
 
 // -------------------------------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 
-import os, subprocess, h5py, HDF5pp
+import os, subprocess, h5py
 import numpy      as np
+import GooseHDF5  as g5
 import GooseSLURM as gs
 
 # ==================================================================================================
@@ -29,11 +30,15 @@ for ensemble in sorted(ensembles):
 
   for file in ensembles[ensemble]:
 
+    root = os.path.splitext(file)[0]
+
     source = h5py.File(file, 'r')
 
-    datasets = list(HDF5pp.getdatasets(source))
+    source_datasets = list(g5.getdatasets(source))
 
-    HDF5pp.copydatasets(source, dest, datasets, datasets)
+    dest_datasets = ['/' + root + dataset for dataset in source_datasets]
+
+    g5.copydatasets(source, dest, source_datasets, dest_datasets)
 
     source.close()
 
