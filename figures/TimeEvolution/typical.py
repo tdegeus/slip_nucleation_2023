@@ -18,7 +18,6 @@ N = num_nx(nx)
 
 def getRenumIndex(old, new, N, center=False):
 
-  #
   idx = np.tile(np.arange(N), (3))
 
   shift = 0
@@ -183,7 +182,7 @@ Sig_eq /= sig0
 xn = Sig_eq[2, :]
 y  = applyFilter(xn)
 
-# plot
+# --------------------------------------------------------------------------------------------------
 
 fig, ax = plt.subplots()
 
@@ -201,16 +200,16 @@ ax.plot([0, N], [sig_c, sig_c], c='b', ls='--')
 ax.plot([0 , 0 ], ax.get_ylim(), c='g')
 ax.plot([Ac, Ac], ax.get_ylim(), c='g')
 
-plt.show()
+plt.savefig('typical_stress.pdf')
+plt.close()
 
-
+# --------------------------------------------------------------------------------------------------
 
 xn = S
 y  = applyFilter(xn)
 
 fig, ax = plt.subplots()
 
-# ax.set_ylim([0.0, 0.6])
 ax.set_xlim([0, N])
 
 ax.set_xlabel(r'$r$')
@@ -219,12 +218,11 @@ ax.set_ylabel(r'$S$')
 ax.plot(np.arange(N), xn, lw=.5)
 ax.plot(np.arange(N), y)
 
-# ax.plot([0, N], [sig_c, sig_c], c='b', ls='--')
-
 ax.plot([0 , 0 ], ax.get_ylim(), c='g')
 ax.plot([Ac, Ac], ax.get_ylim(), c='g')
 
-plt.show()
+plt.savefig('typical_S.pdf')
+plt.close()
 
 
 
