@@ -214,6 +214,7 @@ for nx in list_nx()[::-1]:
     fig, ax = plt.subplots()
 
     ax.set_xlim([0, N])
+    ax.set_ylim([0, 50])
 
     ax.set_xlabel(r'$r$')
     ax.set_ylabel(r'$S$')
