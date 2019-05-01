@@ -16,6 +16,8 @@ option(OPENMP "Use parallelization" OFF)
 # ----------
 
 configure_file("makeJob_compile.py" "makeJob_compile.py" COPYONLY)
+configure_file("makeJob.py" "makeJob.py" COPYONLY)
+configure_file("collect.py" "collect.py" COPYONLY)
 
 # basic compiler options
 # ----------------------

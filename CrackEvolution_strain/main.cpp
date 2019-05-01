@@ -548,7 +548,7 @@ void triggerElement(size_t element)
 // apply push and minimise energy
 // -------------------------------------------------------------------------------------------------
 
-void runPushAndStop(size_t element, size_t inc_c, const std::string& output, size_t t_step)
+void runPushAndStop(size_t element, size_t inc_c, const std::string& output, size_t A_step, size_t t_step)
 {
   // id
   std::string id = cpppath::split(cpppath::filename(file.getName()), ".")[0];
@@ -562,6 +562,9 @@ void runPushAndStop(size_t element, size_t inc_c, const std::string& output, siz
   xt::xtensor<double,4> dV = quad.DV(2);
   xt::xtensor<double,2> dV_scalar = quad.DV();
 
+  // number of plastic cells
+  size_t N = plastic.size();
+
   // store state
   xt::xtensor<int,1> idx_n = xt::view(material.Find(Eps), xt::keep(plastic), 0);
   xt::xtensor<int,1> idx   = xt::view(material.Find(Eps), xt::keep(plastic), 0);
@@ -573,37 +576,128 @@ void runPushAndStop(size_t element, size_t inc_c, const std::string& output, siz
   HighFive::File data(output, HighFive::File::Overwrite);
 
   // get current crack size to store
-  size_t t_istore = 0;
+  size_t A        = 0;
+  size_t A_next   = 0;
   size_t t_next   = 0;
+  size_t A_istore = 0;
+  size_t t_istore = 0;
+  bool   A_store  = true;
+  bool   t_store  = false;
 
   // quench: force equilibrium
   for (iiter = 0 ; ; ++iiter)
   {
+    // - store synchronised on "A"
+    if (A_store)
+    {
+      // - update state
+      if (iiter > 0) {
+        idx = xt::view(material.Find(Eps), xt::keep(plastic), 0);
+      }
+
+      // - get the 'crack' size
+      size_t a = xt::sum(xt::not_equal(idx, idx_n))[0];
+      A = std::max(A, a);
+
+      // - store
+      if ((A >= A_next && A % A_step == 0) || A == N || iiter == 0)
+      {
+        fmt::print("Saving, sync-A, A = {0:d}\n", A);
+
+        // - plastic strain, distance to yielding
+        xt::xtensor<size_t,2> jdx    = material.Find(Eps);
+        xt::xtensor<double,2> epsp   = material.Epsp(Eps);
+        xt::xtensor<double,2> epsy_p = material.Epsy(jdx+size_t(1));
+        xt::xtensor<double,2> epseq  = GM::Epsd(Eps);
+        xt::xtensor<double,2> x      = epsy_p - epseq;
+        // -
+        xt::xtensor<double,1> epsp_store = xt::view(epsp, xt::keep(plastic), 0);
+        xt::xtensor<size_t,1> jdx_store  = xt::view(jdx,  xt::keep(plastic), 0);
+        xt::xtensor<double,1> x_store    = xt::view(x,    xt::keep(plastic), 0);
+
+        // - element stress tensor
+        xt::xtensor<double,3> Sig_elem    = xt::average(Sig, dV, {1});
+        xt::xtensor<double,1> Sig_elem_xx = xt::view(Sig_elem, xt::all(), 0, 0);
+        xt::xtensor<double,1> Sig_elem_xy = xt::view(Sig_elem, xt::all(), 0, 1);
+        xt::xtensor<double,1> Sig_elem_yy = xt::view(Sig_elem, xt::all(), 1, 1);
+
+        // - macroscopic stress/strain tensor
+        xt::xtensor_fixed<double, xt::xshape<2,2>> Sig_bar = xt::average(Sig, dV, {0,1});
+
+        // - store output
+        xt::dump(data, "/sync-A/stored", A, {A_istore});
+        // -
+        xt::dump(data, "/sync-A/global/iiter" , iiter       , {A});
+        xt::dump(data, "/sync-A/global/sig_xx", Sig_bar(0,0), {A});
+        xt::dump(data, "/sync-A/global/sig_xy", Sig_bar(0,1), {A});
+        xt::dump(data, "/sync-A/global/sig_yy", Sig_bar(1,1), {A});
+        // -
+        xt::dump(data, fmt::format("/sync-A/element/{0:d}/sig_xx", A), Sig_elem_xx);
+        xt::dump(data, fmt::format("/sync-A/element/{0:d}/sig_xy", A), Sig_elem_xy);
+        xt::dump(data, fmt::format("/sync-A/element/{0:d}/sig_yy", A), Sig_elem_yy);
+        // -
+        xt::dump(data, fmt::format("/sync-A/plastic/{0:d}/x"   , A), x_store   );
+        xt::dump(data, fmt::format("/sync-A/plastic/{0:d}/idx" , A), jdx_store );
+        xt::dump(data, fmt::format("/sync-A/plastic/{0:d}/epsp", A), epsp_store);
+        // -
+        ++A_istore;
+
+        // -- new crack size to check
+        A_next = A + A_step;
+      }
+
+      // - stop storing
+      if (A == N) {
+        A_store = false;
+      }
+    }
+
+    // - start storing synced on "t"
+    if (A >= (N - N%2) / 2 && !t_store) {
+      t_store = true;
+      t_next  = iiter;
+    }
+
     // - store synchronised on "t"
-    if (iiter == t_next)
+    if (t_store && iiter == t_next)
     {
       fmt::print("Saving, sync-t, iiter = {0:d}\n", iiter);
 
+      // - plastic strain, distance to yielding
+      xt::xtensor<size_t,2> jdx    = material.Find(Eps);
+      xt::xtensor<double,2> epsp   = material.Epsp(Eps);
+      xt::xtensor<double,2> epsy_p = material.Epsy(jdx+size_t(1));
+      xt::xtensor<double,2> epseq  = GM::Epsd(Eps);
+      xt::xtensor<double,2> x      = epsy_p - epseq;
+      // -
+      xt::xtensor<double,1> epsp_store = xt::view(epsp, xt::keep(plastic), 0);
+      xt::xtensor<size_t,1> jdx_store  = xt::view(jdx,  xt::keep(plastic), 0);
+      xt::xtensor<double,1> x_store    = xt::view(x,    xt::keep(plastic), 0);
+
       // - element stress tensor
-      xt::xtensor<double,3> Sig_elem = xt::average(Sig, dV, {1});
-      double Sig_plas_xx = xt::mean(xt::view(Sig_elem, xt::keep(plastic), 0, 0))[0];
-      double Sig_plas_xy = xt::mean(xt::view(Sig_elem, xt::keep(plastic), 0, 1))[0];
-      double Sig_plas_yy = xt::mean(xt::view(Sig_elem, xt::keep(plastic), 1, 1))[0];
+      xt::xtensor<double,3> Sig_elem    = xt::average(Sig, dV, {1});
+      xt::xtensor<double,1> Sig_elem_xx = xt::view(Sig_elem, xt::all(), 0, 0);
+      xt::xtensor<double,1> Sig_elem_xy = xt::view(Sig_elem, xt::all(), 0, 1);
+      xt::xtensor<double,1> Sig_elem_yy = xt::view(Sig_elem, xt::all(), 1, 1);
 
       // - macroscopic stress/strain tensor
-      xt::xtensor_fixed<double, xt::xshape<2,2>> Sig_glob = xt::average(Sig, dV, {0,1});
+      xt::xtensor_fixed<double, xt::xshape<2,2>> Sig_bar = xt::average(Sig, dV, {0,1});
 
       // - store output
       xt::dump(data, "/sync-t/stored", t_istore, {t_istore});
       // -
-      xt::dump(data, "/sync-t/global/iiter" , iiter        , {t_istore});
-      xt::dump(data, "/sync-t/global/sig_xx", Sig_glob(0,0), {t_istore});
-      xt::dump(data, "/sync-t/global/sig_xy", Sig_glob(0,1), {t_istore});
-      xt::dump(data, "/sync-t/global/sig_yy", Sig_glob(1,1), {t_istore});
+      xt::dump(data, "/sync-t/global/iiter" , iiter       , {t_istore});
+      xt::dump(data, "/sync-t/global/sig_xx", Sig_bar(0,0), {t_istore});
+      xt::dump(data, "/sync-t/global/sig_xy", Sig_bar(0,1), {t_istore});
+      xt::dump(data, "/sync-t/global/sig_yy", Sig_bar(1,1), {t_istore});
       // -
-      xt::dump(data, "/sync-t/plastic/sig_xx", Sig_plas_xx, {t_istore});
-      xt::dump(data, "/sync-t/plastic/sig_xy", Sig_plas_xy, {t_istore});
-      xt::dump(data, "/sync-t/plastic/sig_yy", Sig_plas_yy, {t_istore});
+      xt::dump(data, fmt::format("/sync-t/element/{0:d}/sig_xx", t_istore), Sig_elem_xx);
+      xt::dump(data, fmt::format("/sync-t/element/{0:d}/sig_xy", t_istore), Sig_elem_xy);
+      xt::dump(data, fmt::format("/sync-t/element/{0:d}/sig_yy", t_istore), Sig_elem_yy);
+      // -
+      xt::dump(data, fmt::format("/sync-t/plastic/{0:d}/x"   , t_istore), x_store   );
+      xt::dump(data, fmt::format("/sync-t/plastic/{0:d}/idx" , t_istore), jdx_store );
+      xt::dump(data, fmt::format("/sync-t/plastic/{0:d}/epsp", t_istore), epsp_store);
       // -
       ++t_istore;
 
@@ -625,6 +719,7 @@ void runPushAndStop(size_t element, size_t inc_c, const std::string& output, siz
   xt::dump(data, "/meta/inc_c"    , inc_c                               );
   xt::dump(data, "/meta/element"  , element                             );
   xt::dump(data, "/meta/dt"       , dt                                  );
+  xt::dump(data, "/meta/plastic"  , plastic                             );
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -644,7 +739,7 @@ size_t numberOfPushIncrements()
 // run
 // -------------------------------------------------------------------------------------------------
 
-void run(size_t element, size_t inc_c, const std::string& output, size_t t_step)
+void run(size_t element, size_t inc_c, const std::string& output, size_t A_step, size_t t_step)
 {
   MYASSERT(xt::any(xt::equal(inc_system, inc_c)));
 
@@ -658,7 +753,7 @@ void run(size_t element, size_t inc_c, const std::string& output, size_t t_step)
   computeStrainStress();
 
   // apply push, quench, measure output parameters
-  return runPushAndStop(element, inc_c, output, t_step);
+  return runPushAndStop(element, inc_c, output, A_step, t_step);
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -681,6 +776,7 @@ Arguments:
       --incc=N        Increment number of the system-spanning avalanche.
 
 Options:
+      --Astep=N       Save states at crack sizes A = (0: N: Astep). [default: 1]
       --tstep=N       Save states at times t = (t0: : tstep). [default: 500]
   -h, --help          Show help.
       --version       Show version.
@@ -704,20 +800,27 @@ int main(int argc, const char** argv)
   // -
   size_t inc_c   = static_cast<size_t>(std::stoi(args["--incc"   ].asString()));
   size_t element = static_cast<size_t>(std::stoi(args["--element"].asString()));
+  size_t A_step  = static_cast<size_t>(std::stoi(args["--Astep"  ].asString()));
   size_t t_step  = static_cast<size_t>(std::stoi(args["--tstep"  ].asString()));
 
   // initialise simulation
   Main sim(file);
 
   // determine (the number of) pushable increments
-  sim.numberOfPushIncrements();
+  size_t ninc = sim.numberOfPushIncrements();
+
+  // check
+  if (ninc == 0) {
+    fmt::print("No pushable increment found.\n");
+    return 1;
+  }
 
   // print progress
   fmt::print("fname = '{0:s}': Starting new run.\n",
     file);
 
   // run and save
-  sim.run(element, inc_c, output, t_step);
+  sim.run(element, inc_c, output, A_step, t_step);
 
   return 0;
 }

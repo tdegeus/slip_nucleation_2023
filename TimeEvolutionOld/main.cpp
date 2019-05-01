@@ -106,6 +106,8 @@ private:
   double G; // shear modulus (homogeneous)
 
   // push settings
+  double stress;                    // stress at which to measure
+  xt::xtensor<size_t,1> inc_push;   // increments from which to load elastically to the fixed stress
   xt::xtensor<size_t,1> inc_system; // increments with system spanning avalanches
 
 // -------------------------------------------------------------------------------------------------
@@ -489,6 +491,117 @@ void getIncPush()
 
   // list with increment of system-spanning avalanches
   inc_system = xt::flatten_indices(xt::argwhere(xt::equal(A,N)));
+
+  // too few system spanning avalanches -> quit
+  if ( inc_system.size() < 2 )
+  {
+    inc_push = xt::zeros<size_t>({0});
+    return;
+  }
+
+  // allocate list with increment numbers at which to push
+  inc_push = xt::zeros<size_t>({inc_system.size()-1});
+
+  // allocate list with all increment numbers
+  xt::xtensor<size_t,1> iinc = xt::arange<size_t>(A.size());
+
+  // consider all system spanning avalanches,
+  // that are followed by at least one system spanning avalanche
+  for ( size_t i = 0 ; i < inc_system.size()-1 ; ++i )
+  {
+    // - stress after elastic load, kick/area of these increments for checking, increment numbers
+    auto s = xt::view(sigd, xt::range(inc_system(i)+1, inc_system(i+1), 2));
+    auto k = xt::view(kick, xt::range(inc_system(i)+1, inc_system(i+1), 2));
+    auto a = xt::view(A   , xt::range(inc_system(i)+1, inc_system(i+1), 2));
+    auto n = xt::view(iinc, xt::range(inc_system(i)+1, inc_system(i+1), 2));
+
+    // - skip if the loading pattern was not load-kick-load-kick-... (sanity check)
+    if ( xt::any(xt::not_equal(k,0ul)) ) continue;
+    if ( xt::any(xt::not_equal(a,0ul)) ) continue;
+
+    // - find where the strain(stress) is higher than the target strain(stress)
+    //   during that increment the strain(stress) elastically moved from below to above the target
+    //   strain(stress); the size of this step can be reduced by an arbitrary size, without
+    //   violating equilibrium
+    auto idx = xt::flatten_indices(xt::argwhere(s > stress));
+
+    // - no increment found -> skip (sanity check)
+    if ( idx.size() == 0 ) continue;
+
+    // - start from the increment before it (the beginning of the elastic loading)
+    size_t ipush = n(xt::amin(idx)[0]) - 1;
+
+    // - sanity check
+    if ( sigd(ipush  ) >  stress ) continue;
+    if ( kick(ipush+1) != 0      ) continue;
+
+    // - store
+    inc_push(i) = ipush;
+  }
+
+  // filter list with increments
+  // (zero can never be a valid increment, because of the restriction set above)
+  inc_push = xt::filter(inc_push, inc_push > 0ul);
+}
+
+// -------------------------------------------------------------------------------------------------
+// move forward elastically to a certain equivalent deviatoric stress
+// -------------------------------------------------------------------------------------------------
+
+void moveForwardToFixedStress()
+{
+  // store current minima (for sanity check)
+  auto idx_n = material.Find(Eps);
+
+  // integration point volume
+  xt::xtensor<double,4> dV = quad.DV(2);
+
+  // macroscopic (deviatoric) stress/strain tensor
+  xt::xtensor_fixed<double, xt::xshape<2,2>> Sigbar = xt::average(Sig, dV, {0,1});
+  xt::xtensor_fixed<double, xt::xshape<2,2>> Epsbar = xt::average(Eps, dV, {0,1});
+  xt::xtensor_fixed<double, xt::xshape<2,2>> Epsd   = GM::Deviatoric(Epsbar);
+
+  // current equivalent deviatoric stress/strain
+  double eps = GM::Epsd(Epsbar);
+  double sig = GM::Sigd(Sigbar);
+
+  // new equivalent deviatoric strain
+  double eps_new = eps + ( stress - sig ) / ( 2. * G );
+
+  // convert to increment in shear strain (N.B. "dgamma = 2 * Epsd(0,1)")
+  double dgamma = 2. * ( -Epsd(0,1) + std::sqrt( std::pow(eps_new,2.) - std::pow(Epsd(0,0),2.) ) );
+
+  // add as affine deformation gradient to the system
+  for ( size_t n = 0 ; n < nnode ; ++n )
+    u(n,0) += dgamma * ( coor(n,1) - coor(0,1) );
+
+  // compute strain/stress
+  computeStrainStress();
+
+  // compute new macroscopic stress (for sanity check)
+  Sigbar = xt::average(Sig, dV, {0,1});
+  sig = GM::Sigd(Sigbar);
+
+  // current minima (for sanity check)
+  auto idx = material.Find(Eps);
+
+  // check that the stress is what it was set to (sanity check)
+  if ( std::abs(stress-sig)/sig > 1.e-4 )
+  {
+    throw std::runtime_error(fmt::format(
+      "fname = '{0:s}', stress = {1:16.8e}, inc = {2:d}: Stress incorrect.\n",
+      file.getName(), stress, inc
+    ));
+  }
+
+  // check that no yielding took place (sanity check)
+  if ( xt::any(xt::not_equal(idx,idx_n)) )
+  {
+    throw std::runtime_error(fmt::format(
+      "fname = '{0:s}', stress = {1:16.8e}, inc = {2:d}: Yielding took place where it shouldn't.\n",
+      file.getName(), stress, inc
+    ));
+  }
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -548,7 +661,7 @@ void triggerElement(size_t element)
 // apply push and minimise energy
 // -------------------------------------------------------------------------------------------------
 
-void runPushAndStop(size_t element, size_t inc_c, const std::string& output, size_t t_step)
+void runPushAndStop(size_t element, size_t inc_c, const std::string& output)
 {
   // id
   std::string id = cpppath::split(cpppath::filename(file.getName()), ".")[0];
@@ -562,6 +675,18 @@ void runPushAndStop(size_t element, size_t inc_c, const std::string& output, siz
   xt::xtensor<double,4> dV = quad.DV(2);
   xt::xtensor<double,2> dV_scalar = quad.DV();
 
+  // number of plastic cells
+  size_t N = plastic.size();
+
+  // element for which to store
+  xt::xtensor<size_t,1> store = xt::concatenate(xt::xtuple(
+    plastic - 2 * N,
+    plastic - 1 * N,
+    plastic,
+    plastic + 1 * N,
+    plastic + 2 * N
+  ));
+
   // store state
   xt::xtensor<int,1> idx_n = xt::view(material.Find(Eps), xt::keep(plastic), 0);
   xt::xtensor<int,1> idx   = xt::view(material.Find(Eps), xt::keep(plastic), 0);
@@ -572,84 +697,94 @@ void runPushAndStop(size_t element, size_t inc_c, const std::string& output, siz
   // clear output file
   HighFive::File data(output, HighFive::File::Overwrite);
 
-  // get current crack size to store
-  size_t t_istore = 0;
-  size_t t_next   = 0;
-
   // quench: force equilibrium
-  for (iiter = 0 ; ; ++iiter)
+  for ( iiter = 0 ; ; ++iiter )
   {
-    // - store synchronised on "t"
-    if (iiter == t_next)
+    if (iiter % 100 == 0)
     {
-      fmt::print("Saving, sync-t, iiter = {0:d}\n", iiter);
+      // - yield strain to the right side
+      xt::xtensor<size_t,2> jdx       = material.Find(Eps);
+      xt::xtensor<double,2> epsy_p    = material.Epsy(jdx+size_t(1));
+      xt::xtensor<double,2> epseq     = GM::Epsd(Eps);
+      xt::xtensor<double,2> x         = epsy_p - epseq;
+      xt::xtensor<size_t,1> jdx_store = xt::view(jdx, xt::keep(plastic), 0);
+      xt::xtensor<double,1> x_store   = xt::view(x,   xt::keep(plastic), 0);
 
       // - element stress tensor
-      xt::xtensor<double,3> Sig_elem = xt::average(Sig, dV, {1});
-      double Sig_plas_xx = xt::mean(xt::view(Sig_elem, xt::keep(plastic), 0, 0))[0];
-      double Sig_plas_xy = xt::mean(xt::view(Sig_elem, xt::keep(plastic), 0, 1))[0];
-      double Sig_plas_yy = xt::mean(xt::view(Sig_elem, xt::keep(plastic), 1, 1))[0];
+      xt::xtensor<double,3> Sig_elem  = xt::average(Sig, dV, {1});
+      xt::xtensor<double,3> Sig_store = xt::view(Sig_elem, xt::keep(store), xt::all(), xt::all());
 
       // - macroscopic stress/strain tensor
-      xt::xtensor_fixed<double, xt::xshape<2,2>> Sig_glob = xt::average(Sig, dV, {0,1});
+      xt::xtensor_fixed<double, xt::xshape<2,2>> Sig_bar = xt::average(Sig, dV, {0,1});
+
+      // - equivalent deviatoric stress/strain
+      double sigeq_bar = GM::Sigd(Sig_bar);
 
       // - store output
-      xt::dump(data, "/sync-t/stored", t_istore, {t_istore});
+      xt::dump(data, "/stored", iiter/100, {iiter/100});
+      xt::dump(data, "/iiter" , iiter    , {iiter/100});
+      xt::dump(data, "/sigbar", sigeq_bar, {iiter/100});
       // -
-      xt::dump(data, "/sync-t/global/iiter" , iiter        , {t_istore});
-      xt::dump(data, "/sync-t/global/sig_xx", Sig_glob(0,0), {t_istore});
-      xt::dump(data, "/sync-t/global/sig_xy", Sig_glob(0,1), {t_istore});
-      xt::dump(data, "/sync-t/global/sig_yy", Sig_glob(1,1), {t_istore});
-      // -
-      xt::dump(data, "/sync-t/plastic/sig_xx", Sig_plas_xx, {t_istore});
-      xt::dump(data, "/sync-t/plastic/sig_xy", Sig_plas_xy, {t_istore});
-      xt::dump(data, "/sync-t/plastic/sig_yy", Sig_plas_yy, {t_istore});
-      // -
-      ++t_istore;
-
-      // -- new iteration to check
-      t_next += t_step;
+      xt::dump(data, fmt::format("/Sig/{0:d}", iiter/100), Sig_store);
+      xt::dump(data, fmt::format("/x/{0:d}"  , iiter/100), x_store  );
+      xt::dump(data, fmt::format("/idx/{0:d}", iiter/100), jdx_store);
     }
 
     // - time increment
     timeStep();
 
     // - check for convergence
-    if (stop.stop(xt::linalg::norm(fres)/xt::linalg::norm(fext), 1.e-5))
+    if ( stop.stop(xt::linalg::norm(fres)/xt::linalg::norm(fext), 1.e-5) )
+      break;
+
+    // - update state
+    idx = xt::view(material.Find(Eps), xt::keep(plastic), 0);
+
+    // - truncate at area == 1
+    if ( xt::sum(xt::not_equal(idx, idx_n))[0] == N )
       break;
   }
 
-  xt::dump(data, "/meta/completed", 1                                   );
-  xt::dump(data, "/meta/uuid"     , xt::load<std::string>(file, "/uuid"));
-  xt::dump(data, "/meta/id"       , id_num                              );
-  xt::dump(data, "/meta/inc_c"    , inc_c                               );
-  xt::dump(data, "/meta/element"  , element                             );
-  xt::dump(data, "/meta/dt"       , dt                                  );
+  xt::dump(data, "/completed", 1);
+  xt::dump(data, "/uuid"     , xt::load<std::string>(file, "/uuid"));
+  xt::dump(data, "/id"       , id_num);
+  xt::dump(data, "/inc_c"    , inc_c);
+  xt::dump(data, "/element"  , element);
+  xt::dump(data, "/dt"       , dt);
 }
 
 // -------------------------------------------------------------------------------------------------
 // number of increments at which to push
 // -------------------------------------------------------------------------------------------------
 
-size_t numberOfPushIncrements()
+size_t numberOfPushIncrements_setStress(double Stress)
 {
+  // store stress
+  stress = Stress;
+
   // extract a list with increments at which to start elastic loading
   getIncPush();
 
   // return size
-  return inc_system.size();
+  return inc_push.size();
 }
 
 // -------------------------------------------------------------------------------------------------
 // run
 // -------------------------------------------------------------------------------------------------
 
-void run(size_t element, size_t inc_c, const std::string& output, size_t t_step)
+void run(size_t element, size_t inc_c, const std::string& output)
 {
   MYASSERT(xt::any(xt::equal(inc_system, inc_c)));
 
+  // get push increment
+  size_t ipush = xt::flatten_indices(xt::argwhere(xt::equal(inc_system, inc_c)))(0);
+
   // set increment
-  inc = inc_c;
+  inc = inc_push(ipush);
+
+  // check
+  MYASSERT(inc >= inc_c);
 
   // restore displacement
   xt::noalias(u) = xt::load<xt::xtensor<double,2>>(file, "/disp/"+std::to_string(inc));
@@ -657,8 +792,11 @@ void run(size_t element, size_t inc_c, const std::string& output, size_t t_step)
   // compute strain/stress
   computeStrainStress();
 
+  // increase displacement to set "stress"
+  moveForwardToFixedStress();
+
   // apply push, quench, measure output parameters
-  return runPushAndStop(element, inc_c, output, t_step);
+  return runPushAndStop(element, inc_c, output);
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -672,16 +810,16 @@ R"(Run
   Extract time evolution of a specific push.
 
 Usage:
-  Run [options] --output=N --element=N --file=N --incc=N
+  Run [options] --stress=N --output=N --element=N --file=N --incc=N
 
 Arguments:
       --output=N      Path of the output file.
+      --stress=N      Relative stress distance to "sigma_down" at which to measure.
       --element=N     Element to push.
       --file=N        The path to the simulation file.
       --incc=N        Increment number of the system-spanning avalanche.
 
 Options:
-      --tstep=N       Save states at times t = (t0: : tstep). [default: 500]
   -h, --help          Show help.
       --version       Show version.
 
@@ -702,22 +840,23 @@ int main(int argc, const char** argv)
   std::string output = args["--output"].asString();
   std::string file   = args["--file"].asString();
   // -
+  double stress = std::stod(args["--stress"].asString());
+  // -
   size_t inc_c   = static_cast<size_t>(std::stoi(args["--incc"   ].asString()));
   size_t element = static_cast<size_t>(std::stoi(args["--element"].asString()));
-  size_t t_step  = static_cast<size_t>(std::stoi(args["--tstep"  ].asString()));
 
   // initialise simulation
   Main sim(file);
 
   // determine (the number of) pushable increments
-  sim.numberOfPushIncrements();
+  size_t ninc = sim.numberOfPushIncrements_setStress(stress);
 
   // print progress
-  fmt::print("fname = '{0:s}': Starting new run.\n",
-    file);
+  fmt::print("fname = '{0:s}', stress: {1:16.8e}, npush = {2:d}: Starting new run.\n",
+    file, stress, ninc);
 
   // run and save
-  sim.run(element, inc_c, output, t_step);
+  sim.run(element, inc_c, output);
 
   return 0;
 }

@@ -16,6 +16,12 @@ option(OPENMP "Use parallelization" OFF)
 # ----------
 
 configure_file("makeJob_compile.py" "makeJob_compile.py" COPYONLY)
+configure_file("collect_sync-A_global.py" "collect_sync-A_global.py" COPYONLY)
+configure_file("collect_sync-A_plastic.py" "collect_sync-A_plastic.py" COPYONLY)
+configure_file("collect_sync-A_element.py" "collect_sync-A_element.py" COPYONLY)
+configure_file("collect_sync-t_global.py" "collect_sync-t_global.py" COPYONLY)
+configure_file("collect_sync-t_plastic.py" "collect_sync-t_plastic.py" COPYONLY)
+configure_file("collect_sync-t_element.py" "collect_sync-t_element.py" COPYONLY)
 
 # basic compiler options
 # ----------------------

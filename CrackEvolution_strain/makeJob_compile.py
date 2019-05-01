@@ -25,39 +25,39 @@ p_incc  = data['inc_c'  ][...]
 
 data.close()
 
-idx = np.arange(len(p_incc))
+idx = np.where(p_A == N)[0]
 np.random.shuffle(idx)
 
-dirnames = []
+sbase  = '../data/{nx:s}'.format(nx=nx)
+outdir = 'data/{nx:s}'.format(nx=nx)
 
-for i in idx[:100]:
+if not os.path.isdir(outdir):
+  os.makedirs(outdir)
 
-  command = {
+for n, i in enumerate(idx):
+
+  # file-name
+  fname = '{id:s}_elem={element:04d}_incc={incc:03d}.hdf5'.format(
+    element = p_elem[i],
+    incc    = p_incc[i],
+    id      = p_files[p_file[i]].replace('.hdf5', ''))
+
+  # skip existing
+  if os.path.isfile(os.path.join(sbase, fname)):
+    continue
+
+  # stop at 50 drawn files
+  if n > 50:
+    break
+
+  commands += [{
     'file'   : os.path.join('..', dbase, nx, p_files[p_file[i]]),
     'element': p_elem[i],
     'incc'   : p_incc[i],
-  }
-
-  command['output'] = \
-    '../ensemble_{nx:s}/{nx:s}_{fname:s}_elem={element:04d}_incc={incc:03d}.hdf5'.format(
-    nx = nx,
-    fname = p_files[p_file[i]].replace('.hdf5', ''),
-    **command)
-
-  commands += [command]
-
-  dirnames += ['ensemble_{nx:s}'.format(nx=nx)]
+    'output' : os.path.join('..', outdir, fname)
+  }]
 
 lines = ['./Run --file {file:s} --element {element:d} --incc {incc:d} --output {output:s}'.format(**c) for c in commands]
-
-dirnames = list(set(dirnames))
-
-# --------------------------------------------------------------------------------------------------
-
-for dirname in dirnames:
-
-  if not os.path.isdir(dirname):
-    os.makedirs(dirname)
 
 # --------------------------------------------------------------------------------------------------
 
