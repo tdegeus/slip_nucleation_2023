@@ -663,6 +663,9 @@ void run(size_t element, size_t inc_c, const std::string& output, size_t A_step,
       xt::xtensor<double,1> epsp_store = xt::view(epsp, xt::keep(m_plastic), 0);
       xt::xtensor<size_t,1> jdx_store  = xt::view(jdx,  xt::keep(m_plastic), 0);
       xt::xtensor<double,1> x_store    = xt::view(x,    xt::keep(m_plastic), 0);
+      // -
+        if (iiter == 0)
+          jdx_store = idx_n;
 
       // - element stress tensor
       xt::xtensor<double,3> Sig_elem    = xt::average(m_Sig, dV, {1});

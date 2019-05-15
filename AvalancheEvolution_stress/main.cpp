@@ -639,7 +639,7 @@ void triggerElement(size_t element)
 // run
 // -------------------------------------------------------------------------------------------------
 
-void run(double stress, size_t element, size_t inc_c, const std::string& output, size_t A_step, size_t t_step)
+void run(double stress, size_t element, size_t inc_c, const std::string& output, size_t A_step)
 {
   // extract a list with increments at which to start elastic loading
   xt::xtensor<size_t,1> inc_system, inc_push;
@@ -686,17 +686,27 @@ void run(double stress, size_t element, size_t inc_c, const std::string& output,
   // perturb the displacement of the set element, to try to trigger an avalanche
   triggerElement(element);
 
-  // clear output file
-  HighFive::File data(output, HighFive::File::Overwrite);
-
   // get current crack size to store
   size_t A        = 0;
   size_t A_next   = 0;
-  size_t t_next   = 0;
   size_t A_istore = 0;
-  size_t t_istore = 0;
   bool   A_store  = true;
-  bool   t_store  = false;
+
+  // allocate output
+  // -
+  xt::xtensor<size_t,1> stored = xt::zeros<size_t>({N});
+  // -
+  xt::xtensor<size_t,1> global_iiter   = xt::zeros<size_t>({N});
+  xt::xtensor<double,1> global_sig_xx  = xt::zeros<double>({N});
+  xt::xtensor<double,1> global_sig_xy  = xt::zeros<double>({N});
+  xt::xtensor<double,1> global_sig_yy  = xt::zeros<double>({N});
+  // -
+  xt::xtensor<double,2> plastic_sig_xx = xt::zeros<double>({N+1, N});
+  xt::xtensor<double,2> plastic_sig_xy = xt::zeros<double>({N+1, N});
+  xt::xtensor<double,2> plastic_sig_yy = xt::zeros<double>({N+1, N});
+  xt::xtensor<double,2> plastic_x      = xt::zeros<double>({N+1, N});
+  xt::xtensor<double,2> plastic_epsp   = xt::zeros<double>({N+1, N});
+  xt::xtensor<size_t,2> plastic_idx    = xt::zeros<size_t>({N+1, N});
 
   // quench: force equilibrium
   for (size_t iiter = 0; ; ++iiter)
@@ -715,7 +725,7 @@ void run(double stress, size_t element, size_t inc_c, const std::string& output,
       // - store
       if ((A >= A_next && A % A_step == 0) || A == N || iiter == 0)
       {
-        fmt::print("{0:s}: Saving, sync-A, A = {1:d}\n", m_file.getName(), A);
+        fmt::print("{0:s}: Saving, A = {1:d}\n", m_file.getName(), A);
 
         // - plastic strain, distance to yielding
         xt::xtensor<size_t,2> jdx    = m_material.Find(m_Eps);
@@ -733,28 +743,27 @@ void run(double stress, size_t element, size_t inc_c, const std::string& output,
 
         // - element stress tensor
         xt::xtensor<double,3> Sig_elem    = xt::average(m_Sig, dV, {1});
-        xt::xtensor<double,1> Sig_elem_xx = xt::view(Sig_elem, xt::all(), 0, 0);
-        xt::xtensor<double,1> Sig_elem_xy = xt::view(Sig_elem, xt::all(), 0, 1);
-        xt::xtensor<double,1> Sig_elem_yy = xt::view(Sig_elem, xt::all(), 1, 1);
+        xt::xtensor<double,1> Sig_elem_xx = xt::view(Sig_elem, xt::keep(m_plastic), 0, 0);
+        xt::xtensor<double,1> Sig_elem_xy = xt::view(Sig_elem, xt::keep(m_plastic), 0, 1);
+        xt::xtensor<double,1> Sig_elem_yy = xt::view(Sig_elem, xt::keep(m_plastic), 1, 1);
 
         // - macroscopic stress/strain tensor
         xt::xtensor_fixed<double, xt::xshape<2,2>> Sig_bar = xt::average(m_Sig, dV, {0,1});
 
         // - store output
-        xt::dump(data, "/sync-A/stored", A, {A_istore});
+        stored(A) = 1;
         // -
-        xt::dump(data, "/sync-A/global/iiter" , iiter       , {A});
-        xt::dump(data, "/sync-A/global/sig_xx", Sig_bar(0,0), {A});
-        xt::dump(data, "/sync-A/global/sig_xy", Sig_bar(0,1), {A});
-        xt::dump(data, "/sync-A/global/sig_yy", Sig_bar(1,1), {A});
+        global_iiter (A) = iiter;
+        global_sig_xx(A) = Sig_bar(0,0);
+        global_sig_xy(A) = Sig_bar(0,1);
+        global_sig_yy(A) = Sig_bar(1,1);
         // -
-        xt::dump(data, fmt::format("/sync-A/element/{0:d}/sig_xx", A), Sig_elem_xx);
-        xt::dump(data, fmt::format("/sync-A/element/{0:d}/sig_xy", A), Sig_elem_xy);
-        xt::dump(data, fmt::format("/sync-A/element/{0:d}/sig_yy", A), Sig_elem_yy);
-        // -
-        xt::dump(data, fmt::format("/sync-A/plastic/{0:d}/x"   , A), x_store   );
-        xt::dump(data, fmt::format("/sync-A/plastic/{0:d}/idx" , A), jdx_store );
-        xt::dump(data, fmt::format("/sync-A/plastic/{0:d}/epsp", A), epsp_store);
+        xt::view(plastic_sig_xx, A, xt::all()) = Sig_elem_xx;
+        xt::view(plastic_sig_xy, A, xt::all()) = Sig_elem_xy;
+        xt::view(plastic_sig_yy, A, xt::all()) = Sig_elem_yy;
+        xt::view(plastic_x     , A, xt::all()) = x_store;
+        xt::view(plastic_epsp  , A, xt::all()) = epsp_store;
+        xt::view(plastic_idx   , A, xt::all()) = jdx_store;
         // -
         ++A_istore;
 
@@ -763,62 +772,8 @@ void run(double stress, size_t element, size_t inc_c, const std::string& output,
       }
 
       // - stop storing synced on "A"
-      if (A == N) {
+      if (A == N)
         A_store = false;
-      }
-    }
-
-    // - start storing synced on "t"
-    if (A >= (N - N%2) / 2 && !t_store) {
-      t_store = true;
-      t_next  = iiter;
-    }
-
-    // - store synchronised on "t"
-    if (t_store && iiter == t_next)
-    {
-      fmt::print("{0:s}: Saving, sync-t, iiter = {1:d}\n", m_file.getName(), iiter);
-
-      // - plastic strain, distance to yielding
-      xt::xtensor<size_t,2> jdx    = m_material.Find(m_Eps);
-      xt::xtensor<double,2> epsp   = m_material.Epsp(m_Eps);
-      xt::xtensor<double,2> epsy_p = m_material.Epsy(jdx+size_t(1));
-      xt::xtensor<double,2> epseq  = GM::Epsd(m_Eps);
-      xt::xtensor<double,2> x      = epsy_p - epseq;
-      // -
-      xt::xtensor<double,1> epsp_store = xt::view(epsp, xt::keep(m_plastic), 0);
-      xt::xtensor<size_t,1> jdx_store  = xt::view(jdx,  xt::keep(m_plastic), 0);
-      xt::xtensor<double,1> x_store    = xt::view(x,    xt::keep(m_plastic), 0);
-
-      // - element stress tensor
-      xt::xtensor<double,3> Sig_elem    = xt::average(m_Sig, dV, {1});
-      xt::xtensor<double,1> Sig_elem_xx = xt::view(Sig_elem, xt::all(), 0, 0);
-      xt::xtensor<double,1> Sig_elem_xy = xt::view(Sig_elem, xt::all(), 0, 1);
-      xt::xtensor<double,1> Sig_elem_yy = xt::view(Sig_elem, xt::all(), 1, 1);
-
-      // - macroscopic stress/strain tensor
-      xt::xtensor_fixed<double, xt::xshape<2,2>> Sig_bar = xt::average(m_Sig, dV, {0,1});
-
-      // - store output
-      xt::dump(data, "/sync-t/stored", t_istore, {t_istore});
-      // -
-      xt::dump(data, "/sync-t/global/iiter" , iiter       , {t_istore});
-      xt::dump(data, "/sync-t/global/sig_xx", Sig_bar(0,0), {t_istore});
-      xt::dump(data, "/sync-t/global/sig_xy", Sig_bar(0,1), {t_istore});
-      xt::dump(data, "/sync-t/global/sig_yy", Sig_bar(1,1), {t_istore});
-      // -
-      xt::dump(data, fmt::format("/sync-t/element/{0:d}/sig_xx", t_istore), Sig_elem_xx);
-      xt::dump(data, fmt::format("/sync-t/element/{0:d}/sig_xy", t_istore), Sig_elem_xy);
-      xt::dump(data, fmt::format("/sync-t/element/{0:d}/sig_yy", t_istore), Sig_elem_yy);
-      // -
-      xt::dump(data, fmt::format("/sync-t/plastic/{0:d}/x"   , t_istore), x_store   );
-      xt::dump(data, fmt::format("/sync-t/plastic/{0:d}/idx" , t_istore), jdx_store );
-      xt::dump(data, fmt::format("/sync-t/plastic/{0:d}/epsp", t_istore), epsp_store);
-      // -
-      ++t_istore;
-
-      // -- new iteration to check
-      t_next += t_step;
     }
 
     // - time increment
@@ -829,13 +784,48 @@ void run(double stress, size_t element, size_t inc_c, const std::string& output,
       break;
   }
 
-  xt::dump(data, "/meta/completed", 1                                     );
-  xt::dump(data, "/meta/uuid"     , xt::load<std::string>(m_file, "/uuid"));
-  xt::dump(data, "/meta/id"       , id_num                                );
-  xt::dump(data, "/meta/inc_c"    , inc_c                                 );
-  xt::dump(data, "/meta/element"  , element                               );
-  xt::dump(data, "/meta/dt"       , m_dt                                  );
-  xt::dump(data, "/meta/plastic"  , m_plastic                             );
+  // print progress
+  fmt::print("{0:s}: Finished, A = {1:d}\n", m_file.getName(), A);
+
+  // clear output file
+  HighFive::File data(output, HighFive::File::Overwrite);
+
+  xt::xtensor<size_t,1> istore = xt::flatten(xt::from_indices(xt::argwhere(xt::equal(stored, 1ul))));
+
+  xt::dump(data, "/sync-A/stored", istore);
+
+  global_iiter   = xt::view(global_iiter  , xt::keep(istore));
+  global_sig_xx  = xt::view(global_sig_xx , xt::keep(istore));
+  global_sig_xy  = xt::view(global_sig_xy , xt::keep(istore));
+  global_sig_yy  = xt::view(global_sig_yy , xt::keep(istore));
+
+  plastic_sig_xx = xt::view(plastic_sig_xx, xt::keep(istore), xt::all());
+  plastic_sig_xy = xt::view(plastic_sig_xy, xt::keep(istore), xt::all());
+  plastic_sig_yy = xt::view(plastic_sig_yy, xt::keep(istore), xt::all());
+  plastic_x      = xt::view(plastic_x     , xt::keep(istore), xt::all());
+  plastic_epsp   = xt::view(plastic_epsp  , xt::keep(istore), xt::all());
+  plastic_idx    = xt::view(plastic_idx   , xt::keep(istore), xt::all());
+
+  xt::dump(data, "/sync-A/global/iiter" , global_iiter );
+  xt::dump(data, "/sync-A/global/sig_xx", global_sig_xx);
+  xt::dump(data, "/sync-A/global/sig_xy", global_sig_xy);
+  xt::dump(data, "/sync-A/global/sig_yy", global_sig_yy);
+
+  xt::dump(data, "/sync-A/plastic/sig_xx", plastic_sig_xx);
+  xt::dump(data, "/sync-A/plastic/sig_xy", plastic_sig_xy);
+  xt::dump(data, "/sync-A/plastic/sig_yy", plastic_sig_yy);
+  xt::dump(data, "/sync-A/plastic/x"     , plastic_x     );
+  xt::dump(data, "/sync-A/plastic/epsp"  , plastic_epsp  );
+  xt::dump(data, "/sync-A/plastic/idx"   , plastic_idx   );
+
+  xt::dump(data, "/meta/completed"      , 1                                     );
+  xt::dump(data, "/meta/system-spanning", (int)(A == N)                         );
+  xt::dump(data, "/meta/uuid"           , xt::load<std::string>(m_file, "/uuid"));
+  xt::dump(data, "/meta/id"             , id_num                                );
+  xt::dump(data, "/meta/inc_c"          , inc_c                                 );
+  xt::dump(data, "/meta/element"        , element                               );
+  xt::dump(data, "/meta/dt"             , m_dt                                  );
+  xt::dump(data, "/meta/plastic"        , m_plastic                             );
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -860,7 +850,6 @@ Arguments:
 
 Options:
       --Astep=N       Save states at crack sizes A = (0: N: Astep). [default: 1]
-      --tstep=N       Save states at times t = (t0: : tstep). [default: 500]
   -h, --help          Show help.
       --version       Show version.
 
@@ -886,13 +875,12 @@ int main(int argc, const char** argv)
   size_t inc_c   = static_cast<size_t>(std::stoi(args["--incc"   ].asString()));
   size_t element = static_cast<size_t>(std::stoi(args["--element"].asString()));
   size_t A_step  = static_cast<size_t>(std::stoi(args["--Astep"  ].asString()));
-  size_t t_step  = static_cast<size_t>(std::stoi(args["--tstep"  ].asString()));
 
   // initialise simulation
   Main sim(file);
 
   // run and save
-  sim.run(stress, element, inc_c, output, A_step, t_step);
+  sim.run(stress, element, inc_c, output, A_step);
 
   return 0;
 }
