@@ -27,24 +27,25 @@ namespace GM = GMatElastoPlasticQPot::Cartesian2d;
 
 struct Data
 {
-  double dt; // time-step
-  double G;
-  double rho;
-  double eta;
-  size_t N;
-  size_t steadystate;
-  xt::xtensor<size_t,1> incs;
-  xt::xtensor<size_t,1> inc_system; // the increment of the last system-spanning event
-  xt::xtensor<double,1> sig_system; // equivalent stress of the last system-spanning event
-  xt::xtensor<double,1> eps_system; // equivalent stress of the last system-spanning event
-  xt::xtensor<size_t,1> kick;
-  xt::xtensor<size_t,1> S;
-  xt::xtensor<size_t,1> A;
-  xt::xtensor<size_t,1> xi;
-  xt::xtensor<double,1> depsp;
-  xt::xtensor<double,1> dt_avalanche;
-  xt::xtensor<double,1> epsd;
-  xt::xtensor<double,1> sigd;
+  std::string           uuid;            // unique identifier
+  double                dt;              // time-step
+  double                G;               // homogeneous shear modulus
+  double                rho;             // homogeneous mass density
+  size_t                N;               // number of plastic elements (along the weak layer)
+  size_t                steadystate;     // increment number at which the steady-state begins
+  bool                  has_steadystate; // signal if a steady-state has been found
+  xt::xtensor<size_t,1> incs;            // increment numbers of the output
+  xt::xtensor<size_t,1> inc_system;      // per inc: the increment of the last system-spanning event
+  xt::xtensor<double,1> sig_system;      // per inc: eq. stress of the last system-spanning event
+  xt::xtensor<double,1> eps_system;      // per inc: eq. strain of the last system-spanning event
+  xt::xtensor<size_t,1> kick;            // per inc: kick or not (false == elastic loading)
+  xt::xtensor<size_t,1> S;               // per inc: avalanche size
+  xt::xtensor<size_t,1> A;               // per inc: avalanche area
+  xt::xtensor<size_t,1> xi;              // per inc: avalanche spatial extensor
+  xt::xtensor<double,1> depsp;           // per inc: plastic strain increment
+  xt::xtensor<double,1> dt_avalanche;    // per inc: duration of activity
+  xt::xtensor<double,1> epsd;            // per inc: eq. strain
+  xt::xtensor<double,1> sigd;            // per inc: eq. stress
 };
 
 // =================================================================================================
@@ -59,66 +60,63 @@ class Main
 private:
 
   // input/output file
-  HighFive::File file;
+  HighFive::File m_file;
 
   // mesh parameters
-  xt::xtensor<size_t,2> conn;
-  xt::xtensor<double,2> coor;
-  xt::xtensor<size_t,2> dofs;
-  xt::xtensor<size_t,1> iip;
+  xt::xtensor<size_t,2> m_conn;
+  xt::xtensor<double,2> m_coor;
+  xt::xtensor<size_t,2> m_dofs;
+  xt::xtensor<size_t,1> m_iip;
 
   // mesh dimensions
-  size_t nelem;
-  size_t nne;
-  size_t nnode;
-  size_t ndim;
-  size_t nip;
+  size_t m_nelem;
+  size_t m_nne;
+  size_t m_nnode;
+  size_t m_ndim;
+  size_t m_nip;
 
   // numerical quadrature
-  QD::Quadrature quad;
+  QD::Quadrature m_quad;
 
   // convert vectors between 'nodevec', 'elemvec', ...
-  GF::VectorPartitioned vector;
+  GF::VectorPartitioned m_vector;
 
   // mass matrix
-  GF::MatrixDiagonalPartitioned M;
+  GF::MatrixDiagonalPartitioned m_M;
 
   // damping matrix
-  GF::MatrixDiagonal D;
+  GF::MatrixDiagonal m_D;
 
   // material definition
-  GM::Matrix material;
+  GM::Matrix m_material;
 
   // time-step
-  double dt;
+  double m_dt;
 
   // event-driven settings
-  xt::xtensor<size_t,1> plastic; // plastic elements
+  xt::xtensor<size_t,1> m_plastic; // plastic elements
 
   // nodal displacements, velocities, and accelerations (current and last time-step)
-  xt::xtensor<double,2> u;
-  xt::xtensor<double,2> v;
-  xt::xtensor<double,2> a;
-  xt::xtensor<double,2> v_n;
-  xt::xtensor<double,2> a_n;
+  xt::xtensor<double,2> m_u;
+  xt::xtensor<double,2> m_v;
+  xt::xtensor<double,2> m_a;
+  xt::xtensor<double,2> m_v_n;
+  xt::xtensor<double,2> m_a_n;
 
   // element vectors
-  xt::xtensor<double,3> ue;
-  xt::xtensor<double,3> fe;
+  xt::xtensor<double,3> m_ue;
+  xt::xtensor<double,3> m_fe;
 
   // nodal forces
-  xt::xtensor<double,2> felas;
-  xt::xtensor<double,2> fdamp;
-  xt::xtensor<double,2> fint;
-  xt::xtensor<double,2> fext;
-  xt::xtensor<double,2> fres;
+  xt::xtensor<double,2> m_felas;
+  xt::xtensor<double,2> m_fdamp;
+  xt::xtensor<double,2> m_fint;
+  xt::xtensor<double,2> m_fext;
+  xt::xtensor<double,2> m_fres;
 
   // integration point strain and stress
-  xt::xtensor<double,4> Eps;
-  xt::xtensor<double,4> Sig;
-
-  // parameters
-  double G; // shear modulus (homogeneous)
+  xt::xtensor<double,4> m_Eps;
+  xt::xtensor<double,4> m_Sig;
 
 // -------------------------------------------------------------------------------------------------
 
@@ -128,7 +126,7 @@ public:
 // main
 // -------------------------------------------------------------------------------------------------
 
-Main(const std::string &fname) : file(fname, HighFive::File::ReadOnly)
+Main(const std::string &fname) : m_file(fname, HighFive::File::ReadOnly)
 {
   readMesh();
   setMass();
@@ -145,10 +143,7 @@ Main(const std::string &fname) : file(fname, HighFive::File::ReadOnly)
 void readParameters()
 {
   // time step
-  dt = xt::load<double>(file, "/run/dt");
-
-  // extract shear modulus (homogeneous)
-  G = material.G()(0,0);
+  m_dt = xt::load<double>(m_file, "/run/dt");
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -158,45 +153,45 @@ void readParameters()
 void readMesh()
 {
   // read fields
-  conn = xt::load<xt::xtensor<size_t,2>>(file, "/conn");
-  coor = xt::load<xt::xtensor<double,2>>(file, "/coor");
-  dofs = xt::load<xt::xtensor<size_t,2>>(file, "/dofs");
-  iip  = xt::load<xt::xtensor<size_t,1>>(file, "/dofsP");
+  m_conn  = xt::load<xt::xtensor<size_t,2>>(m_file, "/conn");
+  m_coor  = xt::load<xt::xtensor<double,2>>(m_file, "/coor");
+  m_dofs  = xt::load<xt::xtensor<size_t,2>>(m_file, "/dofs");
+  m_iip   = xt::load<xt::xtensor<size_t,1>>(m_file, "/dofsP");
 
   // extract sizes
-  nnode = coor.shape()[0];
-  ndim  = coor.shape()[1];
-  nelem = conn.shape()[0];
-  nne   = conn.shape()[1];
+  m_nnode = m_coor.shape(0);
+  m_ndim  = m_coor.shape(1);
+  m_nelem = m_conn.shape(0);
+  m_nne   = m_conn.shape(1);
 
   // vector-definition: transform nodal vectors <-> DOF values
-  vector = GF::VectorPartitioned(conn, dofs, iip);
+  m_vector = GF::VectorPartitioned(m_conn, m_dofs, m_iip);
 
   // numerical quadrature: transform displacements -> strains, integrate stresses -> forces, ...
-  quad = QD::Quadrature(vector.AsElement(coor));
-  nip  = quad.nip();
+  m_quad  = QD::Quadrature(m_vector.AsElement(m_coor));
+  m_nip   = m_quad.nip();
 
   // nodal displacements, velocities, and accelerations (current and last time-step)
-  u   = xt::zeros<double>(coor.shape());
-  v   = xt::zeros<double>(coor.shape());
-  a   = xt::zeros<double>(coor.shape());
-  v_n = xt::zeros<double>(coor.shape());
-  a_n = xt::zeros<double>(coor.shape());
+  m_u     = xt::zeros<double>(m_coor.shape());
+  m_v     = xt::zeros<double>(m_coor.shape());
+  m_a     = xt::zeros<double>(m_coor.shape());
+  m_v_n   = xt::zeros<double>(m_coor.shape());
+  m_a_n   = xt::zeros<double>(m_coor.shape());
 
   // element vectors
-  ue = xt::zeros<double>({nelem, nne, ndim});
-  fe = xt::zeros<double>({nelem, nne, ndim});
+  m_ue    = xt::zeros<double>({m_nelem, m_nne, m_ndim});
+  m_fe    = xt::zeros<double>({m_nelem, m_nne, m_ndim});
 
   // nodal forces
-  felas = xt::zeros<double>(coor.shape());
-  fdamp = xt::zeros<double>(coor.shape());
-  fint  = xt::zeros<double>(coor.shape());
-  fext  = xt::zeros<double>(coor.shape());
-  fres  = xt::zeros<double>(coor.shape());
+  m_felas = xt::zeros<double>(m_coor.shape());
+  m_fdamp = xt::zeros<double>(m_coor.shape());
+  m_fint  = xt::zeros<double>(m_coor.shape());
+  m_fext  = xt::zeros<double>(m_coor.shape());
+  m_fres  = xt::zeros<double>(m_coor.shape());
 
   // integration point strain and stress
-  Eps = xt::zeros<double>({nelem, nip, ndim, ndim});
-  Sig = xt::zeros<double>({nelem, nip, ndim, ndim});
+  m_Eps   = xt::zeros<double>({m_nelem, m_nip, m_ndim, m_ndim});
+  m_Sig   = xt::zeros<double>({m_nelem, m_nip, m_ndim, m_ndim});
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -206,30 +201,29 @@ void readMesh()
 void setMass()
 {
   // allocate
-  M = GF::MatrixDiagonalPartitioned(conn, dofs, iip);
+  m_M = GF::MatrixDiagonalPartitioned(m_conn, m_dofs, m_iip);
 
   // nodal coordinates as element vector
-  xt::xtensor<double,3> x = vector.AsElement(coor);
+  xt::xtensor<double,3> x = m_vector.AsElement(m_coor);
 
   // nodal quadrature
   QD::Quadrature nodalQuad(x, QD::Nodal::xi(), QD::Nodal::w());
 
   // element values
-  xt::xtensor<double,1> val_elem = xt::load<xt::xtensor<double,1>>(file, "/rho");
+  xt::xtensor<double,1> val_elem = xt::load<xt::xtensor<double,1>>(m_file, "/rho");
 
   // check size
-  MYASSERT(val_elem.size() == nelem);
+  MYASSERT(val_elem.size() == m_nelem);
 
   // integration point values (constant per element)
   // - allocate
-  xt::xtensor<double,2> val_quad = xt::empty<double>({nelem, nodalQuad.nip()});
+  xt::xtensor<double,2> val_quad = xt::empty<double>({m_nelem, nodalQuad.nip()});
   // - copy
-  for (size_t e = 0; e < nelem; ++e)
-    for (size_t q = 0; q < nodalQuad.nip(); ++q)
-      val_quad(e,q) = val_elem(e);
+  for (size_t q = 0; q < nodalQuad.nip(); ++q)
+    xt::view(val_quad, xt::all(), q) = val_elem;
 
   // compute diagonal matrices
-  M.assemble(nodalQuad.Int_N_scalar_NT_dV(val_quad));
+  m_M.assemble(nodalQuad.Int_N_scalar_NT_dV(val_quad));
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -239,49 +233,29 @@ void setMass()
 void setDamping()
 {
   // allocate
-  D = GF::MatrixDiagonal(conn, dofs);
+  m_D = GF::MatrixDiagonal(m_conn, m_dofs);
 
   // nodal coordinates as element vector
-  xt::xtensor<double,3> x = vector.AsElement(coor);
+  xt::xtensor<double,3> x = m_vector.AsElement(m_coor);
 
   // nodal quadrature
   QD::Quadrature nodalQuad(x, QD::Nodal::xi(), QD::Nodal::w());
 
   // element values
-  xt::xtensor<double,1> val_elem = xt::load<xt::xtensor<double,1>>(file, "/damping/alpha");
+  xt::xtensor<double,1> val_elem = xt::load<xt::xtensor<double,1>>(m_file, "/damping/alpha");
 
   // check size
-  MYASSERT(val_elem.size() == nelem);
+  MYASSERT(val_elem.size() == m_nelem);
 
   // integration point values (constant per element)
   // - allocate
-  xt::xtensor<double,2> val_quad = xt::empty<double>({nelem, nodalQuad.nip()});
+  xt::xtensor<double,2> val_quad = xt::empty<double>({m_nelem, nodalQuad.nip()});
   // - copy
-  for (size_t e = 0; e < nelem; ++e)
-    for (size_t q = 0; q < nodalQuad.nip(); ++q)
-      val_quad(e,q) = val_elem(e);
+  for (size_t q = 0; q < nodalQuad.nip(); ++q)
+    xt::view(val_quad, xt::all(), q) = val_elem;
 
   // compute diagonal matrices
-  D.assemble(nodalQuad.Int_N_scalar_NT_dV(val_quad));
-}
-
-// -------------------------------------------------------------------------------------------------
-// get indicator function
-// -------------------------------------------------------------------------------------------------
-
-std::tuple<xt::xtensor<size_t,2>,xt::xtensor<size_t,2>> indicator(const xt::xtensor<size_t,1> &elem)
-{
-  xt::xtensor<size_t,2> I   = xt::zeros<size_t>({nelem, nip});
-  xt::xtensor<size_t,2> idx = xt::zeros<size_t>({nelem, nip});
-
-  for ( size_t e = 0 ; e < elem.size() ; ++e ) {
-    for ( size_t q = 0 ; q < nip ; ++q ) {
-      I  (elem(e), q) = 1;
-      idx(elem(e), q) = e;
-    }
-  }
-
-  return std::make_tuple(I, idx);
+  m_D.assemble(nodalQuad.Int_N_scalar_NT_dV(val_quad));
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -291,47 +265,55 @@ std::tuple<xt::xtensor<size_t,2>,xt::xtensor<size_t,2>> indicator(const xt::xten
 void setMaterial()
 {
   // allocate
-  material = GM::Matrix(nelem, nip);
+  m_material = GM::Matrix(m_nelem, m_nip);
 
   // add elastic elements
   {
-    xt::xtensor<size_t,1> elem = xt::load<xt::xtensor<size_t,1>>(file, "/elastic/elem");
-    xt::xtensor<double,1> k    = xt::load<xt::xtensor<double,1>>(file, "/elastic/K"   );
-    xt::xtensor<double,1> g    = xt::load<xt::xtensor<double,1>>(file, "/elastic/G"   );
+    xt::xtensor<size_t,1> elem = xt::load<xt::xtensor<size_t,1>>(m_file, "/elastic/elem");
+    xt::xtensor<double,1> k    = xt::load<xt::xtensor<double,1>>(m_file, "/elastic/K"   );
+    xt::xtensor<double,1> g    = xt::load<xt::xtensor<double,1>>(m_file, "/elastic/G"   );
 
-    xt::xtensor<size_t,2> I, idx;
+    xt::xtensor<size_t,2> I   = xt::zeros<size_t>({m_nelem, m_nip});
+    xt::xtensor<size_t,2> idx = xt::zeros<size_t>({m_nelem, m_nip});
 
-    std::tie(I, idx) = indicator(elem);
+    xt::view(I, xt::keep(elem), xt::all()) = 1ul;
 
-    material.setElastic(I, idx, k, g);
+    for (size_t q = 0; q < m_nip; ++q)
+      xt::view(idx, xt::keep(elem), q) = xt::arange<size_t>(elem.size());
+
+    m_material.setElastic(I, idx, k, g);
   }
 
   // add plastic-cusp elements
   {
-    xt::xtensor<size_t,1> elem = xt::load<xt::xtensor<size_t,1>>(file, "/cusp/elem");
-    xt::xtensor<double,1> k    = xt::load<xt::xtensor<double,1>>(file, "/cusp/K"   );
-    xt::xtensor<double,1> g    = xt::load<xt::xtensor<double,1>>(file, "/cusp/G"   );
-    xt::xtensor<double,2> y    = xt::load<xt::xtensor<double,2>>(file, "/cusp/epsy");
+    xt::xtensor<size_t,1> elem = xt::load<xt::xtensor<size_t,1>>(m_file, "/cusp/elem");
+    xt::xtensor<double,1> k    = xt::load<xt::xtensor<double,1>>(m_file, "/cusp/K"   );
+    xt::xtensor<double,1> g    = xt::load<xt::xtensor<double,1>>(m_file, "/cusp/G"   );
+    xt::xtensor<double,2> y    = xt::load<xt::xtensor<double,2>>(m_file, "/cusp/epsy");
 
-    xt::xtensor<size_t,2> I, idx;
+    xt::xtensor<size_t,2> I   = xt::zeros<size_t>({m_nelem, m_nip});
+    xt::xtensor<size_t,2> idx = xt::zeros<size_t>({m_nelem, m_nip});
 
-    std::tie(I, idx) = indicator(elem);
+    xt::view(I, xt::keep(elem), xt::all()) = 1ul;
 
-    material.setCusp(I, idx, k, g, y);
+    for (size_t q = 0; q < m_nip; ++q)
+      xt::view(idx, xt::keep(elem), q) = xt::arange<size_t>(elem.size());
+
+    m_material.setCusp(I, idx, k, g, y);
   }
 
   // check homogeneous elasticity
-  xt::xtensor<double,2> k = material.K();
-  xt::xtensor<double,2> g = material.G();
+  xt::xtensor<double,2> k = m_material.K();
+  xt::xtensor<double,2> g = m_material.G();
   // -
   MYASSERT(xt::mean(k)[0] == k(0,0));
   MYASSERT(xt::mean(g)[0] == g(0,0));
 
   // check full material allocation
-  material.check();
+  m_material.check();
 
   // plastic elements
-  plastic = xt::sort(xt::flatten_indices(xt::argwhere(xt::amin(material.isPlastic(),{1}))));
+  m_plastic = xt::sort(xt::flatten_indices(xt::argwhere(xt::amin(m_material.isPlastic(),{1}))));
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -340,9 +322,9 @@ void setMaterial()
 
 void computeStrainStress()
 {
-  vector.asElement(u, ue);
-  quad.symGradN_vector(ue, Eps);
-  material.stress(Eps, Sig);
+  m_vector.asElement(m_u, m_ue);
+  m_quad.symGradN_vector(m_ue, m_Eps);
+  m_material.stress(m_Eps, m_Sig);
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -354,23 +336,24 @@ Data run()
   // initialise output
   Data data;
 
-  // mass density and viscous damping
-  data.rho = xt::load<double>(file, "/rho"          , {0});
-  data.eta = xt::load<double>(file, "/damping/eta_d", {0});
+  // mass density
+  data.rho = xt::load<double>(m_file, "/rho", {0});
 
   // integration point volume
-  xt::xtensor<double,4> dV = quad.DV(2);
+  xt::xtensor<double,4> dV = m_quad.DV(2);
 
   // number of plastic cells
-  size_t N = plastic.size();
+  size_t N = m_plastic.size();
 
   // basic information for each increment
-  xt::xtensor<size_t,1> stored       = xt::load<xt::xtensor<size_t,1>>(file, "/stored");
-  xt::xtensor<size_t,1> kick         = xt::load<xt::xtensor<size_t,1>>(file, "/kick");
-  xt::xtensor<double,1> dt_avalanche = xt::zeros<double>(stored.shape());
+  xt::xtensor<size_t,1> stored = xt::load<xt::xtensor<size_t,1>>(m_file, "/stored");
+  xt::xtensor<size_t,1> kick   = xt::load<xt::xtensor<size_t,1>>(m_file, "/kick");
 
-  if ( xt::extensions::exist(file, "/dt/plastic") )
-    dt_avalanche = xt::load<xt::xtensor<double,1>>(file, "/dt/plastic");
+  // avalanche duration (if stored)
+  if (m_file.exist("/dt/plastic"))
+    data.dt_avalanche = xt::load<xt::xtensor<double,1>>(m_file, "/dt/plastic");
+  else
+    data.dt_avalanche = xt::zeros<double>(stored.shape());
 
   // allocate result
   xt::xtensor<size_t,1> S     = xt::zeros<size_t>({xt::amax(stored)[0]+1});
@@ -382,28 +365,28 @@ Data run()
 
   // index of the current quadratic potential and the plastic strain,
   // for the first integration point per plastic element
-  auto idx_n  = xt::view(material.Find(Eps), xt::keep(plastic), 0);
-  auto epsp_n = xt::view(material.Epsp(Eps), xt::keep(plastic), 0);
+  auto idx_n  = xt::view(m_material.Find(m_Eps), xt::keep(m_plastic), 0);
+  auto epsp_n = xt::view(m_material.Epsp(m_Eps), xt::keep(m_plastic), 0);
 
   // loop over increments
-  for (size_t istored = 0 ; istored < stored.size() ; ++istored)
+  for (size_t istored = 0; istored < stored.size(); ++istored)
   {
     // - get increment number
     size_t inc = stored(istored);
 
     // - restore displacement
-    xt::noalias(u) = xt::load<xt::xtensor<double,2>>(file, "/disp/"+std::to_string(inc));
+    xt::noalias(m_u) = xt::load<xt::xtensor<double,2>>(m_file, "/disp/"+std::to_string(inc));
 
     // - update strain/strain
     computeStrainStress();
 
     // - index of the current quadratic potential and the plastic strain
-    auto idx  = xt::view(material.Find(Eps), xt::keep(plastic), 0);
-    auto epsp = xt::view(material.Epsp(Eps), xt::keep(plastic), 0);
+    auto idx  = xt::view(m_material.Find(m_Eps), xt::keep(m_plastic), 0);
+    auto epsp = xt::view(m_material.Epsp(m_Eps), xt::keep(m_plastic), 0);
 
     // - macroscopic strain/stress tensor
-    xt::xtensor_fixed<double, xt::xshape<2,2>> Epsbar = xt::average(Eps, dV, {0,1});
-    xt::xtensor_fixed<double, xt::xshape<2,2>> Sigbar = xt::average(Sig, dV, {0,1});
+    xt::xtensor_fixed<double, xt::xshape<2,2>> Epsbar = xt::average(m_Eps, dV, {0,1});
+    xt::xtensor_fixed<double, xt::xshape<2,2>> Sigbar = xt::average(m_Sig, dV, {0,1});
 
     // - macroscopic equivalent strain/stress
     epsd(inc) = GM::Epsd(Epsbar);
@@ -440,51 +423,60 @@ Data run()
   // - initialise elasto-plastic tangent of each increment
   xt::xtensor<double,1> K = xt::zeros<size_t>(sigd.shape());
   // - compute
-  for ( size_t i = 1 ; i < K.size() ; ++i )
-    K(i) = ( sigd(i) - sigd(0) ) / ( epsd(i) - epsd(0) );
+  for (size_t i = 1; i < K.size(); ++i)
+    K(i) = (sigd(i) - sigd(0)) / (epsd(i) - epsd(0));
   // - set dummy (to take the minimum below)
   K(0) = K(1);
   // - get steady-state increment
-  size_t steadystate = xt::amin(xt::from_indices(xt::argwhere(K<=.95*K(1))))[0];
-  // - always start the steady-state by elastic loading
-  if ( kick(steadystate) ) steadystate += 1;
+  if (xt::any(K <= 0.95 * K(1))) {
+    //  - select increment
+    data.steadystate = xt::amin(xt::from_indices(xt::argwhere(K <= 0.95 * K(1))))[0];
+    data.has_steadystate = true;
+    // - always start the steady-state by elastic loading
+    if (kick(data.steadystate))
+      data.steadystate += 1;
+  }
+  // - no steady-state found: no steady-state output
+  else {
+    data.has_steadystate = false;
+  }
 
   // per increment, list which increment had the last system-spanning avalanche
-  // - list with increment of system-spanning avalanches
-  xt::xtensor<size_t,1> isys = xt::flatten_indices(xt::argwhere(xt::equal(A, N)));
   // - allocate
   data.inc_system = xt::zeros<size_t>(stored.shape());
-  // - fill
-  for (size_t i = 0; i < isys.size()-1; ++i)
-    xt::view(data.inc_system, xt::range(isys(i), isys(i+1))) = isys(i);
-  // - last entry
-  size_t i = isys(isys.size()-1);
-  xt::view(data.inc_system, xt::range(i, stored.size())) = i;
-
-  // get information about the last system spanning avalanche
-  // - allocate
   data.eps_system = xt::zeros<double>(stored.shape());
   data.sig_system = xt::zeros<double>(stored.shape());
-  // - fill
-  for (size_t i = 0; i < stored.size(); ++i) {
-    data.eps_system(i) = epsd(data.inc_system(i));
-    data.sig_system(i) = sigd(data.inc_system(i));
+  // - list with increment of system-spanning avalanches
+  xt::xtensor<size_t,1> isys = xt::flatten_indices(xt::argwhere(xt::equal(A, N)));
+  // - only continue for non-empty list
+  if (isys.size() > 0)
+  {
+    // - fill: all but last entry
+    for (size_t i = 0; i < isys.size()-1; ++i)
+      xt::view(data.inc_system, xt::range(isys(i), isys(i+1))) = isys(i);
+    // - fill: last entry
+    size_t i = isys(isys.size()-1);
+    xt::view(data.inc_system, xt::range(i, stored.size())) = i;
+    // - get information about the last system spanning avalanche
+    for (size_t i = 0; i < stored.size(); ++i) {
+      data.eps_system(i) = epsd(data.inc_system(i));
+      data.sig_system(i) = sigd(data.inc_system(i));
+    }
   }
 
   // return output
-  data.dt           = dt;
-  data.G            = G;
-  data.N            = N;
-  data.steadystate  = steadystate;
-  data.incs         = stored;
-  data.kick         = kick;
-  data.S            = S;
-  data.A            = A;
-  data.xi           = xi;
-  data.depsp        = depsp;
-  data.dt_avalanche = dt_avalanche;
-  data.epsd         = epsd;
-  data.sigd         = sigd;
+  data.dt    = m_dt;
+  data.G     = m_material.G()(0,0);;
+  data.N     = N;
+  data.incs  = stored;
+  data.kick  = kick;
+  data.S     = S;
+  data.A     = A;
+  data.xi    = xi;
+  data.depsp = depsp;
+  data.epsd  = epsd;
+  data.sigd  = sigd;
+  data.uuid  = xt::load<std::string>(m_file, "/uuid");
 
   return data;
 }
@@ -501,6 +493,7 @@ R"(Run
 
 Output:
   /files              List with files in the ensemble (path relative to the current file).
+  /uuid               List with uuid's of each simulation.
   /full/file/...      The raw-output (including not-steady-state) per file (see "Fields" below).
   /loading/...        Output after an elastic loading increment (see "Fields" below).
   /avalanche/...      Output after a strain kick, i.e. after an avalanche  (see "Fields" below).
@@ -526,13 +519,12 @@ Fields:
 Normalisation:
   ../N                Number of plastic elements.
   ../dt               Time-step per increment.
-  ../epsy             Ensemble average yield strain (see input).
-  ../sigy             Ensemble average yield strain (from input).
+  ../eps0             Strain normalisation.
+  ../sig0             Stress normalisation.
   ../G                Shear modulus (homogeneous).
   ../rho              Mass density (homogeneous).
-  ../nu               Damping factor in shear (homogeneous).
   ../cs               Shear wave speed (homogeneous).
-  ../t0               Time it takes a shear wave to travel the size of an element (see input).
+  ../t0               Time it takes a shear wave to travel the size of an element.
 
 Averages:
   ../sigd_top         Stress just before a system-spanning avalanche.
@@ -565,16 +557,16 @@ int main(int argc, const char** argv)
   std::vector<std::string> files = args["<data.hdf5>"].asStringList();
 
   // skip empty input
-  if ( files.size() == 0 ) return 0;
+  if (files.size() == 0)
+    return 0;
 
   // output name
   // - command-line options
   std::string outpath = args["--outpath"].asString();
   std::string outname = args["--outname"].asString();
   // - default path
-  if ( outpath.size() == 0 ){
+  if (outpath.size() == 0)
     outpath = cpppath::common_dirname(files);
-  }
   // - convert name to path
   outname = cpppath::join({outpath, outname});
 
@@ -582,12 +574,15 @@ int main(int argc, const char** argv)
   // - allocate
   std::vector<std::string> sims;
   // - fill
-  for ( auto &file: files )
-    sims.push_back(cpppath::split(file, outpath+"/")[0]);
+  for (auto& m_file: files)
+    sims.push_back(cpppath::split(m_file, outpath+"/")[0]);
 
   // normalisation parameters
   double epsy = std::stod(args["--epsy"].asString());
   double l0   = std::stod(args["--l0"  ].asString());
+
+  // list with uuids
+  std::vector<std::string> uuid(sims.size());
 
   // results: ensemble after loading
   xt::xtensor<size_t,1> load_sim          = xt::empty<size_t>({0});
@@ -625,8 +620,9 @@ int main(int argc, const char** argv)
 
   // normalisation
   xt::xtensor<size_t,1> norm_N    = xt::zeros<size_t>({files.size()});
-  xt::xtensor<double,1> norm_epsy = xt::zeros<double>({files.size()});
-  xt::xtensor<double,1> norm_sigy = xt::zeros<double>({files.size()});
+  xt::xtensor<double,1> norm_eps0 = xt::zeros<double>({files.size()});
+  xt::xtensor<double,1> norm_sig0 = xt::zeros<double>({files.size()});
+  xt::xtensor<double,1> norm_l0   = xt::zeros<double>({files.size()});
   xt::xtensor<double,1> norm_G    = xt::zeros<double>({files.size()});
   xt::xtensor<double,1> norm_rho  = xt::zeros<double>({files.size()});
   xt::xtensor<double,1> norm_nu   = xt::zeros<double>({files.size()});
@@ -641,7 +637,7 @@ int main(int argc, const char** argv)
   HighFive::File out(outname, HighFive::File::Overwrite);
 
   // loop over simulations
-  for ( size_t i = 0 ; i < files.size() ; ++i )
+  for (size_t i = 0; i < files.size(); ++i )
   {
     // print progress to screen
     fmt::print("- reading '{0:s}'\n", files[i]);
@@ -652,16 +648,15 @@ int main(int argc, const char** argv)
     // read results
     Data data = sim.run();
 
+    // get uuid, and strain and stress normalisation
+    uuid[i] = data.uuid;
+
     // alias
     size_t steadystate = data.steadystate;
 
     // typical stress: ensemble average yield stress
     // (normalisation only)
     double sigy = 2. * data.G * epsy;
-
-    // damping factor
-    // (normalisation only)
-    double nu = data.eta / data.rho;
 
     // typical time-scale: the time that it takes one shear wave to travel one cell
     // (normalisation only)
@@ -678,11 +673,11 @@ int main(int argc, const char** argv)
 
     // store normalisation to ensemble
     norm_N   (i) = data.N;
-    norm_epsy(i) = epsy;
-    norm_sigy(i) = sigy;
+    norm_eps0(i) = epsy;
+    norm_sig0(i) = sigy;
+    norm_l0  (i) = l0;
     norm_G   (i) = data.G;
     norm_rho (i) = data.rho;
-    norm_nu  (i) = nu;
     norm_cs  (i) = cs;
     norm_t0  (i) = t0;
     norm_dt  (i) = data.dt;
@@ -704,12 +699,16 @@ int main(int argc, const char** argv)
     // total number of increments
     size_t ni = data.incs.size();
 
+    // continue only if a steady-state was found
+    if (!data.has_steadystate)
+      continue;
+
     // below the increments are split (based on the event-driven protocol) in elastic loading
     // and (potential) avalanches
     // for simplicity this split is done such that the number of increments is the same for both
     // (hence potentially the last increment has to be discard)
-    if ( steadystate % 2 == 0 and ni % 2 != 0 ) ni -= 1;
-    if ( steadystate % 2 != 0 and ni % 2 == 0 ) ni -= 1;
+    if (steadystate % 2 == 0 && ni % 2 != 0) ni -= 1;
+    if (steadystate % 2 != 0 && ni % 2 == 0) ni -= 1;
 
     // ensemble after loading
     load_incs         = xt::concatenate(xt::xtuple(load_incs        , xt::view(data.incs        , xt::range(steadystate  , ni, 2))));
@@ -761,27 +760,27 @@ int main(int argc, const char** argv)
 
   // check normalisation
   MYASSERT(xt::all(xt::equal(norm_N   , norm_N   (0))));
-  MYASSERT(xt::all(xt::equal(norm_epsy, norm_epsy(0))));
-  MYASSERT(xt::all(xt::equal(norm_sigy, norm_sigy(0))));
+  MYASSERT(xt::all(xt::equal(norm_eps0, norm_eps0(0))));
+  MYASSERT(xt::all(xt::equal(norm_sig0, norm_sig0(0))));
+  MYASSERT(xt::all(xt::equal(norm_l0  , norm_l0  (0))));
   MYASSERT(xt::all(xt::equal(norm_G   , norm_G   (0))));
   MYASSERT(xt::all(xt::equal(norm_rho , norm_rho (0))));
-  MYASSERT(xt::all(xt::equal(norm_nu  , norm_nu  (0))));
   MYASSERT(xt::all(xt::equal(norm_cs  , norm_cs  (0))));
   MYASSERT(xt::all(xt::equal(norm_t0  , norm_t0  (0))));
   MYASSERT(xt::all(xt::equal(norm_dt  , norm_dt  (0))));
 
   // save ensemble
   xt::dump(out, "/files", sims);
+  xt::dump(out, "/uuid" , uuid);
 
   xt::dump(out, "/normalisation/N"   , static_cast<size_t>(norm_N   (0)));
-  xt::dump(out, "/normalisation/epsy", static_cast<double>(norm_epsy(0)));
-  xt::dump(out, "/normalisation/sigy", static_cast<double>(norm_sigy(0)));
+  xt::dump(out, "/normalisation/eps0", static_cast<double>(norm_eps0(0)));
+  xt::dump(out, "/normalisation/sig0", static_cast<double>(norm_sig0(0)));
   xt::dump(out, "/normalisation/G"   , static_cast<double>(norm_G   (0)));
   xt::dump(out, "/normalisation/rho" , static_cast<double>(norm_rho (0)));
-  xt::dump(out, "/normalisation/nu"  , static_cast<double>(norm_nu  (0)));
   xt::dump(out, "/normalisation/cs"  , static_cast<double>(norm_cs  (0)));
   xt::dump(out, "/normalisation/t0"  , static_cast<double>(norm_t0  (0)));
-  xt::dump(out, "/normalisation/l0"  , l0);
+  xt::dump(out, "/normalisation/l0"  , static_cast<double>(norm_l0  (0)));
   xt::dump(out, "/normalisation/dt"  , static_cast<double>(norm_dt  (0)));
 
   xt::dump(out, "/loading/file"          , load_sim         );
@@ -827,7 +826,7 @@ int main(int argc, const char** argv)
   // - filter for system-spanning avalanches
   xt::xtensor<size_t,1> idx = xt::flatten_indices(xt::argwhere(xt::equal(A,N)));
   // - compute averages
-  if ( idx.size() > 0 )
+  if (idx.size() > 0)
   {
     // - extract
     sig_top = xt::view(sig_top, xt::keep(idx));

@@ -8,6 +8,10 @@ for file in files:
 
   data = h5py.File(file, 'r')
 
+  if 'completed' not in data['meta']:
+    print(file, 'Error: "/meta/completed" not found.')
+    continue
+
   if 'sync-t' not in data:
     print(file, 'Error: "/sync-t/..." not found.')
     continue
