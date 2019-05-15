@@ -13,7 +13,7 @@ N     = (3**6) * 2
 
 data = h5py.File(os.path.join(dbase, nx, 'EnsembleInfo.hdf5'), 'r')
 
-sig0 = data['/normalisation/sigy'  ][...]
+sig0 = data['/normalisation/sig0'  ][...]
 sigc = data['/averages/sigd_bottom'][...] * sig0
 sign = data['/averages/sigd_top'   ][...] * sig0
 
