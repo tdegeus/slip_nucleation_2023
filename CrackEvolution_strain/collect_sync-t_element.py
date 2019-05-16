@@ -86,7 +86,7 @@ for file in files:
 
   data.close()
 
-T = T[np.where(norm > 30)]
+T = np.arange(5000)[np.where(norm > 30)]
 
 T_read = T[::10]
 
