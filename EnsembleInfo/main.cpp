@@ -8,7 +8,7 @@
 #include <GMatElastoPlasticQPot/Cartesian2d.h>
 #include <fmt/core.h>
 #include <cpppath.h>
-#include <xtensor-io/xhighfive.hpp>
+#include <highfive/H5Easy.hpp>
 
 // alias namespaces
 namespace GF = GooseFEM;
@@ -60,7 +60,7 @@ class Main
 private:
 
   // input/output file
-  HighFive::File m_file;
+  H5Easy::File m_file;
 
   // mesh parameters
   xt::xtensor<size_t,2> m_conn;
@@ -80,12 +80,6 @@ private:
 
   // convert vectors between 'nodevec', 'elemvec', ...
   GF::VectorPartitioned m_vector;
-
-  // mass matrix
-  GF::MatrixDiagonalPartitioned m_M;
-
-  // damping matrix
-  GF::MatrixDiagonal m_D;
 
   // material definition
   GM::Matrix m_material;
@@ -126,11 +120,9 @@ public:
 // main
 // -------------------------------------------------------------------------------------------------
 
-Main(const std::string &fname) : m_file(fname, HighFive::File::ReadOnly)
+Main(const std::string &fname) : m_file(fname, H5Easy::File::ReadOnly)
 {
   readMesh();
-  setMass();
-  setDamping();
   setMaterial();
   readParameters();
   computeStrainStress();
@@ -143,7 +135,7 @@ Main(const std::string &fname) : m_file(fname, HighFive::File::ReadOnly)
 void readParameters()
 {
   // time step
-  m_dt = xt::load<double>(m_file, "/run/dt");
+  m_dt = H5Easy::load<double>(m_file, "/run/dt");
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -153,10 +145,10 @@ void readParameters()
 void readMesh()
 {
   // read fields
-  m_conn  = xt::load<xt::xtensor<size_t,2>>(m_file, "/conn");
-  m_coor  = xt::load<xt::xtensor<double,2>>(m_file, "/coor");
-  m_dofs  = xt::load<xt::xtensor<size_t,2>>(m_file, "/dofs");
-  m_iip   = xt::load<xt::xtensor<size_t,1>>(m_file, "/dofsP");
+  m_conn  = H5Easy::load<xt::xtensor<size_t,2>>(m_file, "/conn");
+  m_coor  = H5Easy::load<xt::xtensor<double,2>>(m_file, "/coor");
+  m_dofs  = H5Easy::load<xt::xtensor<size_t,2>>(m_file, "/dofs");
+  m_iip   = H5Easy::load<xt::xtensor<size_t,1>>(m_file, "/dofsP");
 
   // extract sizes
   m_nnode = m_coor.shape(0);
@@ -195,70 +187,6 @@ void readMesh()
 }
 
 // -------------------------------------------------------------------------------------------------
-// read/set mass matrix
-// -------------------------------------------------------------------------------------------------
-
-void setMass()
-{
-  // allocate
-  m_M = GF::MatrixDiagonalPartitioned(m_conn, m_dofs, m_iip);
-
-  // nodal coordinates as element vector
-  xt::xtensor<double,3> x = m_vector.AsElement(m_coor);
-
-  // nodal quadrature
-  QD::Quadrature nodalQuad(x, QD::Nodal::xi(), QD::Nodal::w());
-
-  // element values
-  xt::xtensor<double,1> val_elem = xt::load<xt::xtensor<double,1>>(m_file, "/rho");
-
-  // check size
-  MYASSERT(val_elem.size() == m_nelem);
-
-  // integration point values (constant per element)
-  // - allocate
-  xt::xtensor<double,2> val_quad = xt::empty<double>({m_nelem, nodalQuad.nip()});
-  // - copy
-  for (size_t q = 0; q < nodalQuad.nip(); ++q)
-    xt::view(val_quad, xt::all(), q) = val_elem;
-
-  // compute diagonal matrices
-  m_M.assemble(nodalQuad.Int_N_scalar_NT_dV(val_quad));
-}
-
-// -------------------------------------------------------------------------------------------------
-// read/set damping matrix
-// -------------------------------------------------------------------------------------------------
-
-void setDamping()
-{
-  // allocate
-  m_D = GF::MatrixDiagonal(m_conn, m_dofs);
-
-  // nodal coordinates as element vector
-  xt::xtensor<double,3> x = m_vector.AsElement(m_coor);
-
-  // nodal quadrature
-  QD::Quadrature nodalQuad(x, QD::Nodal::xi(), QD::Nodal::w());
-
-  // element values
-  xt::xtensor<double,1> val_elem = xt::load<xt::xtensor<double,1>>(m_file, "/damping/alpha");
-
-  // check size
-  MYASSERT(val_elem.size() == m_nelem);
-
-  // integration point values (constant per element)
-  // - allocate
-  xt::xtensor<double,2> val_quad = xt::empty<double>({m_nelem, nodalQuad.nip()});
-  // - copy
-  for (size_t q = 0; q < nodalQuad.nip(); ++q)
-    xt::view(val_quad, xt::all(), q) = val_elem;
-
-  // compute diagonal matrices
-  m_D.assemble(nodalQuad.Int_N_scalar_NT_dV(val_quad));
-}
-
-// -------------------------------------------------------------------------------------------------
 // set material definition
 // -------------------------------------------------------------------------------------------------
 
@@ -269,9 +197,9 @@ void setMaterial()
 
   // add elastic elements
   {
-    xt::xtensor<size_t,1> elem = xt::load<xt::xtensor<size_t,1>>(m_file, "/elastic/elem");
-    xt::xtensor<double,1> k    = xt::load<xt::xtensor<double,1>>(m_file, "/elastic/K"   );
-    xt::xtensor<double,1> g    = xt::load<xt::xtensor<double,1>>(m_file, "/elastic/G"   );
+    xt::xtensor<size_t,1> elem = H5Easy::load<xt::xtensor<size_t,1>>(m_file, "/elastic/elem");
+    xt::xtensor<double,1> k    = H5Easy::load<xt::xtensor<double,1>>(m_file, "/elastic/K"   );
+    xt::xtensor<double,1> g    = H5Easy::load<xt::xtensor<double,1>>(m_file, "/elastic/G"   );
 
     xt::xtensor<size_t,2> I   = xt::zeros<size_t>({m_nelem, m_nip});
     xt::xtensor<size_t,2> idx = xt::zeros<size_t>({m_nelem, m_nip});
@@ -286,10 +214,10 @@ void setMaterial()
 
   // add plastic-cusp elements
   {
-    xt::xtensor<size_t,1> elem = xt::load<xt::xtensor<size_t,1>>(m_file, "/cusp/elem");
-    xt::xtensor<double,1> k    = xt::load<xt::xtensor<double,1>>(m_file, "/cusp/K"   );
-    xt::xtensor<double,1> g    = xt::load<xt::xtensor<double,1>>(m_file, "/cusp/G"   );
-    xt::xtensor<double,2> y    = xt::load<xt::xtensor<double,2>>(m_file, "/cusp/epsy");
+    xt::xtensor<size_t,1> elem = H5Easy::load<xt::xtensor<size_t,1>>(m_file, "/cusp/elem");
+    xt::xtensor<double,1> k    = H5Easy::load<xt::xtensor<double,1>>(m_file, "/cusp/K"   );
+    xt::xtensor<double,1> g    = H5Easy::load<xt::xtensor<double,1>>(m_file, "/cusp/G"   );
+    xt::xtensor<double,2> y    = H5Easy::load<xt::xtensor<double,2>>(m_file, "/cusp/epsy");
 
     xt::xtensor<size_t,2> I   = xt::zeros<size_t>({m_nelem, m_nip});
     xt::xtensor<size_t,2> idx = xt::zeros<size_t>({m_nelem, m_nip});
@@ -337,7 +265,7 @@ Data run()
   Data data;
 
   // mass density
-  data.rho = xt::load<double>(m_file, "/rho", {0});
+  data.rho = H5Easy::load<double>(m_file, "/rho", {0});
 
   // integration point volume
   xt::xtensor<double,4> dV = m_quad.DV(2);
@@ -346,12 +274,12 @@ Data run()
   size_t N = m_plastic.size();
 
   // basic information for each increment
-  xt::xtensor<size_t,1> stored = xt::load<xt::xtensor<size_t,1>>(m_file, "/stored");
-  xt::xtensor<size_t,1> kick   = xt::load<xt::xtensor<size_t,1>>(m_file, "/kick");
+  xt::xtensor<size_t,1> stored = H5Easy::load<xt::xtensor<size_t,1>>(m_file, "/stored");
+  xt::xtensor<size_t,1> kick   = H5Easy::load<xt::xtensor<size_t,1>>(m_file, "/kick");
 
   // avalanche duration (if stored)
   if (m_file.exist("/dt/plastic"))
-    data.dt_avalanche = xt::load<xt::xtensor<double,1>>(m_file, "/dt/plastic");
+    data.dt_avalanche = H5Easy::load<xt::xtensor<double,1>>(m_file, "/dt/plastic");
   else
     data.dt_avalanche = xt::zeros<double>(stored.shape());
 
@@ -375,7 +303,7 @@ Data run()
     size_t inc = stored(istored);
 
     // - restore displacement
-    xt::noalias(m_u) = xt::load<xt::xtensor<double,2>>(m_file, "/disp/"+std::to_string(inc));
+    xt::noalias(m_u) = H5Easy::load<xt::xtensor<double,2>>(m_file, "/disp/"+std::to_string(inc));
 
     // - update strain/strain
     computeStrainStress();
@@ -476,7 +404,7 @@ Data run()
   data.depsp = depsp;
   data.epsd  = epsd;
   data.sigd  = sigd;
-  data.uuid  = xt::load<std::string>(m_file, "/uuid");
+  data.uuid  = H5Easy::load<std::string>(m_file, "/uuid");
 
   return data;
 }
@@ -625,7 +553,6 @@ int main(int argc, const char** argv)
   xt::xtensor<double,1> norm_l0   = xt::zeros<double>({files.size()});
   xt::xtensor<double,1> norm_G    = xt::zeros<double>({files.size()});
   xt::xtensor<double,1> norm_rho  = xt::zeros<double>({files.size()});
-  xt::xtensor<double,1> norm_nu   = xt::zeros<double>({files.size()});
   xt::xtensor<double,1> norm_cs   = xt::zeros<double>({files.size()});
   xt::xtensor<double,1> norm_t0   = xt::zeros<double>({files.size()});
   xt::xtensor<double,1> norm_dt   = xt::zeros<double>({files.size()});
@@ -634,7 +561,7 @@ int main(int argc, const char** argv)
   fmt::print("Writing to '{0:s}'\n", outname);
 
   // open output file
-  HighFive::File out(outname, HighFive::File::Overwrite);
+  H5Easy::File out(outname, H5Easy::File::Overwrite);
 
   // loop over simulations
   for (size_t i = 0; i < files.size(); ++i )
@@ -686,15 +613,15 @@ int main(int argc, const char** argv)
     std::string path = cpppath::normpath(fmt::format("/full/{0:s}", sims[i]));
 
     // save raw data (in addition to the ensemble data), for fast recovery
-    xt::dump(out, path+"/steadystate" , steadystate      );
-    xt::dump(out, path+"/kick"        , data.kick        );
-    xt::dump(out, path+"/S"           , data.S           );
-    xt::dump(out, path+"/A"           , data.A           );
-    xt::dump(out, path+"/xi"          , data.xi          );
-    xt::dump(out, path+"/depsp"       , data.depsp       );
-    xt::dump(out, path+"/dt_avalanche", data.dt_avalanche);
-    xt::dump(out, path+"/epsd"        , data.epsd        );
-    xt::dump(out, path+"/sigd"        , data.sigd        );
+    H5Easy::dump(out, path+"/steadystate" , steadystate      );
+    H5Easy::dump(out, path+"/kick"        , data.kick        );
+    H5Easy::dump(out, path+"/S"           , data.S           );
+    H5Easy::dump(out, path+"/A"           , data.A           );
+    H5Easy::dump(out, path+"/xi"          , data.xi          );
+    H5Easy::dump(out, path+"/depsp"       , data.depsp       );
+    H5Easy::dump(out, path+"/dt_avalanche", data.dt_avalanche);
+    H5Easy::dump(out, path+"/epsd"        , data.epsd        );
+    H5Easy::dump(out, path+"/sigd"        , data.sigd        );
 
     // total number of increments
     size_t ni = data.incs.size();
@@ -770,59 +697,59 @@ int main(int argc, const char** argv)
   MYASSERT(xt::all(xt::equal(norm_dt  , norm_dt  (0))));
 
   // save ensemble
-  xt::dump(out, "/files", sims);
-  xt::dump(out, "/uuid" , uuid);
+  H5Easy::dump(out, "/files", sims);
+  H5Easy::dump(out, "/uuid" , uuid);
 
-  xt::dump(out, "/normalisation/N"   , static_cast<size_t>(norm_N   (0)));
-  xt::dump(out, "/normalisation/eps0", static_cast<double>(norm_eps0(0)));
-  xt::dump(out, "/normalisation/sig0", static_cast<double>(norm_sig0(0)));
-  xt::dump(out, "/normalisation/G"   , static_cast<double>(norm_G   (0)));
-  xt::dump(out, "/normalisation/rho" , static_cast<double>(norm_rho (0)));
-  xt::dump(out, "/normalisation/cs"  , static_cast<double>(norm_cs  (0)));
-  xt::dump(out, "/normalisation/t0"  , static_cast<double>(norm_t0  (0)));
-  xt::dump(out, "/normalisation/l0"  , static_cast<double>(norm_l0  (0)));
-  xt::dump(out, "/normalisation/dt"  , static_cast<double>(norm_dt  (0)));
+  H5Easy::dump(out, "/normalisation/N"   , static_cast<size_t>(norm_N   (0)));
+  H5Easy::dump(out, "/normalisation/eps0", static_cast<double>(norm_eps0(0)));
+  H5Easy::dump(out, "/normalisation/sig0", static_cast<double>(norm_sig0(0)));
+  H5Easy::dump(out, "/normalisation/G"   , static_cast<double>(norm_G   (0)));
+  H5Easy::dump(out, "/normalisation/rho" , static_cast<double>(norm_rho (0)));
+  H5Easy::dump(out, "/normalisation/cs"  , static_cast<double>(norm_cs  (0)));
+  H5Easy::dump(out, "/normalisation/t0"  , static_cast<double>(norm_t0  (0)));
+  H5Easy::dump(out, "/normalisation/l0"  , static_cast<double>(norm_l0  (0)));
+  H5Easy::dump(out, "/normalisation/dt"  , static_cast<double>(norm_dt  (0)));
 
-  xt::dump(out, "/loading/file"          , load_sim         );
-  xt::dump(out, "/loading/inc"           , load_incs        );
-  xt::dump(out, "/loading/ninc"          , load_ninc        );
-  xt::dump(out, "/loading/kick"          , load_kick        );
-  xt::dump(out, "/loading/inc_system"    , load_inc_system  );
-  xt::dump(out, "/loading/eps_system"    , load_eps_system  );
-  xt::dump(out, "/loading/sig_system"    , load_sig_system  );
-  xt::dump(out, "/loading/S"             , load_S           );
-  xt::dump(out, "/loading/A"             , load_A           );
-  xt::dump(out, "/loading/xi"            , load_xi          );
-  xt::dump(out, "/loading/depsp"         , load_depsp       );
-  xt::dump(out, "/loading/dt_avalanche"  , load_dt_avalanche);
-  xt::dump(out, "/loading/epsd"          , load_epsd        );
-  xt::dump(out, "/loading/sigd"          , load_sigd        );
+  H5Easy::dump(out, "/loading/file"          , load_sim         );
+  H5Easy::dump(out, "/loading/inc"           , load_incs        );
+  H5Easy::dump(out, "/loading/ninc"          , load_ninc        );
+  H5Easy::dump(out, "/loading/kick"          , load_kick        );
+  H5Easy::dump(out, "/loading/inc_system"    , load_inc_system  );
+  H5Easy::dump(out, "/loading/eps_system"    , load_eps_system  );
+  H5Easy::dump(out, "/loading/sig_system"    , load_sig_system  );
+  H5Easy::dump(out, "/loading/S"             , load_S           );
+  H5Easy::dump(out, "/loading/A"             , load_A           );
+  H5Easy::dump(out, "/loading/xi"            , load_xi          );
+  H5Easy::dump(out, "/loading/depsp"         , load_depsp       );
+  H5Easy::dump(out, "/loading/dt_avalanche"  , load_dt_avalanche);
+  H5Easy::dump(out, "/loading/epsd"          , load_epsd        );
+  H5Easy::dump(out, "/loading/sigd"          , load_sigd        );
 
-  xt::dump(out, "/avalanche/file"        , aval_sim         );
-  xt::dump(out, "/avalanche/inc"         , aval_incs        );
-  xt::dump(out, "/avalanche/ninc"        , aval_ninc        );
-  xt::dump(out, "/avalanche/kick"        , aval_kick        );
-  xt::dump(out, "/avalanche/inc_system"  , aval_inc_system  );
-  xt::dump(out, "/avalanche/eps_system"  , aval_eps_system  );
-  xt::dump(out, "/avalanche/sig_system"  , aval_sig_system  );
-  xt::dump(out, "/avalanche/S"           , aval_S           );
-  xt::dump(out, "/avalanche/A"           , aval_A           );
-  xt::dump(out, "/avalanche/xi"          , aval_xi          );
-  xt::dump(out, "/avalanche/depsp"       , aval_depsp       );
-  xt::dump(out, "/avalanche/dt_avalanche", aval_dt_avalanche);
-  xt::dump(out, "/avalanche/epsd"        , aval_epsd        );
-  xt::dump(out, "/avalanche/sigd"        , aval_sigd        );
+  H5Easy::dump(out, "/avalanche/file"        , aval_sim         );
+  H5Easy::dump(out, "/avalanche/inc"         , aval_incs        );
+  H5Easy::dump(out, "/avalanche/ninc"        , aval_ninc        );
+  H5Easy::dump(out, "/avalanche/kick"        , aval_kick        );
+  H5Easy::dump(out, "/avalanche/inc_system"  , aval_inc_system  );
+  H5Easy::dump(out, "/avalanche/eps_system"  , aval_eps_system  );
+  H5Easy::dump(out, "/avalanche/sig_system"  , aval_sig_system  );
+  H5Easy::dump(out, "/avalanche/S"           , aval_S           );
+  H5Easy::dump(out, "/avalanche/A"           , aval_A           );
+  H5Easy::dump(out, "/avalanche/xi"          , aval_xi          );
+  H5Easy::dump(out, "/avalanche/depsp"       , aval_depsp       );
+  H5Easy::dump(out, "/avalanche/dt_avalanche", aval_dt_avalanche);
+  H5Easy::dump(out, "/avalanche/epsd"        , aval_epsd        );
+  H5Easy::dump(out, "/avalanche/sigd"        , aval_sigd        );
 
   // get ensemble averages
   // - size of the weak layer
-  size_t N = xt::load<size_t>(out, "/normalisation/N");
+  size_t N = H5Easy::load<size_t>(out, "/normalisation/N");
   // - area of the avalanche
-  xt::xtensor<size_t,1> A = xt::load<xt::xtensor<size_t,1>>(out, "/avalanche/A");
+  xt::xtensor<size_t,1> A = H5Easy::load<xt::xtensor<size_t,1>>(out, "/avalanche/A");
   // - area of the avalanche, and the stress just before and just after each avalanche
-  xt::xtensor<double,1> sig_bot = xt::load<xt::xtensor<double,1>>(out, "/avalanche/sigd");
-  xt::xtensor<size_t,1> inc_bot = xt::load<xt::xtensor<size_t,1>>(out, "/avalanche/inc" );
-  xt::xtensor<double,1> sig_top = xt::load<xt::xtensor<double,1>>(out, "/loading/sigd"  );
-  xt::xtensor<size_t,1> inc_top = xt::load<xt::xtensor<size_t,1>>(out, "/loading/inc"   );
+  xt::xtensor<double,1> sig_bot = H5Easy::load<xt::xtensor<double,1>>(out, "/avalanche/sigd");
+  xt::xtensor<size_t,1> inc_bot = H5Easy::load<xt::xtensor<size_t,1>>(out, "/avalanche/inc" );
+  xt::xtensor<double,1> sig_top = H5Easy::load<xt::xtensor<double,1>>(out, "/loading/sigd"  );
+  xt::xtensor<size_t,1> inc_top = H5Easy::load<xt::xtensor<size_t,1>>(out, "/loading/inc"   );
   // - filter for system-spanning avalanches
   xt::xtensor<size_t,1> idx = xt::flatten_indices(xt::argwhere(xt::equal(A,N)));
   // - compute averages
@@ -836,8 +763,8 @@ int main(int argc, const char** argv)
     // - check increments numbers
     MYASSERT(xt::all(xt::equal(inc_bot, inc_top+1)));
     // - compute averages
-    xt::dump(out, "/averages/sigd_top"   , xt::mean(sig_top)[0]);
-    xt::dump(out, "/averages/sigd_bottom", xt::mean(sig_bot)[0]);
+    H5Easy::dump(out, "/averages/sigd_top"   , xt::mean(sig_top)[0]);
+    H5Easy::dump(out, "/averages/sigd_bottom", xt::mean(sig_bot)[0]);
   }
 
   return 0;

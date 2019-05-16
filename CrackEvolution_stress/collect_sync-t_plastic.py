@@ -45,8 +45,8 @@ data = h5py.File(os.path.join(dbase, ensemble, 'EnsembleInfo.hdf5'), 'r')
 
 dt   = float(data['/normalisation/dt'    ][...])
 t0   = float(data['/normalisation/t0'    ][...])
-sig0 = float(data['/normalisation/sigy'  ][...])
-eps0 = float(data['/normalisation/epsy'  ][...])
+sig0 = float(data['/normalisation/sig0'  ][...])
+eps0 = float(data['/normalisation/eps0'  ][...])
 
 data.close()
 
@@ -63,7 +63,7 @@ else          : mid = (nx - 1) / 2
 
 mapping = gf.Mesh.Quad4.Map.FineLayer2Regular(mesh)
 
-regular = mapping.getRegular()
+regular = mapping.getRegularMesh()
 
 elmat = regular.elementMatrix()
 

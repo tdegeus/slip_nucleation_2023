@@ -44,7 +44,7 @@ dbase = '../../../data'
 
 data = h5py.File(os.path.join(dbase, ensemble, 'EnsembleInfo.hdf5'), 'r')
 
-sig0 = data['/normalisation/sigy'][...]
+sig0 = data['/normalisation/sig0'][...]
 
 data.close()
 
@@ -61,7 +61,7 @@ else          : mid = (nx - 1) / 2
 
 mapping = gf.Mesh.Quad4.Map.FineLayer2Regular(mesh)
 
-regular = mapping.getRegular()
+regular = mapping.getRegularMesh()
 
 coor  = regular.coor()
 conn  = regular.conn()
@@ -144,9 +144,9 @@ for a in A_read:
     get = elmat[:, renum].ravel()
 
     # add to average
-    Sig_xx += mapping.map(sig_xx)[get]
-    Sig_xy += mapping.map(sig_xy)[get]
-    Sig_yy += mapping.map(sig_yy)[get]
+    Sig_xx += mapping.mapToRegular(sig_xx)[get]
+    Sig_xy += mapping.mapToRegular(sig_xy)[get]
+    Sig_yy += mapping.mapToRegular(sig_yy)[get]
 
     # update normalisation
     norm += 1

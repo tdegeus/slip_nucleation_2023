@@ -33,7 +33,7 @@ data = h5py.File(os.path.join(dbase, ensemble, 'EnsembleInfo.hdf5'), 'r')
 
 dt   = float(data['/normalisation/dt'  ][...])
 t0   = float(data['/normalisation/t0'  ][...])
-sig0 = float(data['/normalisation/sigy'][...])
+sig0 = float(data['/normalisation/sig0'][...])
 
 data.close()
 

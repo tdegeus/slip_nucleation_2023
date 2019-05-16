@@ -8,7 +8,7 @@
 #include <GMatElastoPlasticQPot/Cartesian2d.h>
 #include <fmt/core.h>
 #include <cpppath.h>
-#include <xtensor-io/xhighfive.hpp>
+#include <highfive/H5Easy.hpp>
 #include <xtensor/xindex_view.hpp>
 
 // alias namespaces
@@ -36,7 +36,7 @@ class Main
 private:
 
   // input/output file
-  HighFive::File m_file;
+  H5Easy::File m_file;
 
   // mesh parameters
   xt::xtensor<size_t,2> m_conn;
@@ -108,7 +108,7 @@ public:
 // main
 // -------------------------------------------------------------------------------------------------
 
-Main(const std::string &fname) : m_file(fname, HighFive::File::ReadOnly)
+Main(const std::string &fname) : m_file(fname, H5Easy::File::ReadOnly)
 {
   readMesh();
   setMass();
@@ -125,10 +125,10 @@ Main(const std::string &fname) : m_file(fname, HighFive::File::ReadOnly)
 void readParameters()
 {
   // time step
-  m_dt = xt::load<double>(m_file, "/run/dt");
+  m_dt = H5Easy::load<double>(m_file, "/run/dt");
 
   // kick size
-  m_deps_kick = xt::load<double>(m_file, "/run/epsd/kick");
+  m_deps_kick = H5Easy::load<double>(m_file, "/run/epsd/kick");
 
   // initialise stop list
   m_stop = GF::Iterate::StopList(20);
@@ -141,10 +141,10 @@ void readParameters()
 void readMesh()
 {
   // read fields
-  m_conn  = xt::load<xt::xtensor<size_t,2>>(m_file, "/conn");
-  m_coor  = xt::load<xt::xtensor<double,2>>(m_file, "/coor");
-  m_dofs  = xt::load<xt::xtensor<size_t,2>>(m_file, "/dofs");
-  m_iip   = xt::load<xt::xtensor<size_t,1>>(m_file, "/dofsP");
+  m_conn  = H5Easy::load<xt::xtensor<size_t,2>>(m_file, "/conn");
+  m_coor  = H5Easy::load<xt::xtensor<double,2>>(m_file, "/coor");
+  m_dofs  = H5Easy::load<xt::xtensor<size_t,2>>(m_file, "/dofs");
+  m_iip   = H5Easy::load<xt::xtensor<size_t,1>>(m_file, "/dofsP");
 
   // extract sizes
   m_nnode = m_coor.shape(0);
@@ -198,7 +198,7 @@ void setMass()
   QD::Quadrature nodalQuad(x, QD::Nodal::xi(), QD::Nodal::w());
 
   // element values
-  xt::xtensor<double,1> val_elem = xt::load<xt::xtensor<double,1>>(m_file, "/rho");
+  xt::xtensor<double,1> val_elem = H5Easy::load<xt::xtensor<double,1>>(m_file, "/rho");
 
   // check size
   MYASSERT(val_elem.size() == m_nelem);
@@ -230,7 +230,7 @@ void setDamping()
   QD::Quadrature nodalQuad(x, QD::Nodal::xi(), QD::Nodal::w());
 
   // element values
-  xt::xtensor<double,1> val_elem = xt::load<xt::xtensor<double,1>>(m_file, "/damping/alpha");
+  xt::xtensor<double,1> val_elem = H5Easy::load<xt::xtensor<double,1>>(m_file, "/damping/alpha");
 
   // check size
   MYASSERT(val_elem.size() == m_nelem);
@@ -257,9 +257,9 @@ void setMaterial()
 
   // add elastic elements
   {
-    xt::xtensor<size_t,1> elem = xt::load<xt::xtensor<size_t,1>>(m_file, "/elastic/elem");
-    xt::xtensor<double,1> k    = xt::load<xt::xtensor<double,1>>(m_file, "/elastic/K"   );
-    xt::xtensor<double,1> g    = xt::load<xt::xtensor<double,1>>(m_file, "/elastic/G"   );
+    xt::xtensor<size_t,1> elem = H5Easy::load<xt::xtensor<size_t,1>>(m_file, "/elastic/elem");
+    xt::xtensor<double,1> k    = H5Easy::load<xt::xtensor<double,1>>(m_file, "/elastic/K"   );
+    xt::xtensor<double,1> g    = H5Easy::load<xt::xtensor<double,1>>(m_file, "/elastic/G"   );
 
     xt::xtensor<size_t,2> I   = xt::zeros<size_t>({m_nelem, m_nip});
     xt::xtensor<size_t,2> idx = xt::zeros<size_t>({m_nelem, m_nip});
@@ -274,10 +274,10 @@ void setMaterial()
 
   // add plastic-cusp elements
   {
-    xt::xtensor<size_t,1> elem = xt::load<xt::xtensor<size_t,1>>(m_file, "/cusp/elem");
-    xt::xtensor<double,1> k    = xt::load<xt::xtensor<double,1>>(m_file, "/cusp/K"   );
-    xt::xtensor<double,1> g    = xt::load<xt::xtensor<double,1>>(m_file, "/cusp/G"   );
-    xt::xtensor<double,2> y    = xt::load<xt::xtensor<double,2>>(m_file, "/cusp/epsy");
+    xt::xtensor<size_t,1> elem = H5Easy::load<xt::xtensor<size_t,1>>(m_file, "/cusp/elem");
+    xt::xtensor<double,1> k    = H5Easy::load<xt::xtensor<double,1>>(m_file, "/cusp/K"   );
+    xt::xtensor<double,1> g    = H5Easy::load<xt::xtensor<double,1>>(m_file, "/cusp/G"   );
+    xt::xtensor<double,2> y    = H5Easy::load<xt::xtensor<double,2>>(m_file, "/cusp/epsy");
 
     xt::xtensor<size_t,2> I   = xt::zeros<size_t>({m_nelem, m_nip});
     xt::xtensor<size_t,2> idx = xt::zeros<size_t>({m_nelem, m_nip});
@@ -401,8 +401,8 @@ std::tuple<xt::xtensor<size_t,1>, xt::xtensor<size_t,1>> getIncPush(double stres
   size_t N = m_plastic.size();
 
   // basic information for each increment
-  xt::xtensor<size_t,1> stored = xt::load<xt::xtensor<size_t,1>>(m_file, "/stored");
-  xt::xtensor<size_t,1> kick   = xt::load<xt::xtensor<size_t,1>>(m_file, "/kick");
+  xt::xtensor<size_t,1> stored = H5Easy::load<xt::xtensor<size_t,1>>(m_file, "/stored");
+  xt::xtensor<size_t,1> kick   = H5Easy::load<xt::xtensor<size_t,1>>(m_file, "/kick");
 
   // allocate result
   xt::xtensor<size_t,1> A    = xt::zeros<size_t>({xt::amax(stored)[0]+1});
@@ -420,7 +420,7 @@ std::tuple<xt::xtensor<size_t,1>, xt::xtensor<size_t,1>> getIncPush(double stres
     size_t inc = stored(istored);
 
     // - restore displacement
-    xt::noalias(m_u) = xt::load<xt::xtensor<double,2>>(m_file, "/disp/"+std::to_string(inc));
+    xt::noalias(m_u) = H5Easy::load<xt::xtensor<double,2>>(m_file, "/disp/"+std::to_string(inc));
 
     // - update strain/strain
     computeStrainStress();
@@ -661,7 +661,7 @@ void run(double stress, size_t element, size_t inc_c, const std::string& output,
   m_inc = inc_push(ipush);
 
   // restore displacement
-  xt::noalias(m_u) = xt::load<xt::xtensor<double,2>>(m_file, "/disp/"+std::to_string(m_inc));
+  xt::noalias(m_u) = H5Easy::load<xt::xtensor<double,2>>(m_file, "/disp/"+std::to_string(m_inc));
 
   // compute strain/stress
   computeStrainStress();
@@ -788,11 +788,11 @@ void run(double stress, size_t element, size_t inc_c, const std::string& output,
   fmt::print("{0:s}: Finished, A = {1:d}\n", m_file.getName(), A);
 
   // clear output file
-  HighFive::File data(output, HighFive::File::Overwrite);
+  H5Easy::File data(output, H5Easy::File::Overwrite);
 
   xt::xtensor<size_t,1> istore = xt::flatten(xt::from_indices(xt::argwhere(xt::equal(stored, 1ul))));
 
-  xt::dump(data, "/sync-A/stored", istore);
+  H5Easy::dump(data, "/sync-A/stored", istore);
 
   global_iiter   = xt::view(global_iiter  , xt::keep(istore));
   global_sig_xx  = xt::view(global_sig_xx , xt::keep(istore));
@@ -806,26 +806,26 @@ void run(double stress, size_t element, size_t inc_c, const std::string& output,
   plastic_epsp   = xt::view(plastic_epsp  , xt::keep(istore), xt::all());
   plastic_idx    = xt::view(plastic_idx   , xt::keep(istore), xt::all());
 
-  xt::dump(data, "/sync-A/global/iiter" , global_iiter );
-  xt::dump(data, "/sync-A/global/sig_xx", global_sig_xx);
-  xt::dump(data, "/sync-A/global/sig_xy", global_sig_xy);
-  xt::dump(data, "/sync-A/global/sig_yy", global_sig_yy);
+  H5Easy::dump(data, "/sync-A/global/iiter" , global_iiter );
+  H5Easy::dump(data, "/sync-A/global/sig_xx", global_sig_xx);
+  H5Easy::dump(data, "/sync-A/global/sig_xy", global_sig_xy);
+  H5Easy::dump(data, "/sync-A/global/sig_yy", global_sig_yy);
 
-  xt::dump(data, "/sync-A/plastic/sig_xx", plastic_sig_xx);
-  xt::dump(data, "/sync-A/plastic/sig_xy", plastic_sig_xy);
-  xt::dump(data, "/sync-A/plastic/sig_yy", plastic_sig_yy);
-  xt::dump(data, "/sync-A/plastic/x"     , plastic_x     );
-  xt::dump(data, "/sync-A/plastic/epsp"  , plastic_epsp  );
-  xt::dump(data, "/sync-A/plastic/idx"   , plastic_idx   );
+  H5Easy::dump(data, "/sync-A/plastic/sig_xx", plastic_sig_xx);
+  H5Easy::dump(data, "/sync-A/plastic/sig_xy", plastic_sig_xy);
+  H5Easy::dump(data, "/sync-A/plastic/sig_yy", plastic_sig_yy);
+  H5Easy::dump(data, "/sync-A/plastic/x"     , plastic_x     );
+  H5Easy::dump(data, "/sync-A/plastic/epsp"  , plastic_epsp  );
+  H5Easy::dump(data, "/sync-A/plastic/idx"   , plastic_idx   );
 
-  xt::dump(data, "/meta/completed"      , 1                                     );
-  xt::dump(data, "/meta/system-spanning", (int)(A == N)                         );
-  xt::dump(data, "/meta/uuid"           , xt::load<std::string>(m_file, "/uuid"));
-  xt::dump(data, "/meta/id"             , id_num                                );
-  xt::dump(data, "/meta/inc_c"          , inc_c                                 );
-  xt::dump(data, "/meta/element"        , element                               );
-  xt::dump(data, "/meta/dt"             , m_dt                                  );
-  xt::dump(data, "/meta/plastic"        , m_plastic                             );
+  H5Easy::dump(data, "/meta/completed"      , 1                                     );
+  H5Easy::dump(data, "/meta/system-spanning", (int)(A == N)                         );
+  H5Easy::dump(data, "/meta/uuid"           , H5Easy::load<std::string>(m_file, "/uuid"));
+  H5Easy::dump(data, "/meta/id"             , id_num                                );
+  H5Easy::dump(data, "/meta/inc_c"          , inc_c                                 );
+  H5Easy::dump(data, "/meta/element"        , element                               );
+  H5Easy::dump(data, "/meta/dt"             , m_dt                                  );
+  H5Easy::dump(data, "/meta/plastic"        , m_plastic                             );
 }
 
 // -------------------------------------------------------------------------------------------------
