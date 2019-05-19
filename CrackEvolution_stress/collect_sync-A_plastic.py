@@ -271,6 +271,9 @@ v_S      = (np.sum(out['2nd']['S'     ],axis=1) / (norm*nx) - (np.sum(out['1st']
 # hydrostatic stress
 m_sig_m = (m_sig_xx + m_sig_yy) / 2.
 
+# variance
+v_sig_m = v_sig_xx * (m_sig_xx / 2.0)**2.0 + v_sig_yy * (m_sig_yy / 2.0)**2.0
+
 # deviatoric stress
 m_sigd_xx = m_sig_xx - m_sig_m
 m_sigd_xy = m_sig_xy
@@ -290,6 +293,7 @@ v_sig_eq = v_sig_xx * ((m_sig_xx - 0.5 * (m_sig_xx + m_sig_yy)) / m_sig_eq)**2.0
 
 # store mean
 data['/layer/avr/sig_eq'] = m_sig_eq / sig0
+data['/layer/avr/sig_m' ] = m_sig_m  / sig0
 data['/layer/avr/epsp'  ] = m_epsp   / eps0
 data['/layer/avr/depsp' ] = m_depsp  / eps0
 data['/layer/avr/x'     ] = m_x      / eps0
@@ -297,6 +301,7 @@ data['/layer/avr/S'     ] = m_S
 
 # store variance
 data['/layer/std/sig_eq'] = np.sqrt(np.abs(v_sig_eq)) / sig0
+data['/layer/std/sig_m' ] = np.sqrt(np.abs(v_sig_m )) / sig0
 data['/layer/std/epsp'  ] = np.sqrt(np.abs(v_epsp  )) / eps0
 data['/layer/std/depsp' ] = np.sqrt(np.abs(v_depsp )) / eps0
 data['/layer/std/x'     ] = np.sqrt(np.abs(v_x     )) / eps0
@@ -349,6 +354,9 @@ v_S      = (np.sum(out['2nd']['S'     ],axis=1) / (norm*A) - (np.sum(out['1st'][
 # hydrostatic stress
 m_sig_m = (m_sig_xx + m_sig_yy) / 2.
 
+# variance
+v_sig_m = v_sig_xx * (m_sig_xx / 2.0)**2.0 + v_sig_yy * (m_sig_yy / 2.0)**2.0
+
 # deviatoric stress
 m_sigd_xx = m_sig_xx - m_sig_m
 m_sigd_xy = m_sig_xy
@@ -372,6 +380,7 @@ v_sig_eq = v_sig_xx * ((m_sig_xx - 0.5 * (m_sig_xx + m_sig_yy)) / sig_eq)**2.0 +
 
 # store mean
 data['/crack/avr/sig_eq'] = m_sig_eq / sig0
+data['/crack/avr/sig_m' ] = m_sig_m  / sig0
 data['/crack/avr/epsp'  ] = m_epsp   / eps0
 data['/crack/avr/depsp' ] = m_depsp  / eps0
 data['/crack/avr/x'     ] = m_x      / eps0
@@ -379,6 +388,7 @@ data['/crack/avr/S'     ] = m_S
 
 # store variance
 data['/crack/std/sig_eq'] = np.sqrt(np.abs(v_sig_eq)) / sig0
+data['/crack/std/sig_m' ] = np.sqrt(np.abs(v_sig_m )) / sig0
 data['/crack/std/epsp'  ] = np.sqrt(np.abs(v_epsp  )) / eps0
 data['/crack/std/depsp' ] = np.sqrt(np.abs(v_depsp )) / eps0
 data['/crack/std/x'     ] = np.sqrt(np.abs(v_x     )) / eps0

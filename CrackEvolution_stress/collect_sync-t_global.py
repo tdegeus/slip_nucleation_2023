@@ -127,7 +127,10 @@ v_sig_yy = (out['2nd']['sig_yy'] / norm - (out['1st']['sig_yy'] / norm) ** 2.0 )
 v_iiter  = (out['2nd']['iiter' ] / norm - (out['1st']['iiter' ] / norm) ** 2.0 ) * norm / (norm - 1.0)
 
 # hydrostatic stress
-m_sig_m = (m_sig_xx + m_sig_yy) / 2.
+m_sig_m = (m_sig_xx + m_sig_yy) / 2.0
+
+# variance
+v_sig_m = v_sig_xx * (m_sig_xx / 2.0)**2.0 + v_sig_yy * (m_sig_yy / 2.0)**2.0
 
 # deviatoric stress
 m_sigd_xx = m_sig_xx - m_sig_m
@@ -150,12 +153,14 @@ v_sig_eq = v_sig_xx * ((m_sig_xx - 0.5 * (m_sig_xx + m_sig_yy)) / m_sig_eq)**2.0
 data = h5py.File('data_sync-t_global.hdf5', 'w')
 
 # store averages
-data['/avr/iiter' ] = m_iiter  * dt / t0
-data['/avr/sig_eq'] = m_sig_eq      / sig0
+data['/avr/iiter' ] = m_iiter * dt / t0
+data['/avr/sig_eq'] = m_sig_eq / sig0
+data['/avr/sig_m' ] = m_sig_m  / sig0
 
 # store variance (crack size by definition exact)
 data['/std/iiter' ] = np.sqrt(np.abs(v_iiter )) * dt / t0
-data['/std/sig_eq'] = np.sqrt(np.abs(v_sig_eq))      / sig0
+data['/std/sig_eq'] = np.sqrt(np.abs(v_sig_eq)) / sig0
+data['/std/sig_m' ] = np.sqrt(np.abs(v_sig_m )) / sig0
 
 # close output file
 data.close()

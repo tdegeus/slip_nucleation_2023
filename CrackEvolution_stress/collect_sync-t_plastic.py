@@ -203,7 +203,10 @@ v_x      = (out['2nd']['x'     ] / norm - (out['1st']['x'     ] / norm) ** 2.0 )
 v_S      = (out['2nd']['S'     ] / norm - (out['1st']['S'     ] / norm) ** 2.0 ) * norm / (norm - 1)
 
 # hydrostatic stress
-m_sig_m = (m_sig_xx + m_sig_yy) / 2.
+m_sig_m = (m_sig_xx + m_sig_yy) / 2.0
+
+# variance
+v_sig_m = v_sig_xx * (m_sig_xx / 2.0)**2.0 + v_sig_yy * (m_sig_yy / 2.0)**2.0
 
 # deviatoric stress
 m_sigd_xx = m_sig_xx - m_sig_m
@@ -224,6 +227,7 @@ v_sig_eq = v_sig_xx * ((m_sig_xx - 0.5 * (m_sig_xx + m_sig_yy)) / m_sig_eq)**2.0
 
 # store mean
 data['/element/avr/sig_eq'] = m_sig_eq / sig0
+data['/element/avr/sig_m' ] = m_sig_m  / sig0
 data['/element/avr/epsp'  ] = m_epsp   / eps0
 data['/element/avr/depsp' ] = m_depsp  / eps0
 data['/element/avr/x'     ] = m_x      / eps0
@@ -231,6 +235,7 @@ data['/element/avr/S'     ] = m_S
 
 # store variance
 data['/element/std/sig_eq'] = np.sqrt(v_sig_eq) / sig0
+data['/element/std/sig_m' ] = np.sqrt(v_sig_m ) / sig0
 data['/element/std/epsp'  ] = np.sqrt(v_epsp  ) / eps0
 data['/element/std/depsp' ] = np.sqrt(v_depsp ) / eps0
 data['/element/std/x'     ] = np.sqrt(v_x     ) / eps0
@@ -265,7 +270,10 @@ v_x      = (np.sum(out['2nd']['x'     ],axis=1) / (norm*nx) - (np.sum(out['1st']
 v_S      = (np.sum(out['2nd']['S'     ],axis=1) / (norm*nx) - (np.sum(out['1st']['S'     ],axis=1) / (norm*nx)) ** 2.0 ) * (norm*nx) / ((norm*nx) - 1.0)
 
 # hydrostatic stress
-m_sig_m = (m_sig_xx + m_sig_yy) / 2.
+m_sig_m = (m_sig_xx + m_sig_yy) / 2.0
+
+# variance
+v_sig_m = v_sig_xx * (m_sig_xx / 2.0)**2.0 + v_sig_yy * (m_sig_yy / 2.0)**2.0
 
 # deviatoric stress
 m_sigd_xx = m_sig_xx - m_sig_m
@@ -286,6 +294,7 @@ v_sig_eq = v_sig_xx * ((m_sig_xx - 0.5 * (m_sig_xx + m_sig_yy)) / m_sig_eq)**2.0
 
 # store mean
 data['/layer/avr/sig_eq'] = m_sig_eq / sig0
+data['/layer/avr/sig_m' ] = m_sig_m  / sig0
 data['/layer/avr/epsp'  ] = m_epsp   / eps0
 data['/layer/avr/depsp' ] = m_depsp  / eps0
 data['/layer/avr/x'     ] = m_x      / eps0
@@ -293,6 +302,7 @@ data['/layer/avr/S'     ] = m_S
 
 # store variance
 data['/layer/std/sig_eq'] = np.sqrt(np.abs(v_sig_eq)) / sig0
+data['/layer/std/sig_m' ] = np.sqrt(np.abs(v_sig_m )) / sig0
 data['/layer/std/epsp'  ] = np.sqrt(np.abs(v_epsp  )) / eps0
 data['/layer/std/depsp' ] = np.sqrt(np.abs(v_depsp )) / eps0
 data['/layer/std/x'     ] = np.sqrt(np.abs(v_x     )) / eps0

@@ -30,7 +30,7 @@ def getTimeEvolutionGlobal(stress='strain', nx='nx=3^6x2'):
   N     = int(  data['/normalisation/N'     ][...])
   dt    = float(data['/normalisation/dt'    ][...])
   t0    = float(data['/normalisation/t0'    ][...])
-  sig0  = float(data['/normalisation/sigy'  ][...])
+  sig0  = float(data['/normalisation/sig0'  ][...])
   sig_n = float(data['/averages/sigd_top'   ][...])
   sig_c = float(data['/averages/sigd_bottom'][...])
 
@@ -54,6 +54,9 @@ def getTimeEvolutionGlobal(stress='strain', nx='nx=3^6x2'):
   data = h5py.File(path(key=key, nx=nx, stress=stress, fname='data_sync-A_global.hdf5'), 'r')
 
   t = data['/avr/iiter'][...]
+  A = data['/avr/A'    ][...]
+
+  info['t(A=N)'] = t[np.where(A == N)[0].ravel()[0]]
 
   idx = np.argsort(t)
   idx = idx[2:]
@@ -91,7 +94,7 @@ def getTimeEvolutionPlastic(stress='strain', nx='nx=3^6x2'):
   N     = int(  data['/normalisation/N'     ][...])
   dt    = float(data['/normalisation/dt'    ][...])
   t0    = float(data['/normalisation/t0'    ][...])
-  sig0  = float(data['/normalisation/sigy'  ][...])
+  sig0  = float(data['/normalisation/sig0'  ][...])
   sig_n = float(data['/averages/sigd_top'   ][...])
   sig_c = float(data['/averages/sigd_bottom'][...])
 
@@ -113,6 +116,9 @@ def getTimeEvolutionPlastic(stress='strain', nx='nx=3^6x2'):
   data = h5py.File(path(key=key, nx=nx, stress=stress, fname='data_sync-A_global.hdf5'), 'r')
 
   t = data['/avr/iiter'][...]
+  A = data['/avr/A'    ][...]
+
+  info['t(A=N)'] = t[np.where(A == N)[0].ravel()[0]]
 
   idx = np.argsort(t)
   idx = idx[2:]
@@ -182,7 +188,7 @@ def getTimeEvolutionCrack(stress='strain', nx='nx=3^6x2'):
   N     = int(  data['/normalisation/N'     ][...])
   dt    = float(data['/normalisation/dt'    ][...])
   t0    = float(data['/normalisation/t0'    ][...])
-  sig0  = float(data['/normalisation/sigy'  ][...])
+  sig0  = float(data['/normalisation/sig0'  ][...])
   sig_n = float(data['/averages/sigd_top'   ][...])
   sig_c = float(data['/averages/sigd_bottom'][...])
 
@@ -308,6 +314,15 @@ if True:
       **color_stress(nx, stress),
       **label_stress(stress))
 
+    tc = info['t(A=N)']
+    idx = np.where(avr['t'] > tc)[0][0]
+
+    ax.plot(
+      avr['t'][idx],
+      avr['sig_eq'][idx],
+      **color_stress(nx, stress),
+      marker = 'o')
+
   ax.plot(
     ax.get_xlim(),
     info['sig_c'] * np.ones(2),
@@ -341,6 +356,12 @@ if True:
       avr['sig_eq'],
       **color_stress(nx, stress),
       **label_stress(stress))
+
+    ax.plot(
+      avr['t'][idx],
+      avr['sig_eq'][idx],
+      **color_stress(nx, stress),
+      marker = 'o')
 
   ax.plot(
     ax.get_xlim(),
@@ -376,6 +397,15 @@ if True:
       **color_stress(nx, stress),
       **label_stress(stress))
 
+    tc = info['t(A=N)']
+    idx = np.where(avr['t'] > tc)[0][0]
+
+    ax.plot(
+      avr['t'][idx],
+      avr['depsp'][idx],
+      **color_stress(nx, stress),
+      marker = 'o')
+
   ax.legend(ncol=3)
 
   plt.savefig('time_evolution/depsp_plastic.pdf')
@@ -403,6 +433,15 @@ if True:
       avr['S'],
       **color_stress(nx, stress),
       **label_stress(stress))
+
+    tc = info['t(A=N)']
+    idx = np.where(avr['t'] > tc)[0][0]
+
+    ax.plot(
+      avr['t'][idx],
+      avr['S'][idx],
+      **color_stress(nx, stress),
+      marker = 'o')
 
   ax.legend(ncol=3)
 

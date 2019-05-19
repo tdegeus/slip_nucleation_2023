@@ -30,7 +30,7 @@ def getCrackEvolutionGlobal(stress='strain', nx='nx=3^6x2'):
   N     = int(  data['/normalisation/N'     ][...])
   dt    = float(data['/normalisation/dt'    ][...])
   t0    = float(data['/normalisation/t0'    ][...])
-  sig0  = float(data['/normalisation/sigy'  ][...])
+  sig0  = float(data['/normalisation/sig0'  ][...])
   sig_n = float(data['/averages/sigd_top'   ][...])
   sig_c = float(data['/averages/sigd_bottom'][...])
 
@@ -75,7 +75,7 @@ def getCrackEvolutionPlastic(stress='strain', nx='nx=3^6x2'):
   N     = int(  data['/normalisation/N'     ][...])
   dt    = float(data['/normalisation/dt'    ][...])
   t0    = float(data['/normalisation/t0'    ][...])
-  sig0  = float(data['/normalisation/sigy'  ][...])
+  sig0  = float(data['/normalisation/sig0'  ][...])
   sig_n = float(data['/averages/sigd_top'   ][...])
   sig_c = float(data['/averages/sigd_bottom'][...])
 
@@ -135,7 +135,7 @@ def getCrackEvolutionCrack(stress='strain', nx='nx=3^6x2'):
   N     = int(  data['/normalisation/N'     ][...])
   dt    = float(data['/normalisation/dt'    ][...])
   t0    = float(data['/normalisation/t0'    ][...])
-  sig0  = float(data['/normalisation/sigy'  ][...])
+  sig0  = float(data['/normalisation/sig0'  ][...])
   sig_n = float(data['/averages/sigd_top'   ][...])
   sig_c = float(data['/averages/sigd_bottom'][...])
 
@@ -290,7 +290,7 @@ if True:
       **color_stress(nx, stress),
       **label_stress(stress))
 
-    print(stress, np.mean(avr['sig_eq'][400:-400]))
+    print(stress, 'sig_c = ', np.mean(avr['sig_eq'][400:-400]))
 
   ax.plot(
     ax.get_xlim(),
@@ -518,7 +518,7 @@ if True:
     dt = np.diff(t)
     A  = A[0] + np.cumsum(dA)
 
-    print(stress, np.mean((dA / dt)[10:] / 2.))
+    print(stress, 'velocity =', np.mean((dA / dt)[10:] / 2.))
 
     ax.plot(
       A,

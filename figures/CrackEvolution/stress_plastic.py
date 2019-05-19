@@ -47,7 +47,7 @@ if True:
 
   nx = 'nx=3^6x2'
 
-  for Asel in [200, 400, 600]:
+  for Asel in [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200]:
 
     fig, ax = plt.subplots()
 

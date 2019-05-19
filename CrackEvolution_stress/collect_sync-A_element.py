@@ -172,8 +172,12 @@ for a in A_read:
   sig_eq = np.sqrt(2.0 * (sigd_xx**2.0 + sigd_yy**2.0 + 2.0 * sigd_xy**2.0))
 
   # write
-  dataset = '/sig_eq/' + str(a)
-  data[dataset] = sig_eq / sig0
+  dataset_eq = '/sig_eq/' + str(a)
+  data[dataset_eq] = sig_eq / sig0
+
+  # write
+  dataset_m = '/sig_m/' + str(a)
+  data[dataset_m] = sig_m / sig0
 
   # add to metadata
   # - initialise Increment
@@ -183,7 +187,10 @@ for a in A_read:
   )
   # - add attributes to Increment
   xdmf_inc.push_back(pv.Attribute(
-    data.filename, dataset, "sig_eq", pv.AttributeType.Cell, data[dataset].shape))
+    data.filename, dataset_eq, "sig_eq", pv.AttributeType.Cell, data[dataset_eq].shape))
+  # - add attributes to Increment
+  xdmf_inc.push_back(pv.Attribute(
+    data.filename, dataset_m, "sig_m", pv.AttributeType.Cell, data[dataset_m].shape))
   # - add Increment to TimeSeries
   xdmf.push_back(xdmf_inc)
 
