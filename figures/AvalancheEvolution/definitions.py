@@ -136,20 +136,6 @@ def label_stress(stress):
 
 # --------------------------------------------------------------------------------------------------
 
-def label_stress_minimal(stress):
-
-  if stress == 'stress=0d6': return {'label': r'$\Delta_\sigma = 0$'}
-  if stress == 'stress=1d6': return {}
-  if stress == 'stress=2d6': return {}
-  if stress == 'stress=3d6': return {}
-  if stress == 'stress=4d6': return {}
-  if stress == 'stress=5d6': return {}
-  if stress == 'stress=6d6': return {'label': r'$\Delta_\sigma = 1$'}
-
-  raise IOError('Undefined behaviour')
-
-# --------------------------------------------------------------------------------------------------
-
 def path(key='data', nx='nx=3^6x2', stress=None, fname='EnsembleInfo.hdf5'):
 
   if key == 'data':
@@ -160,4 +146,10 @@ def path(key='data', nx='nx=3^6x2', stress=None, fname='EnsembleInfo.hdf5'):
 
   if key == 'CrackEvolution_stress':
     return os.path.join('../../CrackEvolution_stress/data', '_'.join([nx, stress]), fname)
+
+  if key == 'AvalancheEvolution_strain':
+    return os.path.join('../../AvalancheEvolution_strain/data', '_'.join([nx]), fname)
+
+  if key == 'AvalancheEvolution_stress':
+    return os.path.join('../../AvalancheEvolution_stress/data', '_'.join([nx, stress]), fname)
 

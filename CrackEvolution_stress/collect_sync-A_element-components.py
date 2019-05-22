@@ -50,8 +50,8 @@ mesh = gf.Mesh.Quad4.FineLayer(nx, nx, h)
 
 assert np.all(np.equal(plastic, mesh.elementsMiddleLayer()))
 
-if nx % 2 == 0: mid =  nx      / 2
-else          : mid = (nx - 1) / 2
+if nx % 2 == 0: mid = int( nx      / 2)
+else          : mid = int((nx - 1) / 2)
 
 mapping = gf.Mesh.Quad4.Map.FineLayer2Regular(mesh)
 
@@ -65,34 +65,21 @@ elmat = regular.elementMatrix()
 # ensemble average
 # ==================================================================================================
 
-# get time step
-# -------------
-
-norm = np.zeros((5000), dtype='uint')
-
-for file in files:
-  with h5py.File(file, 'r') as data:
-    T = data["/sync-t/stored"][...]
-    norm[T] += 1
-
-T = np.arange(5000)[np.where(norm > 30)]
-T_read = T[::10]
-
-# read
-# ----
+# crack sizes to read
+A_read = np.arange(nx+1)[:mid:10]
 
 # open XDMF-file with metadata that allow ParaView to interpret the HDF5-file
 xdmf = pv.TimeSeries()
 
 # open the output HDF5-file
-with h5py.File('data_sync-t_element.hdf5', 'w') as out:
+with h5py.File('data_sync-A_element-components.hdf5', 'w') as out:
 
   # write mesh
   out['/coor'] = coor
   out['/conn'] = conn
 
   # loop over cracks
-  for t in T_read:
+  for a in A_read:
 
     # initialise average
     Sig_xx = np.zeros(regular.nelem())
@@ -103,7 +90,7 @@ with h5py.File('data_sync-t_element.hdf5', 'w') as out:
     norm = 0
 
     # print progress
-    print('T = ', t)
+    print('A = ', a)
 
     # loop over files
     for file in files:
@@ -111,26 +98,23 @@ with h5py.File('data_sync-t_element.hdf5', 'w') as out:
       # open data file
       with h5py.File(file, 'r') as data:
 
-        # get stored "T"
-        T = data["/sync-t/stored"][...]
+        # get stored "A"
+        A = data["/sync-A/stored"][...]
 
-        # skip file if "t" is not stored
-        if t not in T:
+        # skip file if "a" is not stored
+        if a not in A:
           continue
 
         # get the reference configuration
-        idx0  = data['/sync-t/plastic/{0:d}/idx' .format(np.min(T))][...]
-        epsp0 = data['/sync-t/plastic/{0:d}/epsp'.format(np.min(T))][...]
+        idx0 = data['/sync-A/plastic/{0:d}/idx'.format(np.min(A))][...]
 
         # read data
-        sig_xx = data["/sync-t/element/{0:d}/sig_xx".format(t)][...]
-        sig_xy = data["/sync-t/element/{0:d}/sig_xy".format(t)][...]
-        sig_yy = data["/sync-t/element/{0:d}/sig_yy".format(t)][...]
+        sig_xx = data["/sync-A/element/{0:d}/sig_xx".format(a)][...]
+        sig_xy = data["/sync-A/element/{0:d}/sig_xy".format(a)][...]
+        sig_yy = data["/sync-A/element/{0:d}/sig_yy".format(a)][...]
 
         # get current configuration
-        idx  = data['/sync-t/plastic/{0:d}/idx' .format(t)][...]
-        epsp = data['/sync-t/plastic/{0:d}/epsp'.format(t)][...]
-        x    = data['/sync-t/plastic/{0:d}/x'   .format(t)][...]
+        idx = data['/sync-A/plastic/{0:d}/idx'.format(a)][...]
 
       # indices of blocks where yielding took place
       icell = np.argwhere(idx0 != idx).ravel()
@@ -165,24 +149,13 @@ with h5py.File('data_sync-t_element.hdf5', 'w') as out:
     sig_xy = Sig_xy / float(norm)
     sig_yy = Sig_yy / float(norm)
 
-    # hydrostatic stress
-    sig_m = (sig_xx + sig_yy) / 2.
-
-    # deviatoric stress
-    sigd_xx = sig_xx - sig_m
-    sigd_xy = sig_xy
-    sigd_yy = sig_yy - sig_m
-
-    # equivalent stress
-    sig_eq = np.sqrt(2.0 * (sigd_xx**2.0 + sigd_yy**2.0 + 2.0 * sigd_xy**2.0))
-
     # write equivalent stress
-    dataset_eq = '/sig_eq/' + str(t)
-    out[dataset_eq] = sig_eq / sig0
-
-    # write hydrostatic stress
-    dataset_m = '/sig_m/' + str(t)
-    out[dataset_m] = sig_m / sig0
+    dataset_xx = '/sig_xx/' + str(a)
+    dataset_xy = '/sig_xy/' + str(a)
+    dataset_yy = '/sig_yy/' + str(a)
+    out[dataset_xx] = sig_xx / sig0
+    out[dataset_xy] = sig_xy / sig0
+    out[dataset_yy] = sig_yy / sig0
 
     # add to metadata
     # - initialise Increment
@@ -191,13 +164,11 @@ with h5py.File('data_sync-t_element.hdf5', 'w') as out:
       pv.Coordinates (out.filename, "/coor"                              , coor.shape),
     )
     # - add attributes to Increment
-    xdmf_inc.push_back(pv.Attribute(
-      out.filename, dataset_eq, "sig_eq", pv.AttributeType.Cell, out[dataset_eq].shape))
-    # - add attributes to Increment
-    xdmf_inc.push_back(pv.Attribute(
-      out.filename, dataset_m, "sig_m", pv.AttributeType.Cell, out[dataset_m].shape))
+    xdmf_inc.push_back(pv.Attribute(out.filename, dataset_xx, "sig_xx", pv.AttributeType.Cell, out[dataset_xx].shape))
+    xdmf_inc.push_back(pv.Attribute(out.filename, dataset_xy, "sig_xy", pv.AttributeType.Cell, out[dataset_xy].shape))
+    xdmf_inc.push_back(pv.Attribute(out.filename, dataset_yy, "sig_yy", pv.AttributeType.Cell, out[dataset_yy].shape))
     # - add Increment to TimeSeries
     xdmf.push_back(xdmf_inc)
 
 # write metadata
-xdmf.write('data_sync-t_element.xdmf')
+xdmf.write('data_sync-A_element-components.xdmf')

@@ -13,29 +13,18 @@ files = [os.path.relpath(file) for file in files]
 files = [file for file in files if len(file.split('id='))>1]
 
 # ==================================================================================================
-# get constants
-# ==================================================================================================
-
-data = h5py.File(files[0], 'r')
-
-nx = len(data['/meta/plastic'][...])
-
-data.close()
-
-# ==================================================================================================
 # get normalisation
 # ==================================================================================================
 
 ensemble = os.path.split(os.path.dirname(os.path.abspath(files[0])))[-1].split('_stress')[0]
 dbase = '../../../data'
 
-data = h5py.File(os.path.join(dbase, ensemble, 'EnsembleInfo.hdf5'), 'r')
-
-dt   = float(data['/normalisation/dt'    ][...])
-t0   = float(data['/normalisation/t0'    ][...])
-sig0 = float(data['/normalisation/sig0'  ][...])
-
-data.close()
+with h5py.File(os.path.join(dbase, ensemble, 'EnsembleInfo.hdf5'), 'r') as data:
+  dt   = data['/normalisation/dt'  ][...]
+  t0   = data['/normalisation/t0'  ][...]
+  sig0 = data['/normalisation/sig0'][...]
+  nx   = data['/normalisation/N'   ][...]
+  nx   = int(nx)
 
 # ==================================================================================================
 # ensemble average
@@ -70,19 +59,19 @@ for file in files:
   print(file)
 
   # open data file
-  source = h5py.File(file, 'r')
+  with h5py.File(file, 'r') as data:
 
-  # get stored "A"
-  A = source["/sync-A/stored"][...]
+    # get stored "A"
+    A = data["/sync-A/stored"][...]
 
-  # normalisation
-  norm[A] += 1
+    # normalisation
+    norm[A] += 1
 
-  # read global data
-  sig_xx = source["/sync-A/global/sig_xx"][...]
-  sig_xy = source["/sync-A/global/sig_xy"][...]
-  sig_yy = source["/sync-A/global/sig_yy"][...]
-  iiter  = source["/sync-A/global/iiter" ][...]
+    # read global data
+    sig_xx = data["/sync-A/global/sig_xx"][...]
+    sig_xy = data["/sync-A/global/sig_xy"][...]
+    sig_yy = data["/sync-A/global/sig_yy"][...]
+    iiter  = data["/sync-A/global/iiter" ][...]
 
   # add to sum, only for stored "A"
   out['1st']['sig_xx'][A] += (sig_xx)[A]
@@ -96,9 +85,6 @@ for file in files:
   out['2nd']['sig_xy'][A] += (sig_xy)[A] ** 2.0
   out['2nd']['sig_yy'][A] += (sig_yy)[A] ** 2.0
   out['2nd']['iiter' ][A] += (iiter )[A] ** 2
-
-  # close file
-  source.close()
 
 # ---------------------------------------------
 # select only measurements with sufficient data
@@ -152,20 +138,16 @@ v_sig_eq = v_sig_xx * ((m_sig_xx - 0.5 * (m_sig_xx + m_sig_yy)) / m_sig_eq)**2.0
 # -----
 
 # open output file
-data = h5py.File('data_sync-A_global.hdf5', 'w')
+with h5py.File('data_sync-A_global.hdf5', 'w') as data:
 
-# store averages
-data['/avr/A'     ] = (out['1st']['A'] / norm).astype(np.int)
-data['/avr/iiter' ] = m_iiter * dt / t0
-data['/avr/sig_eq'] = m_sig_eq / sig0
-data['/avr/sig_m' ] = m_sig_m  / sig0
+  # store averages
+  data['/avr/A'     ] = (out['1st']['A'] / norm).astype(np.int)
+  data['/avr/iiter' ] = m_iiter * dt / t0
+  data['/avr/sig_eq'] = m_sig_eq / sig0
+  data['/avr/sig_m' ] = m_sig_m  / sig0
 
-# store variance (crack size by definition exact)
-data['/std/A'     ] = np.zeros(data['/avr/A'].shape)
-data['/std/iiter' ] = np.sqrt(np.abs(v_iiter )) * dt / t0
-data['/std/sig_eq'] = np.sqrt(np.abs(v_sig_eq)) / sig0
-data['/std/sig_m' ] = np.sqrt(np.abs(v_sig_m )) / sig0
-
-# close output file
-data.close()
-
+  # store variance (crack size by definition exact)
+  data['/std/A'     ] = np.zeros(data['/avr/A'].shape)
+  data['/std/iiter' ] = np.sqrt(np.abs(v_iiter )) * dt / t0
+  data['/std/sig_eq'] = np.sqrt(np.abs(v_sig_eq)) / sig0
+  data['/std/sig_m' ] = np.sqrt(np.abs(v_sig_m )) / sig0

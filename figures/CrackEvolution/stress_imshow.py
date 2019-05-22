@@ -91,7 +91,7 @@ if True:
 
 # --------------------------------------------------------------------------------------------------
 
-if False:
+if True:
 
   nx = 'nx=3^6x2'
 
@@ -164,5 +164,18 @@ if True:
 
     data.close()
 
+# --------------------------------------------------------------------------------------------------
 
+if True:
 
+  for stress in list_stress():
+
+    for sync in ['sync-A', 'sync-t']:
+
+      for field in ['sigd', 'sigm']:
+
+        if not os.path.isdir('stress_imshow/movies'): os.makedirs('stress_imshow/movies')
+
+        subprocess.check_output(
+          "makemovie --trim --output='stress_imshow/movies/{stress:s}_{field:s}_{sync:s}.mp4' stress_imshow/{stress:s}/sync-A/{field:s}/*.png".format(
+            stress=stress, field=field, sync=sync), shell=True)
