@@ -117,199 +117,229 @@ if True:
 
       axes[0].legend()
 
-      gplt.savefig('lefm/const-dy/dh={0:d}_A={1:d}_stress=var.pdf'.format(dh, a))
+      gplt.savefig('lefm/const-dy/dy={0:d}_A={1:d}_stress=var.pdf'.format(dh, a))
       plt.close()
 
 # --------------------------------------------------------------------------------------------------
-# theta = 0, constant A, varying stress
+# theta = [0, pi/4, pi/2], constant A, varying stress
 # --------------------------------------------------------------------------------------------------
 
 if True:
 
-  for a in [100, 300, 500, 700]:
+  for theta in ['theta=0', 'theta=pi-4', 'theta=pi-2']:
 
-    if a % 2 == 0: a_half = int( a      / 2)
-    else         : a_half = int((a - 1) / 2)
+    for a in [100, 300, 500, 700]:
 
-    tip   = plastic[np.arange(N)[:mid][a_half]]
-    delem = np.arange(N)[:mid] - a_half
-    elem  = tip + delem
-    dr    = delem
+      # --
 
-    fig, axes = gplt.subplots(ncols=3)
+      if a % 2 == 0: a_half = int( a      / 2)
+      else         : a_half = int((a - 1) / 2)
 
-    for ax in axes:
-      ax.set_xlabel(r'$(r - r_\mathrm{tip}) / h$')
+      # --
 
-    axes[0].set_ylabel(r'$\sigma_{xx}$')
-    axes[1].set_ylabel(r'$\sigma_{yy}$')
-    axes[2].set_ylabel(r'$\sigma_{xy}$')
+      if theta == 'theta=0':
 
-    for ax in axes:
-      ax.set_xlim([-500,500])
+        tip   = plastic[np.arange(N)[:mid][a_half]]
+        delem = np.arange(N)[:mid] - a_half
+        elem  = tip + delem
+        dr    = delem
+        label = r'$\theta = 0$'
 
-    axes[0].set_ylim([-0.1, +0.1])
-    axes[1].set_ylim([-0.1, +0.1])
-    axes[2].set_ylim([+0.0, +0.2])
+      elif theta == 'theta=pi-4':
 
-    gplt.text(.05, .9, r'$\theta = 0$', units='relative', axis=axes[1], bbox=dict(edgecolor='black', boxstyle=BoxStyle("Round, pad=0.3"), facecolor='white'))
+        tip   = plastic[np.arange(N)[:mid][a_half]]
+        ny    = int((regular.nely() - 1)/2)
+        delem = (np.linspace(-ny, ny, regular.nely()) * (N + 1)).astype(np.int)
+        elem  = tip + delem
+        dr    = np.linspace(-ny, ny, regular.nely()) * np.sqrt(2.)
+        idx   = np.where(elem >= 0)[0]
+        elem  = elem[idx]
+        dr    = dr[idx]
+        label = r'$\theta = \pi / 4$'
 
-    for stress in ['stress=0d6', 'stress=1d6', 'stress=2d6', 'stress=3d6', 'stress=4d6', 'stress=5d6', 'stress=6d6'][::-1]:
+      elif theta == 'theta=pi-2':
 
-      with h5py.File(path(key='CrackEvolution_stress', nx=nx, stress=stress, fname='data_sync-A_element-components.hdf5'), 'r') as data:
+        tip   = plastic[np.arange(N)[:mid][a_half]]
+        ny    = int((regular.nely() - 1)/2)
+        delem = (np.linspace(-ny, ny, regular.nely()) * N).astype(np.int)
+        elem  = tip + delem
+        dr    = np.linspace(-ny, ny, regular.nely())
+        label = r'$\theta = \pi / 2$'
 
-        sig_xx = data['/sig_xx/{0:d}'.format(a)][...]
-        sig_yy = data['/sig_yy/{0:d}'.format(a)][...]
-        sig_xy = data['/sig_xy/{0:d}'.format(a)][...]
+      else:
 
-        axes[0].plot(
-          dr,
-          sig_xx[elem],
-          **color_stress(nx, stress), **label_stress_minimal(stress))
+        raise IOError('Unknown theta')
 
-        axes[1].plot(
-          dr,
-          sig_yy[elem],
-          **color_stress(nx, stress))
+      # --
 
-        axes[2].plot(
-          dr,
-          sig_xy[elem],
-          **color_stress(nx, stress))
+      fig, axes = gplt.subplots(ncols=3)
 
-    axes[0].legend()
+      for ax in axes:
+        ax.set_xlabel(r'$(r - r_\mathrm{tip}) / h$')
 
-    gplt.savefig('lefm/const-theta/theta=0_A={0:d}_stress=var.pdf'.format(a))
-    plt.close()
+      axes[0].set_ylabel(r'$\sigma_{xx}$')
+      axes[1].set_ylabel(r'$\sigma_{yy}$')
+      axes[2].set_ylabel(r'$\sigma_{xy}$')
 
-# --------------------------------------------------------------------------------------------------
-# theta = pi/4, constant A, varying stress
-# --------------------------------------------------------------------------------------------------
+      for ax in axes:
+        ax.set_xlim([-500,500])
 
-if True:
+      axes[0].set_ylim([-0.1, +0.1])
+      axes[1].set_ylim([-0.1, +0.1])
+      axes[2].set_ylim([+0.0, +0.2])
 
-  for a in [100, 300, 500, 700]:
+      gplt.text(.05, .9, label, units='relative', axis=axes[1], bbox=dict(edgecolor='black', boxstyle=BoxStyle("Round, pad=0.3"), facecolor='white'))
 
-    if a % 2 == 0: a_half = int( a      / 2)
-    else         : a_half = int((a - 1) / 2)
+      for stress in ['stress=0d6', 'stress=1d6', 'stress=2d6', 'stress=3d6', 'stress=4d6', 'stress=5d6', 'stress=6d6'][::-1]:
 
-    tip   = plastic[np.arange(N)[:mid][a_half]]
-    ny    = int((regular.nely() - 1)/2)
-    delem = (np.linspace(-ny, ny, regular.nely()) * (N + 1)).astype(np.int)
-    elem  = tip + delem
-    dr    = np.linspace(-ny, ny, regular.nely()) * np.sqrt(2.)
-    idx   = np.where(elem >= 0)[0]
-    elem  = elem[idx]
-    dr    = dr[idx]
+        with h5py.File(path(key='CrackEvolution_stress', nx=nx, stress=stress, fname='data_sync-A_element-components.hdf5'), 'r') as data:
 
-    fig, axes = gplt.subplots(ncols=3)
+          sig_xx = data['/sig_xx/{0:d}'.format(a)][...]
+          sig_yy = data['/sig_yy/{0:d}'.format(a)][...]
+          sig_xy = data['/sig_xy/{0:d}'.format(a)][...]
 
-    for ax in axes:
-      ax.set_xlabel(r'$(r - r_\mathrm{tip}) / h$')
+          sig_xx = sig_xx[elem]
+          sig_yy = sig_yy[elem]
+          sig_xy = sig_xy[elem]
 
-    axes[0].set_ylabel(r'$\sigma_{xx}$')
-    axes[1].set_ylabel(r'$\sigma_{yy}$')
-    axes[2].set_ylabel(r'$\sigma_{xy}$')
+          idx = np.where(np.abs(dr) < h * np.sqrt(2.))[0]
 
-    for ax in axes:
-      ax.set_xlim([-500,500])
+          sig_xx[idx] = np.NaN
+          sig_yy[idx] = np.NaN
+          sig_xy[idx] = np.NaN
 
-    axes[0].set_ylim([-0.1, +0.1])
-    axes[1].set_ylim([-0.1, +0.1])
-    axes[2].set_ylim([+0.0, +0.2])
+          axes[0].plot(
+            dr,
+            sig_xx,
+            **color_stress(nx, stress), **label_stress_minimal(stress))
 
-    gplt.text(.05, .9, r'$\theta = \pi / 4$', units='relative', axis=axes[1], bbox=dict(edgecolor='black', boxstyle=BoxStyle("Round, pad=0.3"), facecolor='white'))
+          axes[1].plot(
+            dr,
+            sig_yy,
+            **color_stress(nx, stress))
 
-    for stress in ['stress=0d6', 'stress=1d6', 'stress=2d6', 'stress=3d6', 'stress=4d6', 'stress=5d6', 'stress=6d6'][::-1]:
+          axes[2].plot(
+            dr,
+            sig_xy,
+            **color_stress(nx, stress))
 
-      with h5py.File(path(key='CrackEvolution_stress', nx=nx, stress=stress, fname='data_sync-A_element-components.hdf5'), 'r') as data:
+      axes[0].legend()
 
-        sig_xx = data['/sig_xx/{0:d}'.format(a)][...]
-        sig_yy = data['/sig_yy/{0:d}'.format(a)][...]
-        sig_xy = data['/sig_xy/{0:d}'.format(a)][...]
-
-        axes[0].plot(
-          dr,
-          sig_xx[elem],
-          **color_stress(nx, stress), **label_stress_minimal(stress))
-
-        axes[1].plot(
-          dr,
-          sig_yy[elem],
-          **color_stress(nx, stress))
-
-        axes[2].plot(
-          dr,
-          sig_xy[elem],
-          **color_stress(nx, stress))
-
-    axes[0].legend()
-
-    gplt.savefig('lefm/const-theta/theta=pi-4_A={0:d}_stress=var.pdf'.format(a))
-    plt.close()
+      gplt.savefig('lefm/const-theta/{0:s}_A={1:d}_stress=var.pdf'.format(theta, a))
+      plt.close()
 
 # --------------------------------------------------------------------------------------------------
-# theta = pi/2, constant A, varying stress
+# theta = [0, pi/4, pi/2], constant A, varying stress
 # --------------------------------------------------------------------------------------------------
 
 if True:
 
-  for a in [100, 300, 500, 700]:
+  for stress in ['stress=0d6', 'stress=1d6', 'stress=2d6', 'stress=3d6', 'stress=4d6', 'stress=5d6', 'stress=6d6'][::-1]:
 
-    if a % 2 == 0: a_half = int( a      / 2)
-    else         : a_half = int((a - 1) / 2)
+    for theta in ['theta=0', 'theta=pi-4', 'theta=pi-2']:
 
-    tip   = plastic[np.arange(N)[:mid][a_half]]
-    ny    = int((regular.nely() - 1)/2)
-    delem = (np.linspace(-ny, ny, regular.nely()) * N).astype(np.int)
-    elem  = tip + delem
-    dr    = np.linspace(-ny, ny, regular.nely())
+      fig, axes = gplt.subplots(ncols=3)
 
-    fig, axes = gplt.subplots(ncols=3)
+      for ax in axes:
+        ax.set_xlabel(r'$(r - r_\mathrm{tip}) / h$')
 
-    for ax in axes:
-      ax.set_xlabel(r'$(r - r_\mathrm{tip}) / h$')
+      axes[0].set_ylabel(r'$\sigma_{xx}$')
+      axes[1].set_ylabel(r'$\sigma_{yy}$')
+      axes[2].set_ylabel(r'$\sigma_{xy}$')
 
-    axes[0].set_ylabel(r'$\sigma_{xx}$')
-    axes[1].set_ylabel(r'$\sigma_{yy}$')
-    axes[2].set_ylabel(r'$\sigma_{xy}$')
+      for ax in axes:
+        ax.set_xlim([-500,500])
 
-    for ax in axes:
-      ax.set_xlim([-500,500])
+      axes[0].set_ylim([-0.1, +0.1])
+      axes[1].set_ylim([-0.1, +0.1])
+      axes[2].set_ylim([+0.0, +0.2])
 
-    axes[0].set_ylim([-0.1, +0.1])
-    axes[1].set_ylim([-0.1, +0.1])
-    axes[2].set_ylim([+0.0, +0.2])
+      if   theta == 'theta=0'   : label = r'$\theta = 0$, '       + label_stress(stress)['label']
+      elif theta == 'theta=pi-4': label = r'$\theta = \pi / 4$, ' + label_stress(stress)['label']
+      elif theta == 'theta=pi-2': label = r'$\theta = \pi / 2$, ' + label_stress(stress)['label']
+      else: raise IOError('Unknown theta')
 
-    gplt.text(.05, .9, r'$\theta = \pi / 2$', units='relative', axis=axes[1], bbox=dict(edgecolor='black', boxstyle=BoxStyle("Round, pad=0.3"), facecolor='white'))
+      gplt.text(.05, .9, label, units='relative', axis=axes[1], bbox=dict(edgecolor='black', boxstyle=BoxStyle("Round, pad=0.3"), facecolor='white'))
 
-    for stress in ['stress=0d6', 'stress=1d6', 'stress=2d6', 'stress=3d6', 'stress=4d6', 'stress=5d6', 'stress=6d6'][::-1]:
+      cmap = plt.get_cmap('jet', 14)
 
-      with h5py.File(path(key='CrackEvolution_stress', nx=nx, stress=stress, fname='data_sync-A_element-components.hdf5'), 'r') as data:
+      for ia, a in enumerate(np.linspace(50, 700, 14).astype(np.int)):
 
-        sig_xx = data['/sig_xx/{0:d}'.format(a)][...]
-        sig_yy = data['/sig_yy/{0:d}'.format(a)][...]
-        sig_xy = data['/sig_xy/{0:d}'.format(a)][...]
+        # --
 
-        axes[0].plot(
-          dr,
-          sig_xx[elem],
-          **color_stress(nx, stress), **label_stress_minimal(stress))
+        if a % 2 == 0: a_half = int( a      / 2)
+        else         : a_half = int((a - 1) / 2)
 
-        axes[1].plot(
-          dr,
-          sig_yy[elem],
-          **color_stress(nx, stress))
+        # --
 
-        axes[2].plot(
-          dr,
-          sig_xy[elem],
-          **color_stress(nx, stress))
+        if theta == 'theta=0':
 
-    axes[0].legend()
+          tip   = plastic[np.arange(N)[:mid][a_half]]
+          delem = np.arange(N)[:mid] - a_half
+          elem  = tip + delem
+          dr    = delem
 
-    gplt.savefig('lefm/const-theta/theta=pi-2_A={0:d}_stress=var.pdf'.format(a))
-    plt.close()
+        elif theta == 'theta=pi-4':
 
+          tip   = plastic[np.arange(N)[:mid][a_half]]
+          ny    = int((regular.nely() - 1)/2)
+          delem = (np.linspace(-ny, ny, regular.nely()) * (N + 1)).astype(np.int)
+          elem  = tip + delem
+          dr    = np.linspace(-ny, ny, regular.nely()) * np.sqrt(2.)
+          idx   = np.where(elem >= 0)[0]
+          elem  = elem[idx]
+          dr    = dr[idx]
 
+        elif theta == 'theta=pi-2':
+
+          tip   = plastic[np.arange(N)[:mid][a_half]]
+          ny    = int((regular.nely() - 1)/2)
+          delem = (np.linspace(-ny, ny, regular.nely()) * N).astype(np.int)
+          elem  = tip + delem
+          dr    = np.linspace(-ny, ny, regular.nely())
+
+        else:
+
+          raise IOError('Unknown theta')
+
+        # --
+
+        with h5py.File(path(key='CrackEvolution_stress', nx=nx, stress=stress, fname='data_sync-A_element-components.hdf5'), 'r') as data:
+
+          sig_xx = data['/sig_xx/{0:d}'.format(a)][...]
+          sig_yy = data['/sig_yy/{0:d}'.format(a)][...]
+          sig_xy = data['/sig_xy/{0:d}'.format(a)][...]
+
+          sig_xx = sig_xx[elem]
+          sig_yy = sig_yy[elem]
+          sig_xy = sig_xy[elem]
+
+          idx = np.where(np.abs(dr) < h * np.sqrt(2.))[0]
+
+          sig_xx[idx] = np.NaN
+          sig_yy[idx] = np.NaN
+          sig_xy[idx] = np.NaN
+
+          if a == 50 or a == 700: l = {'label': r'$A = {0:d}$'.format(a)}
+          else                  : l = {}
+
+          axes[0].plot(
+            dr,
+            sig_xx,
+            color=cmap(ia), **l)
+
+          axes[1].plot(
+            dr,
+            sig_yy,
+            color=cmap(ia))
+
+          axes[2].plot(
+            dr,
+            sig_xy,
+            color=cmap(ia))
+
+      axes[0].legend()
+
+      gplt.savefig('lefm/const-theta/{0:s}_{1:s}_A=var.pdf'.format(stress, theta))
+      plt.close()
 
