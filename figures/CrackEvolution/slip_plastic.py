@@ -66,7 +66,7 @@ if True:
     ax.set_xlim([0, num_nx(nx)])
     ax.set_ylim([0, 1])
 
-    ax.set_xlabel(r'$x / h$')
+    ax.set_xlabel(r'$r / h$')
     ax.set_ylabel(r'$\dot{\varepsilon}_\mathrm{p} \; h / c_s$')
 
     cmap = plt.get_cmap('jet', 20)

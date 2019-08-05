@@ -1,6 +1,7 @@
 import sys, os, re, subprocess, shutil, h5py
 
 import matplotlib.pyplot as plt
+import matplotlib        as mpl
 import GooseMPL          as gplt
 import numpy             as np
 
@@ -32,9 +33,19 @@ clim = {
   'stress=6d6' : 0.40,
 }
 
+clim_m = {
+  'stress=0d6' : 0.04,
+  'stress=1d6' : 0.06,
+  'stress=2d6' : 0.09,
+  'stress=3d6' : 0.11,
+  'stress=4d6' : 0.14,
+  'stress=5d6' : 0.17,
+  'stress=6d6' : 0.20,
+}
+
 # ==================================================================================================
 
-if True:
+if False:
 
   nx = 'nx=3^6x2'
 
@@ -72,6 +83,68 @@ if True:
 
   for stress in ['stress=0d6', 'stress=1d6', 'stress=2d6', 'stress=3d6', 'stress=4d6', 'stress=5d6', 'stress=6d6']:
 
+    fig, ax = plt.subplots(figsize=(8, 2))
+
+    cbar = mpl.colorbar.ColorbarBase(ax,
+      cmap        = mpl.cm.get_cmap('bone_r'),
+      norm        = mpl.colors.Normalize(vmin=0.0, vmax=clim[stress]),
+      orientation = 'horizontal'
+    )
+
+    cbar.set_label(r'$\sigma$')
+
+    gplt.savefig('stress_imshow/{0:s}_sigd_colorbar.pdf'.format(stress))
+
+# --------------------------------------------------------------------------------------------------
+
+if True:
+
+  nx = 'nx=3^6x2'
+
+  for stress in ['stress=0d6', 'stress=1d6', 'stress=2d6', 'stress=3d6', 'stress=4d6', 'stress=5d6', 'stress=6d6']:
+
+    data = h5py.File(path(key='CrackEvolution_stress', nx=nx, stress=stress, fname='data_sync-A_element.hdf5'), 'r')
+
+    sig_m = data['sig_m/700'][...].reshape(-1, num_nx(nx))
+
+    data.close()
+
+    fig, ax = plt.subplots()
+
+    ax.imshow(sig_m, clim=[-1.0 * clim_m[stress], clim_m[stress]], cmap='RdBu_r')
+
+    plt.axis('off')
+
+    gplt.savefig('stress_imshow/{0:s}_sigm_A=700.png'.format(stress))
+
+# --------------------------------------------------------------------------------------------------
+
+if True:
+
+  nx = 'nx=3^6x2'
+
+  for stress in ['stress=0d6', 'stress=1d6', 'stress=2d6', 'stress=3d6', 'stress=4d6', 'stress=5d6', 'stress=6d6']:
+
+    fig, ax = plt.subplots(figsize=(8, 2))
+
+    cbar = mpl.colorbar.ColorbarBase(ax,
+      cmap        = mpl.cm.get_cmap('RdBu_r'),
+      norm        = mpl.colors.Normalize(vmin=-1.0 * clim_m[stress], vmax=clim_m[stress]),
+      orientation = 'horizontal'
+    )
+
+    cbar.set_label(r'$\sigma_\mathrm{m}$')
+
+    gplt.savefig('stress_imshow/{0:s}_sigm_colorbar.pdf'.format(stress))
+
+# --------------------------------------------------------------------------------------------------
+
+if False:
+
+  nx = 'nx=3^6x2'
+
+  for stress in ['stress=0d6', 'stress=1d6', 'stress=2d6', 'stress=3d6', 'stress=4d6', 'stress=5d6', 'stress=6d6']:
+
     data = h5py.File(path(key='CrackEvolution_stress', nx=nx, stress=stress, fname='data_sync-A_element.hdf5'), 'r')
 
     for A in sorted(data['/sig_eq']):
@@ -91,7 +164,7 @@ if True:
 
 # --------------------------------------------------------------------------------------------------
 
-if True:
+if False:
 
   nx = 'nx=3^6x2'
 
@@ -116,7 +189,7 @@ if True:
 
 # --------------------------------------------------------------------------------------------------
 
-if True:
+if False:
 
   nx = 'nx=3^6x2'
 
@@ -141,7 +214,7 @@ if True:
 
 # --------------------------------------------------------------------------------------------------
 
-if True:
+if False:
 
   nx = 'nx=3^6x2'
 
@@ -166,7 +239,7 @@ if True:
 
 # --------------------------------------------------------------------------------------------------
 
-if True:
+if False:
 
   for stress in list_stress():
 

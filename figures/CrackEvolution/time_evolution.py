@@ -254,7 +254,7 @@ if True:
       avr['t'],
       avr['sig_eq'],
       **color_stress(nx, stress),
-      **label_stress(stress))
+      **label_stress_minimal(stress))
 
     tc = info['t(A=N)']
     idx = np.where(avr['t'] > tc)[0][0]
@@ -297,7 +297,7 @@ if True:
       avr['t'],
       avr['sig_eq'],
       **color_stress(nx, stress),
-      **label_stress(stress))
+      **label_stress_minimal(stress))
 
     ax.plot(
       avr['t'][idx],
@@ -337,7 +337,7 @@ if True:
       avr['t'],
       avr['depsp'],
       **color_stress(nx, stress),
-      **label_stress(stress))
+      **label_stress_minimal(stress))
 
     tc = info['t(A=N)']
     idx = np.where(avr['t'] > tc)[0][0]
@@ -374,7 +374,7 @@ if True:
       avr['t'],
       avr['S'],
       **color_stress(nx, stress),
-      **label_stress(stress))
+      **label_stress_minimal(stress))
 
     tc = info['t(A=N)']
     idx = np.where(avr['t'] > tc)[0][0]
@@ -411,7 +411,7 @@ if True:
       avr['t'],
       avr['x'],
       **color_stress(nx, stress),
-      **label_stress(stress))
+      **label_stress_minimal(stress))
 
   ax.legend(ncol=3)
 

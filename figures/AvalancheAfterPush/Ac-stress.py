@@ -92,7 +92,7 @@ if True:
 
     gplt.diagonal_powerlaw(-2., tl=(4e-2, 2e3), width=1e1, axis=ax)
 
-    ax.set_xlabel(r'$\sigma - \sigma_c^\star(\sigma)$')
+    ax.set_xlabel(r'$\sigma - \sigma_c(\Delta_\sigma)$')
     ax.set_ylabel(r'$A_c$')
 
     gplt.plot_powerlaw(            -2., 0, 1., 1, axis=ax, color='k', units='relative', linestyle='--', linewidth=1)
@@ -107,6 +107,6 @@ if True:
     ax.get_xaxis().set_major_formatter(matplotlib.ticker.FormatStrFormatter('%.2f'))
     ax.get_xaxis().set_minor_formatter(matplotlib.ticker.FormatStrFormatter('%.2f'))
 
-    plt.savefig('Ac_sigmastar-stress.pdf'.format(nx=nx))
+    plt.savefig('Ac-stress.pdf'.format(nx=nx))
     plt.close()
 

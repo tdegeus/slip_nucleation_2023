@@ -61,19 +61,44 @@ with h5py.File(path(key='data', nx=nx, fname='EnsembleInfo.hdf5'), 'r') as data:
 
 a_c  = [A_c [stress] for stress in stresses]
 a_ss = [A_ss[stress] for stress in stresses]
-vel  = [velocity[stress] for stress in stresses]
 sig  = [num_stress(stress) * (sig_top - sig_bot) + sig_bot for stress in stresses]
 
 # --------------------------------------------------------------------------------------------------
 
 fig, ax = plt.subplots()
 
-ax.plot(sig, vel, marker='o')
+ax.plot(
+  [num_stress(stress) * (sig_top - sig_bot) + sig_bot for stress in list_stress()],
+  [velocity[stress] for stress in list_stress()],
+  marker = 'o')
 
 ax.set_xlabel(r'$\sigma$')
 ax.set_ylabel(r'$v_f / c_s$')
 
 gplt.savefig('supershear-transition/sigma-velocity.pdf')
+
+# --------------------------------------------------------------------------------------------------
+
+fig, ax = plt.subplots()
+
+ax.plot(
+  [num_stress(stress) * (sig_top - sig_bot) for stress in list_stress()],
+  [velocity[stress] for stress in list_stress()],
+  marker = 'o')
+
+ax.set_xlim([2e-2, 2e-1])
+ax.set_ylim([1e0, 3e0])
+
+ax.set_xlabel(r'$\sigma - \sigma_c$')
+ax.set_ylabel(r'$v_f / c_s$')
+
+ax.set_xscale('log')
+ax.set_yscale('log')
+
+gplt.plot_powerlaw(               .28, 0., .18, 1., units='relative', axis=ax, ls='--', c='k', lw=1)
+gplt.annotate_powerlaw(r'$0.28$', .28, 0., .18, 1., units='relative', axis=ax, rx=.55, ry=.5)
+
+gplt.savefig('supershear-transition/sigma-velocity_log-log.pdf')
 
 # --------------------------------------------------------------------------------------------------
 

@@ -1,4 +1,4 @@
-import sys, os, re, subprocess, shutil, h5py, HDF5pp, matplotlib
+import sys, os, re, subprocess, shutil, h5py, matplotlib
 
 import matplotlib.pyplot as plt
 import GooseMPL          as gplt
@@ -52,6 +52,8 @@ for nx in list_nx():
 
     data.close()
 
+print(Cutoff)
+
 # ==================================================================================================
 
 DeltaSigma = defaultdict(dict)
@@ -92,7 +94,7 @@ if True:
 
     gplt.diagonal_powerlaw(-2., tl=(4e-2, 2e3), width=1e1, axis=ax)
 
-    ax.set_xlabel(r'$\sigma - \sigma_c^\star$')
+    ax.set_xlabel(r'$\sigma - \sigma_c$')
     ax.set_ylabel(r'$A_c$')
 
     gplt.plot_powerlaw(            -2., 0, 1., 1, axis=ax, color='k', units='relative', linestyle='--', linewidth=1)
@@ -107,6 +109,6 @@ if True:
     ax.get_xaxis().set_major_formatter(matplotlib.ticker.FormatStrFormatter('%.2f'))
     ax.get_xaxis().set_minor_formatter(matplotlib.ticker.FormatStrFormatter('%.2f'))
 
-    plt.savefig('Ac_sigmastar.pdf'.format(nx=nx))
+    plt.savefig('Ac.pdf'.format(nx=nx))
     plt.close()
 

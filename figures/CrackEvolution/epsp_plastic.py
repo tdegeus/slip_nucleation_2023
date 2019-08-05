@@ -54,7 +54,7 @@ if True:
     ax.set_xlim([0, num_nx(nx)])
     ax.set_ylim([0, 100])
 
-    ax.set_xlabel(r'$x / h$')
+    ax.set_xlabel(r'$r / h$')
     ax.set_ylabel(r'$\varepsilon_\mathrm{p}$')
 
     for stress in ['stress=0d6', 'stress=3d6', 'stress=6d6']:
@@ -88,9 +88,9 @@ if True:
     fig, ax = plt.subplots()
 
     ax.set_xlim([0, num_nx(nx)])
-    ax.set_ylim([0, 300])
+    ax.set_ylim([0, 350])
 
-    ax.set_xlabel(r'$x / h$')
+    ax.set_xlabel(r'$r / h$')
     ax.set_ylabel(r'$\varepsilon_\mathrm{p}$')
 
     for stress in ['stress=0d6', 'stress=3d6', 'stress=6d6']:

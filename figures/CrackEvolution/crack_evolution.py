@@ -188,7 +188,7 @@ if True:
 
     ax.legend()
 
-    plt.savefig('crack_evolution/stress/{0:s}.pdf'.format(stress))
+    gplt.savefig('crack_evolution/sigxy/{0:s}.pdf'.format(stress))
 
 # ==================================================================================================
 
@@ -222,7 +222,7 @@ if True:
 
   ax.legend()
 
-  plt.savefig('crack_evolution/stress_global.pdf')
+  gplt.savefig('crack_evolution/macro_A-sigxy.pdf')
 
 # ==================================================================================================
 
@@ -251,6 +251,20 @@ if True:
     print(stress, 'sig_c = ', np.mean(avr['sig_eq'][400:-400]))
 
   ax.plot(
+    [avr['A'][400], avr['A'][400]],
+    ax.get_ylim(),
+    c  = 'k',
+    ls = '-',
+    lw = 1.0)
+
+  ax.plot(
+    [avr['A'][-400], avr['A'][-400]],
+    ax.get_ylim(),
+    c  = 'k',
+    ls = '-',
+    lw = 1.0)
+
+  ax.plot(
     ax.get_xlim(),
     info['sig_c'] * np.ones(2),
     c  = 'b',
@@ -258,7 +272,7 @@ if True:
 
   ax.legend()
 
-  plt.savefig('crack_evolution/stress_crack.pdf')
+  gplt.savefig('crack_evolution/weak_A-sigxy.pdf')
 
 # ==================================================================================================
 
@@ -286,7 +300,7 @@ if True:
 
   ax.legend()
 
-  plt.savefig('crack_evolution/depsp_crack.pdf')
+  gplt.savefig('crack_evolution/weak_A-depsp.pdf')
 
 # ==================================================================================================
 
@@ -314,7 +328,7 @@ if True:
 
   ax.legend()
 
-  plt.savefig('crack_evolution/S_crack.pdf')
+  gplt.savefig('crack_evolution/weak_A-S.pdf')
 
 # ==================================================================================================
 
@@ -342,7 +356,7 @@ if True:
 
   ax.legend()
 
-  plt.savefig('crack_evolution/x_crack.pdf')
+  gplt.savefig('crack_evolution/weak_A-x.pdf')
 
 # ==================================================================================================
 
@@ -370,7 +384,176 @@ if True:
 
   ax.legend()
 
-  plt.savefig('crack_evolution/t.pdf')
+  gplt.savefig('crack_evolution/global_A-t.pdf')
+
+# ==================================================================================================
+
+if True:
+
+  nx = 'nx=3^6x2'
+
+  fig, ax = plt.subplots()
+
+  ax.set_xlabel(r'$A / h$')
+  ax.set_ylabel(r'$t c_s / h$')
+
+  for stress in ['stress=0d6', 'stress=1d6', 'stress=2d6', 'stress=3d6', 'stress=4d6', 'stress=5d6', 'stress=6d6']:
+
+    avr, var, info = getCrackEvolutionGlobal(stress, nx)
+
+    Ac = read_Ac(nx, stress)
+
+    idx = np.min(np.where(avr['A'] >= Ac)[0])
+
+    ax.plot(
+      avr['A'][:idx],
+      avr['t'][:idx],
+      **color_stress(nx, stress),
+      **label_stress_minimal(stress))
+
+  ax.legend()
+
+  gplt.savefig('crack_evolution/global_A-t_avalanche.pdf')
+
+# ==================================================================================================
+
+if True:
+
+  nx = 'nx=3^6x2'
+
+  fig, ax = plt.subplots()
+
+  ax.set_xlim([-num_nx(nx) * 1.02, 0])
+  ax.set_ylim([-1000, 0])
+
+  dx = np.array(ax.get_xlim())
+
+  ax.set_xlabel(r'$(A - A_\mathrm{final}) / h$')
+  ax.set_ylabel(r'$(t - t_\mathrm{final}) c_s / h$')
+
+  for stress in ['stress=0d6', 'stress=1d6', 'stress=2d6', 'stress=3d6', 'stress=4d6', 'stress=5d6', 'stress=6d6']:
+
+    avr, var, info = getCrackEvolutionGlobal(stress, nx)
+
+    Ac = read_Ac(nx, stress)
+
+    idx = np.min(np.where(avr['A'] >= Ac)[0])
+
+    if stress == 'stress=0d6': v = 0.7925641927543035
+    if stress == 'stress=1d6': v = 1.2917752844519859
+    if stress == 'stress=2d6': v = 1.5808473165796881
+    if stress == 'stress=3d6': v = 1.7864728761051447
+    if stress == 'stress=4d6': v = 1.9117088063051701
+    if stress == 'stress=5d6': v = 2.0135932622332615
+    if stress == 'stress=6d6': v = 2.1199393689195576
+
+    ax.plot(dx, dx/v/2., **color_stress(nx, stress), ls='-', lw=1)
+
+    ax.plot(
+      avr['A'][idx:] - avr['A'][-1],
+      avr['t'][idx:] - avr['t'][-1],
+      **color_stress(nx, stress),
+      **label_stress_minimal(stress))
+
+    ax.plot(
+      avr['A'][:idx] - avr['A'][-1],
+      avr['t'][:idx] - avr['t'][-1],
+      **alternative_color_stress(nx, stress))
+
+    ax.plot(
+      avr['A'][idx] - avr['A'][-1],
+      avr['t'][idx] - avr['t'][-1],
+      **alternative_color_stress(nx, stress),
+      marker='o')
+
+  ax.legend()
+
+  gplt.savefig('crack_evolution/global_A-t_reverse.pdf')
+
+# ==================================================================================================
+
+if True:
+
+  nx = 'nx=3^6x2'
+
+  fig, ax = plt.subplots()
+
+  ax.set_xlim([-num_nx(nx) * 1.02, 0])
+  ax.set_ylim([-120, 20])
+
+  dx = np.array(ax.get_xlim())
+
+  ax.set_xlabel(r'$(A - A_\mathrm{final}) / h$')
+  ax.set_ylabel(r'$(t - t_\mathrm{final}) c_s / h - (A/h) / (2 v_f/c_s)$')
+
+  for stress in ['stress=0d6', 'stress=1d6', 'stress=2d6', 'stress=3d6', 'stress=4d6', 'stress=5d6', 'stress=6d6']:
+
+    avr, var, info = getCrackEvolutionGlobal(stress, nx)
+
+    Ac = read_Ac(nx, stress)
+
+    idx = np.min(np.where(avr['A'] >= Ac)[0])
+
+    if stress == 'stress=0d6': v = 0.7925641927543035
+    if stress == 'stress=1d6': v = 1.2917752844519859
+    if stress == 'stress=2d6': v = 1.5808473165796881
+    if stress == 'stress=3d6': v = 1.7864728761051447
+    if stress == 'stress=4d6': v = 1.9117088063051701
+    if stress == 'stress=5d6': v = 2.0135932622332615
+    if stress == 'stress=6d6': v = 2.1199393689195576
+
+    ax.plot(
+      avr['A'][idx:] - avr['A'][-1],
+      avr['t'][idx:] - avr['t'][-1] - (avr['A'][idx:] - avr['A'][-1])/v/2.,
+      **color_stress(nx, stress),
+      **label_stress_minimal(stress))
+
+    ax.plot(
+      avr['A'][:idx] - avr['A'][-1],
+      avr['t'][:idx] - avr['t'][-1] - (avr['A'][:idx] - avr['A'][-1])/v/2.,
+      **alternative_color_stress(nx, stress))
+
+  ax.legend()
+
+  gplt.savefig('crack_evolution/global_A-t_reverse_velocity.pdf')
+
+# ==================================================================================================
+
+if True:
+
+  nx = 'nx=3^6x2'
+
+  fig, ax = plt.subplots()
+
+  ax.set_xscale('log')
+  ax.set_yscale('log')
+
+  ax.set_xlim([1e-3, 1e0])
+  ax.set_ylim([1e0, 7e2])
+
+  ax.set_xlabel(r'$(A / h)^{-1}$')
+  ax.set_ylabel(r'$t c_s / h$')
+
+  for stress in ['stress=0d6', 'stress=1d6', 'stress=2d6', 'stress=3d6', 'stress=4d6', 'stress=5d6', 'stress=6d6']:
+
+    avr, var, info = getCrackEvolutionGlobal(stress, nx)
+
+    Ac = read_Ac(nx, stress)
+
+    idx = np.min(np.where(avr['A'] >= Ac)[0])
+
+    ax.plot(
+      1. / avr['A'][:idx],
+      avr['t'][:idx],
+      **color_stress(nx, stress),
+      **label_stress_minimal(stress))
+
+  gplt.plot_powerlaw(                -0.87, 0., 1., 1., units='relative', axis=ax, ls='--', c='k', lw=1)
+  gplt.annotate_powerlaw(r'$-0.87$', -0.87, 0., 1., 1., units='relative', axis=ax, rx=.2, ry=.2)
+
+  ax.legend()
+
+  gplt.savefig('crack_evolution/global_A-t_avalanche_log-log.pdf')
 
 # ==================================================================================================
 
@@ -404,7 +587,7 @@ if True:
 
   ax.legend()
 
-  plt.savefig('crack_evolution/t-sync.pdf')
+  gplt.savefig('crack_evolution/global_t-sync.pdf')
 
 # ==================================================================================================
 
@@ -452,5 +635,5 @@ if True:
 
   ax.legend(ncol=2)
 
-  plt.savefig('crack_evolution/velocity.pdf')
+  gplt.savefig('crack_evolution/global_velocity.pdf')
 

@@ -54,7 +54,7 @@ if True:
     ax.set_xlim([0, num_nx(nx)])
     ax.set_ylim([0.0, 0.5])
 
-    ax.set_xlabel(r'$x / h$')
+    ax.set_xlabel(r'$r / h$')
     ax.set_ylabel(r'$\sigma$')
 
     for stress in ['stress=0d6', 'stress=3d6', 'stress=6d6']:
@@ -90,7 +90,7 @@ if True:
     ax.set_xlim([0, num_nx(nx)])
     ax.set_ylim([0.0, 0.5])
 
-    ax.set_xlabel(r'$x / h$')
+    ax.set_xlabel(r'$r / h$')
     ax.set_ylabel(r'$\sigma$')
 
     for stress in ['stress=0d6', 'stress=3d6', 'stress=6d6']:

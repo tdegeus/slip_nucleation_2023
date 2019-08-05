@@ -71,11 +71,18 @@ for dh in [0, 4, 30, 60]:
     fig, axes = gplt.subplots(ncols=3)
 
     for ax in axes:
-      ax.set_xlabel(r'$(x - x_\mathrm{tip}) / h$')
+      ax.set_xlabel(r'$(r - r_\mathrm{tip}) / h$')
 
     axes[0].set_ylabel(r'$\sigma_{xx}$')
-    axes[1].set_ylabel(r'$\sigma_{xy}$')
-    axes[2].set_ylabel(r'$\sigma_{yy}$')
+    axes[1].set_ylabel(r'$\sigma_{yy}$')
+    axes[2].set_ylabel(r'$\sigma_{xy}$')
+
+    for ax in axes:
+      ax.set_xlim([-400, +400])
+
+    axes[0].set_ylim([-0.1, +0.1])
+    axes[1].set_ylim([-0.1, +0.1])
+    axes[2].set_ylim([+0.0, +0.2])
 
     for stress in ['stress=0d6', 'stress=1d6', 'stress=2d6', 'stress=3d6', 'stress=4d6', 'stress=5d6', 'stress=6d6']:
 
@@ -88,23 +95,27 @@ for dh in [0, 4, 30, 60]:
           sig_xx[plastic+dh*N][:mid],
           **color_stress(nx, stress), **label_stress_minimal(stress))
 
-        sig_xy = data['/sig_xy/{0:d}'.format(a)][...]
+        sig_yy = data['/sig_yy/{0:d}'.format(a)][...]
 
         axes[1].plot(
           np.arange(N)[:mid] - a/2,
-          sig_xy[plastic+dh*N][:mid],
+          sig_yy[plastic+dh*N][:mid],
           **color_stress(nx, stress))
 
-        sig_yy = data['/sig_yy/{0:d}'.format(a)][...]
+        sig_xy = data['/sig_xy/{0:d}'.format(a)][...]
 
         axes[2].plot(
           np.arange(N)[:mid] - a/2,
-          sig_yy[plastic+dh*N][:mid],
+          sig_xy[plastic+dh*N][:mid],
           **color_stress(nx, stress))
 
     axes[0].legend()
 
     gplt.savefig('lefm/stress=var_dh={0:d}_A={1:d}.pdf'.format(dh, a))
     plt.close()
+
+# --------------------------------------------------------------------------------------------------
+
+
 
 
