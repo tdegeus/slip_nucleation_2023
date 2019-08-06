@@ -43,6 +43,8 @@ N  = num_nx(nx)
 
 with h5py.File(path(key='data', nx=nx, fname='EnsembleInfo.hdf5'), 'r') as data:
   h = data['/normalisation/l0'][...]
+  sig_bot = data['/averages/sigd_bottom'][...]
+  sig_top = data['/averages/sigd_top'][...]
 
 # --------------------------------------------------------------------------------------------------
 
@@ -126,6 +128,9 @@ Stresses = ['stress=0d6', 'stress=1d6', 'stress=2d6', 'stress=3d6', 'stress=4d6'
 data = {stress: np.empty((len(Ameasure))) for stress in Stresses}
 error = {stress: np.empty((len(Ameasure))) for stress in Stresses}
 
+skipL = 10
+skipR = 50
+
 for stress in Stresses:
 
   for ia, a in enumerate(Ameasure):
@@ -133,38 +138,38 @@ for stress in Stresses:
     if a % 2 == 0: a_half = int( a      / 2)
     else         : a_half = int((a - 1) / 2)
 
-    RData   = np.empty((4, 2, ny))
-    SigData = np.empty((4, 2, ny))
+    RData   = np.empty((4, 2, ny - skipL - skipR))
+    SigData = np.empty((4, 2, ny - skipL - skipR))
 
     for itheta, theta in enumerate([np.pi/2.0, -np.pi/2.0, np.pi/4.0, -np.pi/4.0]):
 
       if   itheta == 0: # pi / 2
 
         tip   = plastic[np.arange(N)[:mid][a_half]]
-        delem = (np.linspace(1, ny, ny) * N).astype(np.int)
+        delem = (np.linspace(1 + skipL, ny - skipR, ny - skipL - skipR) * N).astype(np.int)
         elem  = tip + delem
-        dr    = np.linspace(1, ny, ny)
+        dr    = np.linspace(1 + skipL, ny - skipR, ny - skipL - skipR)
 
       elif itheta == 1: # - pi / 2
 
         tip   = plastic[np.arange(N)[:mid][a_half]]
-        delem = (-1 * np.linspace(1, ny, ny) * N).astype(np.int)
+        delem = (-1 * np.linspace(1 + skipL, ny - skipR, ny - skipL - skipR) * N).astype(np.int)
         elem  = tip + delem
-        dr    = np.linspace(1, ny, ny)
+        dr    = np.linspace(1 + skipL, ny - skipR, ny - skipL - skipR)
 
       elif itheta == 2: # pi / 4
 
         tip   = plastic[np.arange(N)[:mid][a_half]]
-        delem = (np.linspace(1, ny, ny) * (N + 1)).astype(np.int)
+        delem = (np.linspace(1 + skipL, ny - skipR, ny - skipL - skipR) * (N + 1)).astype(np.int)
         elem  = tip + delem
-        dr    = np.linspace(1, ny, ny) * np.sqrt(2.)
+        dr    = np.linspace(1 + skipL, ny - skipR, ny - skipL - skipR) * np.sqrt(2.)
 
       elif itheta == 3: # - pi / 4
 
         tip   = plastic[np.arange(N)[:mid][a_half]]
-        delem = (-1 * np.linspace(1, ny, ny) * (N + 1)).astype(np.int)
+        delem = (-1 * np.linspace(1 + skipL, ny - skipR, ny - skipL - skipR) * (N + 1)).astype(np.int)
         elem  = tip + delem
-        dr    = np.linspace(1, ny, ny) * np.sqrt(2.)
+        dr    = np.linspace(1 + skipL, ny - skipR, ny - skipL - skipR) * np.sqrt(2.)
 
       sig_xx, sig_yy, sig_xy = read_stress(nx, stress, a, elem)
 
@@ -179,10 +184,10 @@ for stress in Stresses:
     RData = RData.reshape(-1)
     SigData = SigData.reshape(-1)
 
-    d, e = curve_fit(lefm, RData, SigData, p0 = (1.0,))
+    d, _ = curve_fit(lefm, RData, SigData, p0 = (1.0,))
 
     data[stress][ia] = d
-    error[stress][ia] = e
+    error[stress][ia] = np.linalg.norm(SigData - lefm(RData, d)) / np.sqrt(SigData.size)
 
 # --------------------------------------------------------------------------------------------------
 
@@ -190,154 +195,68 @@ fig, ax = gplt.subplots()
 
 for stress in Stresses:
 
-  ax.plot(Ameasure, data[stress], marker='o', **color_stress(nx, stress), **label_stress_minimal(stress))
+  ax.errorbar(Ameasure, data[stress], yerr=error[stress],
+    marker='o', **color_stress(nx, stress), **label_stress_minimal(stress))
+
+ax.set_xlabel(r'$A$')
+ax.set_ylabel(r'$K_{II}$')
+
+ax.legend()
+
+gplt.savefig('lefm_fit-kII/xx-yy/K-A.pdf')
+plt.close()
+
+# --------------------------------------------------------------------------------------------------
+
+fig, ax = gplt.subplots()
+
+for stress in Stresses:
+
+  ax.errorbar(Ameasure, data[stress], yerr=error[stress],
+    marker='o', **color_stress(nx, stress), **label_stress_minimal(stress))
 
 ax.set_xscale('log')
 ax.set_yscale('log')
 
-gplt.plot_powerlaw(0.5, 0, 0, 1, units='relative', axis=ax)
+ax.set_xlim([4e1, 1e3])
+ax.set_ylim([1e-2, 1e0])
 
-plt.show()
+ax.set_xlabel(r'$A$')
+ax.set_ylabel(r'$K_{II}$')
 
-# with h5py.File('lefm_fit-kII_xx-yy.h5', 'w') as f:
+ax.legend()
 
-#   f['/A'] = Ameasure
+gplt.plot_powerlaw(0.5, 0, 0.6, 1, units='relative', axis=ax, ls='--', lw=1)
 
-#   for stress in Stresses:
-#     f['/kII/{0:s}'.format(stress)] = data[stress]
-#     f['/kII_error/{0:s}'.format(stress)] = error[stress]
+gplt.savefig('lefm_fit-kII/xx-yy/K-A_log-log.pdf')
+plt.close()
 
+# --------------------------------------------------------------------------------------------------
 
+fig, ax = gplt.subplots()
 
+for stress in Stresses:
 
+  if stress == 'stress=0d6':
+    continue
 
+  sig_inf = (sig_top - sig_bot) * num_stress(stress)
 
-# # --------------------------------------------------------------------------------------------------
-# # theta = [0, pi/4, pi/2, -pi/4, -pi/2], constant A, varying stress
-# # --------------------------------------------------------------------------------------------------
+  ax.errorbar(Ameasure, data[stress]/sig_inf, yerr=error[stress],
+    marker='o', **color_stress(nx, stress), **label_stress_minimal(stress))
 
-# if True:
+ax.set_xscale('log')
+ax.set_yscale('log')
 
-#   for theta in ['theta=pi?4', 'theta=pi?2', 'theta=-pi?4', 'theta=-pi?2']:
+ax.set_xlim([4e1, 1e3])
+ax.set_ylim([1e-1, 1e1])
 
-#     for a in [100, 300, 500, 700]:
+ax.set_xlabel(r'$A$')
+ax.set_ylabel(r'$K_{II} / (\sigma - \sigma_c)$')
 
-#       # --
+ax.legend()
 
-#       if a % 2 == 0: a_half = int( a      / 2)
-#       else         : a_half = int((a - 1) / 2)
+gplt.plot_powerlaw(0.5, 0, 0.5, 1, units='relative', axis=ax, ls='--', lw=1)
 
-#       # --
-
-#       if theta == 'theta=0':
-
-#         tip   = plastic[np.arange(N)[:mid][a_half]]
-#         delem = np.arange(N)[:mid] - a_half
-#         elem  = tip + delem
-#         dr    = delem
-#         label = r'$\theta = 0$'
-
-#       elif theta == 'theta=pi?4':
-
-#         tip   = plastic[np.arange(N)[:mid][a_half]]
-#         ny    = int((regular.nely() - 1)/2)
-#         delem = (np.linspace(0, ny, ny+1) * (N + 1)).astype(np.int)
-#         elem  = tip + delem
-#         dr    = np.linspace(0, ny, ny+1) * np.sqrt(2.)
-#         idx   = np.where(elem >= 0)[0]
-#         elem  = elem[idx]
-#         dr    = dr[idx]
-#         label = r'$\theta = \pi / 4$'
-
-#       elif theta == 'theta=pi?2':
-
-#         tip   = plastic[np.arange(N)[:mid][a_half]]
-#         ny    = int((regular.nely() - 1)/2)
-#         delem = (np.linspace(0, ny, ny+1) * N).astype(np.int)
-#         elem  = tip + delem
-#         dr    = np.linspace(0, ny, ny+1)
-#         label = r'$\theta = \pi / 2$'
-
-#       elif theta == 'theta=-pi?4':
-
-#         tip   = plastic[np.arange(N)[:mid][a_half]]
-#         ny    = int((regular.nely() - 1)/2)
-#         delem = (-1 * np.linspace(0, ny, ny+1) * (N + 1)).astype(np.int)
-#         elem  = tip + delem
-#         dr    = np.linspace(0, ny, ny+1) * np.sqrt(2.)
-#         idx   = np.where(elem >= 0)[0]
-#         elem  = elem[idx]
-#         dr    = dr[idx]
-#         label = r'$\theta = - \pi / 4$'
-
-#       elif theta == 'theta=-pi?2':
-
-#         tip   = plastic[np.arange(N)[:mid][a_half]]
-#         ny    = int((regular.nely() - 1)/2)
-#         delem = (-1 * np.linspace(0, ny, ny+1) * N).astype(np.int)
-#         elem  = tip + delem
-#         dr    = np.linspace(0, ny, ny+1)
-#         label = r'$\theta = - \pi / 2$'
-
-#       else:
-
-#         raise IOError('Unknown theta')
-
-#       # --
-
-#       fig, axes = gplt.subplots(ncols=3)
-
-#       for ax in axes:
-#         ax.set_xlabel(r'$(r - r_\mathrm{tip}) / h$')
-
-#       axes[0].set_ylabel(r'$\sigma_{xx}$')
-#       axes[1].set_ylabel(r'$\sigma_{yy}$')
-#       axes[2].set_ylabel(r'$\sigma_{xy}$')
-
-#       for ax in axes:
-#         ax.set_xlim([0, 500])
-
-#       axes[0].set_ylim([-0.1, +0.1])
-#       axes[1].set_ylim([-0.1, +0.1])
-#       axes[2].set_ylim([+0.0, +0.2])
-
-#       gplt.text(.05, .9, label, units='relative', axis=axes[1], bbox=dict(edgecolor='black', boxstyle=BoxStyle("Round, pad=0.3"), facecolor='white'))
-
-#       for stress in ['stress=0d6', 'stress=1d6', 'stress=2d6', 'stress=3d6', 'stress=4d6', 'stress=5d6', 'stress=6d6'][::-1]:
-
-#         with h5py.File(path(key='CrackEvolution_stress', nx=nx, stress=stress, fname='data_sync-A_element-components.hdf5'), 'r') as data:
-
-#           sig_xx = data['/sig_xx/{0:d}'.format(a)][...]
-#           sig_yy = data['/sig_yy/{0:d}'.format(a)][...]
-#           sig_xy = data['/sig_xy/{0:d}'.format(a)][...]
-
-#           sig_xx = sig_xx[elem]
-#           sig_yy = sig_yy[elem]
-#           sig_xy = sig_xy[elem]
-
-#           idx = np.where(np.abs(dr) < h * np.sqrt(2.))[0]
-
-#           sig_xx[idx] = np.NaN
-#           sig_yy[idx] = np.NaN
-#           sig_xy[idx] = np.NaN
-
-#           axes[0].plot(
-#             dr,
-#             sig_xx,
-#             **color_stress(nx, stress), **label_stress_minimal(stress))
-
-#           axes[1].plot(
-#             dr,
-#             sig_yy,
-#             **color_stress(nx, stress))
-
-#           axes[2].plot(
-#             dr,
-#             sig_xy,
-#             **color_stress(nx, stress))
-
-#       axes[0].legend()
-
-#       gplt.savefig('lefm/const-theta/{0:s}_A={1:d}_stress=var.pdf'.format(theta, a))
-#       plt.close()
-
+gplt.savefig('lefm_fit-kII/xx-yy/K-A_log-log_scale.pdf')
+plt.close()
