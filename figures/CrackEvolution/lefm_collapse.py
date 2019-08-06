@@ -64,6 +64,8 @@ elmap   = mapping.getMap()
 plastic = [elmap[i] for i in plastic]
 plastic = np.array(plastic).reshape(-1)
 
+ny = int((regular.nely() - 1)/2)
+
 # --------------------------------------------------------------------------------------------------
 # theta = [0, pi/4, pi/2], constant A, varying stress
 # --------------------------------------------------------------------------------------------------
@@ -97,19 +99,14 @@ if True:
       elif theta == 'theta=pi?4':
 
         tip   = plastic[np.arange(N)[:mid][a_half]]
-        ny    = int((regular.nely() - 1)/2)
         delem = (np.linspace(0, ny, ny+1) * (N + 1)).astype(np.int)
         elem  = tip + delem
         dr    = np.linspace(0, ny, ny+1) * np.sqrt(2.)
-        idx   = np.where(elem >= 0)[0]
-        elem  = elem[idx]
-        dr    = dr[idx]
         label = r'$\theta = \pi / 4$'
 
       elif theta == 'theta=pi?2':
 
         tip   = plastic[np.arange(N)[:mid][a_half]]
-        ny    = int((regular.nely() - 1)/2)
         delem = (np.linspace(0, ny, ny+1) * N).astype(np.int)
         elem  = tip + delem
         dr    = np.linspace(0, ny, ny+1)
@@ -118,19 +115,14 @@ if True:
       elif theta == 'theta=-pi?4':
 
         tip   = plastic[np.arange(N)[:mid][a_half]]
-        ny    = int((regular.nely() - 1)/2)
         delem = (-1 * np.linspace(0, ny, ny+1) * (N + 1)).astype(np.int)
         elem  = tip + delem
         dr    = np.linspace(0, ny, ny+1) * np.sqrt(2.)
-        idx   = np.where(elem >= 0)[0]
-        elem  = elem[idx]
-        dr    = dr[idx]
         label = r'$\theta = - \pi / 4$'
 
       elif theta == 'theta=-pi?2':
 
         tip   = plastic[np.arange(N)[:mid][a_half]]
-        ny    = int((regular.nely() - 1)/2)
         delem = (-1 * np.linspace(0, ny, ny+1) * N).astype(np.int)
         elem  = tip + delem
         dr    = np.linspace(0, ny, ny+1)
@@ -259,18 +251,13 @@ if True:
         elif theta == 'theta=pi?4':
 
           tip   = plastic[np.arange(N)[:mid][a_half]]
-          ny    = int((regular.nely() - 1)/2)
           delem = (np.linspace(0, ny, ny+1) * (N + 1)).astype(np.int)
           elem  = tip + delem
           dr    = np.linspace(0, ny, ny+1) * np.sqrt(2.)
-          idx   = np.where(elem >= 0)[0]
-          elem  = elem[idx]
-          dr    = dr[idx]
 
         elif theta == 'theta=pi?2':
 
           tip   = plastic[np.arange(N)[:mid][a_half]]
-          ny    = int((regular.nely() - 1)/2)
           delem = (np.linspace(0, ny, ny+1) * N).astype(np.int)
           elem  = tip + delem
           dr    = np.linspace(0, ny, ny+1)
@@ -278,18 +265,13 @@ if True:
         elif theta == 'theta=-pi?4':
 
           tip   = plastic[np.arange(N)[:mid][a_half]]
-          ny    = int((regular.nely() - 1)/2)
           delem = (-1 * np.linspace(0, ny, ny+1) * (N + 1)).astype(np.int)
           elem  = tip + delem
           dr    = np.linspace(0, ny, ny+1) * np.sqrt(2.)
-          idx   = np.where(elem >= 0)[0]
-          elem  = elem[idx]
-          dr    = dr[idx]
 
         elif theta == 'theta=-pi?2':
 
           tip   = plastic[np.arange(N)[:mid][a_half]]
-          ny    = int((regular.nely() - 1)/2)
           delem = (-1 * np.linspace(0, ny, ny+1) * N).astype(np.int)
           elem  = tip + delem
           dr    = np.linspace(0, ny, ny+1)
