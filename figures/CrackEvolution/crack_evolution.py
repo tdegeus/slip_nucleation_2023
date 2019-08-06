@@ -408,7 +408,7 @@ if True:
     ax.plot(
       avr['A'][:idx],
       avr['t'][:idx],
-      **color_stress(nx, stress),
+      **alternative_color_stress(nx, stress),
       **label_stress_minimal(stress))
 
   ax.legend()
@@ -545,7 +545,7 @@ if True:
     ax.plot(
       1. / avr['A'][:idx],
       avr['t'][:idx],
-      **color_stress(nx, stress),
+      **alternative_color_stress(nx, stress),
       **label_stress_minimal(stress))
 
   gplt.plot_powerlaw(                -0.87, 0., 1., 1., units='relative', axis=ax, ls='--', c='k', lw=1)
@@ -587,7 +587,7 @@ if True:
 
   ax.legend()
 
-  gplt.savefig('crack_evolution/global_t-sync.pdf')
+  gplt.savefig('crack_evolution/global_A-t-sync.pdf')
 
 # ==================================================================================================
 
