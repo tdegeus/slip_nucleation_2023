@@ -121,12 +121,12 @@ if True:
       plt.close()
 
 # --------------------------------------------------------------------------------------------------
-# theta = [0, pi/4, pi/2], constant A, varying stress
+# theta = [0, pi/4, pi/2, -pi/4, -pi/2], constant A, varying stress
 # --------------------------------------------------------------------------------------------------
 
 if True:
 
-  for theta in ['theta=0', 'theta=pi-4', 'theta=pi-2']:
+  for theta in ['theta=0', 'theta=pi?4', 'theta=pi?2', 'theta=-pi?4', 'theta=-pi?2']:
 
     for a in [100, 300, 500, 700]:
 
@@ -145,26 +145,47 @@ if True:
         dr    = delem
         label = r'$\theta = 0$'
 
-      elif theta == 'theta=pi-4':
+      elif theta == 'theta=pi?4':
 
         tip   = plastic[np.arange(N)[:mid][a_half]]
         ny    = int((regular.nely() - 1)/2)
-        delem = (np.linspace(-ny, ny, regular.nely()) * (N + 1)).astype(np.int)
+        delem = (np.linspace(0, ny, ny+1) * (N + 1)).astype(np.int)
         elem  = tip + delem
-        dr    = np.linspace(-ny, ny, regular.nely()) * np.sqrt(2.)
+        dr    = np.linspace(0, ny, ny+1) * np.sqrt(2.)
         idx   = np.where(elem >= 0)[0]
         elem  = elem[idx]
         dr    = dr[idx]
         label = r'$\theta = \pi / 4$'
 
-      elif theta == 'theta=pi-2':
+      elif theta == 'theta=pi?2':
 
         tip   = plastic[np.arange(N)[:mid][a_half]]
         ny    = int((regular.nely() - 1)/2)
-        delem = (np.linspace(-ny, ny, regular.nely()) * N).astype(np.int)
+        delem = (np.linspace(0, ny, ny+1) * N).astype(np.int)
         elem  = tip + delem
-        dr    = np.linspace(-ny, ny, regular.nely())
+        dr    = np.linspace(0, ny, ny+1)
         label = r'$\theta = \pi / 2$'
+
+      elif theta == 'theta=-pi?4':
+
+        tip   = plastic[np.arange(N)[:mid][a_half]]
+        ny    = int((regular.nely() - 1)/2)
+        delem = (-1 * np.linspace(0, ny, ny+1) * (N + 1)).astype(np.int)
+        elem  = tip + delem
+        dr    = np.linspace(0, ny, ny+1) * np.sqrt(2.)
+        idx   = np.where(elem >= 0)[0]
+        elem  = elem[idx]
+        dr    = dr[idx]
+        label = r'$\theta = - \pi / 4$'
+
+      elif theta == 'theta=-pi?2':
+
+        tip   = plastic[np.arange(N)[:mid][a_half]]
+        ny    = int((regular.nely() - 1)/2)
+        delem = (-1 * np.linspace(0, ny, ny+1) * N).astype(np.int)
+        elem  = tip + delem
+        dr    = np.linspace(0, ny, ny+1)
+        label = r'$\theta = - \pi / 2$'
 
       else:
 
@@ -182,7 +203,7 @@ if True:
       axes[2].set_ylabel(r'$\sigma_{xy}$')
 
       for ax in axes:
-        ax.set_xlim([-500,500])
+        ax.set_xlim([0, 500])
 
       axes[0].set_ylim([-0.1, +0.1])
       axes[1].set_ylim([-0.1, +0.1])
@@ -229,14 +250,14 @@ if True:
       plt.close()
 
 # --------------------------------------------------------------------------------------------------
-# theta = [0, pi/4, pi/2], constant A, varying stress
+# theta = [0, pi/4, pi/2, -pi/4, -pi/2], varying A, constant stress
 # --------------------------------------------------------------------------------------------------
 
 if True:
 
   for stress in ['stress=0d6', 'stress=1d6', 'stress=2d6', 'stress=3d6', 'stress=4d6', 'stress=5d6', 'stress=6d6'][::-1]:
 
-    for theta in ['theta=0', 'theta=pi-4', 'theta=pi-2']:
+    for theta in ['theta=0', 'theta=pi?4', 'theta=pi?2', 'theta=-pi?4', 'theta=-pi?2']:
 
       fig, axes = gplt.subplots(ncols=3)
 
@@ -248,15 +269,17 @@ if True:
       axes[2].set_ylabel(r'$\sigma_{xy}$')
 
       for ax in axes:
-        ax.set_xlim([-500,500])
+        ax.set_xlim([0, 500])
 
       axes[0].set_ylim([-0.1, +0.1])
       axes[1].set_ylim([-0.1, +0.1])
       axes[2].set_ylim([+0.0, +0.2])
 
-      if   theta == 'theta=0'   : label = r'$\theta = 0$, '       + label_stress(stress)['label']
-      elif theta == 'theta=pi-4': label = r'$\theta = \pi / 4$, ' + label_stress(stress)['label']
-      elif theta == 'theta=pi-2': label = r'$\theta = \pi / 2$, ' + label_stress(stress)['label']
+      if   theta == 'theta=0'    : label = r'$\theta = 0$, '         + label_stress(stress)['label']
+      elif theta == 'theta=pi?4' : label = r'$\theta = \pi / 4$, '   + label_stress(stress)['label']
+      elif theta == 'theta=pi?2' : label = r'$\theta = \pi / 2$, '   + label_stress(stress)['label']
+      elif theta == 'theta=-pi?4': label = r'$\theta = - \pi / 4$, ' + label_stress(stress)['label']
+      elif theta == 'theta=-pi?2': label = r'$\theta = - \pi / 2$, ' + label_stress(stress)['label']
       else: raise IOError('Unknown theta')
 
       gplt.text(.05, .9, label, units='relative', axis=axes[1], bbox=dict(edgecolor='black', boxstyle=BoxStyle("Round, pad=0.3"), facecolor='white'))
@@ -279,24 +302,43 @@ if True:
           elem  = tip + delem
           dr    = delem
 
-        elif theta == 'theta=pi-4':
+        elif theta == 'theta=pi?4':
 
           tip   = plastic[np.arange(N)[:mid][a_half]]
           ny    = int((regular.nely() - 1)/2)
-          delem = (np.linspace(-ny, ny, regular.nely()) * (N + 1)).astype(np.int)
+          delem = (np.linspace(0, ny, ny+1) * (N + 1)).astype(np.int)
           elem  = tip + delem
-          dr    = np.linspace(-ny, ny, regular.nely()) * np.sqrt(2.)
+          dr    = np.linspace(0, ny, ny+1) * np.sqrt(2.)
           idx   = np.where(elem >= 0)[0]
           elem  = elem[idx]
           dr    = dr[idx]
 
-        elif theta == 'theta=pi-2':
+        elif theta == 'theta=pi?2':
 
           tip   = plastic[np.arange(N)[:mid][a_half]]
           ny    = int((regular.nely() - 1)/2)
-          delem = (np.linspace(-ny, ny, regular.nely()) * N).astype(np.int)
+          delem = (np.linspace(0, ny, ny+1) * N).astype(np.int)
           elem  = tip + delem
-          dr    = np.linspace(-ny, ny, regular.nely())
+          dr    = np.linspace(0, ny, ny+1)
+
+        elif theta == 'theta=-pi?4':
+
+          tip   = plastic[np.arange(N)[:mid][a_half]]
+          ny    = int((regular.nely() - 1)/2)
+          delem = (-1 * np.linspace(0, ny, ny+1) * (N + 1)).astype(np.int)
+          elem  = tip + delem
+          dr    = np.linspace(0, ny, ny+1) * np.sqrt(2.)
+          idx   = np.where(elem >= 0)[0]
+          elem  = elem[idx]
+          dr    = dr[idx]
+
+        elif theta == 'theta=-pi?2':
+
+          tip   = plastic[np.arange(N)[:mid][a_half]]
+          ny    = int((regular.nely() - 1)/2)
+          delem = (-1 * np.linspace(0, ny, ny+1) * N).astype(np.int)
+          elem  = tip + delem
+          dr    = np.linspace(0, ny, ny+1)
 
         else:
 
