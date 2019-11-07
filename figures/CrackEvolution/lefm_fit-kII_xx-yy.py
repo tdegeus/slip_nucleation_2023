@@ -125,8 +125,8 @@ def read_stress(nx, stress, a, elem):
 Ameasure = np.linspace(50, 700, 14).astype(np.int)
 Stresses = ['stress=0d6', 'stress=1d6', 'stress=2d6', 'stress=3d6', 'stress=4d6', 'stress=5d6', 'stress=6d6']
 
-data = {stress: np.empty((len(Ameasure))) for stress in Stresses}
-error = {stress: np.empty((len(Ameasure))) for stress in Stresses}
+kII_data = {stress: np.empty((len(Ameasure))) for stress in Stresses}
+kII_error = {stress: np.empty((len(Ameasure))) for stress in Stresses}
 
 skipL = 10
 skipR = 50
@@ -186,8 +186,8 @@ for stress in Stresses:
 
     d, _ = curve_fit(lefm, RData, SigData, p0 = (1.0,))
 
-    data[stress][ia] = d
-    error[stress][ia] = np.linalg.norm(SigData - lefm(RData, d)) / np.sqrt(SigData.size)
+    kII_data[stress][ia] = d
+    kII_error[stress][ia] = np.linalg.norm(SigData - lefm(RData, d)) / np.sqrt(SigData.size)
 
 # --------------------------------------------------------------------------------------------------
 
@@ -195,7 +195,7 @@ fig, ax = gplt.subplots()
 
 for stress in Stresses:
 
-  ax.errorbar(Ameasure, data[stress], yerr=error[stress],
+  ax.errorbar(Ameasure, kII_data[stress], yerr=kII_error[stress],
     marker='o', **color_stress(nx, stress), **label_stress_minimal(stress))
 
 ax.set_xlabel(r'$A$')
@@ -212,7 +212,7 @@ fig, ax = gplt.subplots()
 
 for stress in Stresses:
 
-  ax.errorbar(Ameasure, data[stress], yerr=error[stress],
+  ax.errorbar(Ameasure, kII_data[stress], yerr=kII_error[stress],
     marker='o', **color_stress(nx, stress), **label_stress_minimal(stress))
 
 ax.set_xscale('log')
@@ -242,7 +242,7 @@ for stress in Stresses:
 
   sig_inf = (sig_top - sig_bot) * num_stress(stress)
 
-  ax.errorbar(Ameasure, data[stress]/sig_inf, yerr=error[stress],
+  ax.errorbar(Ameasure, kII_data[stress]/sig_inf, yerr=kII_error[stress],
     marker='o', **color_stress(nx, stress), **label_stress_minimal(stress))
 
 ax.set_xscale('log')
@@ -260,3 +260,138 @@ gplt.plot_powerlaw(0.5, 0, 0.5, 1, units='relative', axis=ax, ls='--', lw=1)
 
 gplt.savefig('lefm_fit-kII/xx-yy/K-A_log-log_scale.pdf')
 plt.close()
+
+# --------------------------------------------------------------------------------------------------
+# theta = [0, pi/4, pi/2, -pi/4, -pi/2], constant A, varying stress
+# --------------------------------------------------------------------------------------------------
+
+if True:
+
+  for theta in ['theta=0', 'theta=pi?4', 'theta=pi?2', 'theta=-pi?4', 'theta=-pi?2']:
+
+    for a in [100, 300, 500, 700]:
+
+      # --
+
+      if a % 2 == 0: a_half = int( a      / 2)
+      else         : a_half = int((a - 1) / 2)
+
+      # --
+
+      if theta == 'theta=0':
+
+        tip   = plastic[np.arange(N)[:mid][a_half]]
+        delem = np.arange(N)[:mid] - a_half
+        elem  = tip + delem
+        dr    = delem
+        label = r'$\theta = 0$'
+        T     = 0.0
+
+      elif theta == 'theta=pi?4':
+
+        tip   = plastic[np.arange(N)[:mid][a_half]]
+        delem = (np.linspace(0, ny, ny+1) * (N + 1)).astype(np.int)
+        elem  = tip + delem
+        dr    = np.linspace(0, ny, ny+1) * np.sqrt(2.)
+        label = r'$\theta = \pi / 4$'
+        T     = np.pi / 4.0
+
+      elif theta == 'theta=pi?2':
+
+        tip   = plastic[np.arange(N)[:mid][a_half]]
+        delem = (np.linspace(0, ny, ny+1) * N).astype(np.int)
+        elem  = tip + delem
+        dr    = np.linspace(0, ny, ny+1)
+        label = r'$\theta = \pi / 2$'
+        T     = np.pi / 2.0
+
+      elif theta == 'theta=-pi?4':
+
+        tip   = plastic[np.arange(N)[:mid][a_half]]
+        delem = (-1 * np.linspace(0, ny, ny+1) * (N + 1)).astype(np.int)
+        elem  = tip + delem
+        dr    = np.linspace(0, ny, ny+1) * np.sqrt(2.)
+        label = r'$\theta = - \pi / 4$'
+        T     = - np.pi / 4.0
+
+      elif theta == 'theta=-pi?2':
+
+        tip   = plastic[np.arange(N)[:mid][a_half]]
+        delem = (-1 * np.linspace(0, ny, ny+1) * N).astype(np.int)
+        elem  = tip + delem
+        dr    = np.linspace(0, ny, ny+1)
+        label = r'$\theta = - \pi / 2$'
+        T     = - np.pi / 2.0
+
+      else:
+
+        raise IOError('Unknown theta')
+
+      # --
+
+      fig, axes = gplt.subplots(ncols=3)
+
+      for ax in axes:
+        ax.set_xlabel(r'$(r - r_\mathrm{tip}) / h$')
+
+      axes[0].set_ylabel(r'$\sigma_{xx}$')
+      axes[1].set_ylabel(r'$\sigma_{yy}$')
+      axes[2].set_ylabel(r'$\sigma_{xy}$')
+
+      for ax in axes:
+        ax.set_xlim([0, 500])
+
+      axes[0].set_ylim([-0.1, +0.1])
+      axes[1].set_ylim([-0.1, +0.1])
+      axes[2].set_ylim([+0.0, +0.2])
+
+      gplt.text(.05, .9, label, units='relative', axis=axes[1], bbox=dict(edgecolor='black', boxstyle=BoxStyle("Round, pad=0.3"), facecolor='white'))
+
+      for stress in ['stress=0d6', 'stress=1d6', 'stress=2d6', 'stress=3d6', 'stress=4d6', 'stress=5d6', 'stress=6d6'][::-1]:
+
+        with h5py.File(path(key='CrackEvolution_stress', nx=nx, stress=stress, fname='data_sync-A_element-components.hdf5'), 'r') as data:
+
+          sig_xx = data['/sig_xx/{0:d}'.format(a)][...]
+          sig_yy = data['/sig_yy/{0:d}'.format(a)][...]
+          sig_xy = data['/sig_xy/{0:d}'.format(a)][...]
+
+          sig_xx = sig_xx[elem]
+          sig_yy = sig_yy[elem]
+          sig_xy = sig_xy[elem]
+
+          idx = np.where(np.abs(dr) < h * np.sqrt(2.))[0]
+
+          sig_xx[idx] = np.NaN
+          sig_yy[idx] = np.NaN
+          sig_xy[idx] = np.NaN
+
+          axes[0].plot(dr, sig_xx, **color_stress(nx, stress), **label_stress_minimal(stress))
+          axes[1].plot(dr, sig_yy, **color_stress(nx, stress))
+          axes[2].plot(dr, sig_xy, **color_stress(nx, stress))
+
+          idx = np.where(a == Ameasure)[0]
+          kII = kII_data[stress][idx]
+          r = np.array(dr, copy=True)
+          r[dr <= 0] = 1.0
+
+          sig_xx = -kII / np.sqrt(2.0 * np.pi * r) * np.sin(T / 2.0) * (2.0 + np.cos(T / 2.0) * np.cos(3.0 * T / 2.0))
+          sig_yy = +kII / np.sqrt(2.0 * np.pi * r) * np.sin(T / 2.0) *        np.cos(T / 2.0) * np.cos(3.0 * T / 2.0)
+          sig_xy = +kII / np.sqrt(2.0 * np.pi * r) * np.cos(T / 2.0) * (1.0 - np.sin(T / 2.0) * np.sin(3.0 * T / 2.0))
+
+          sig_xy += sig_bot
+          print(sig_bot, sig_top)
+
+          sig_xx[dr <= 0] = np.NaN
+          sig_yy[dr <= 0] = np.NaN
+          sig_xy[dr <= 0] = np.NaN
+
+          # print(sig_xy[-10:])
+
+          axes[0].plot(dr, sig_xx, **color_stress(nx, stress), lw=1)
+          axes[1].plot(dr, sig_yy, **color_stress(nx, stress), lw=1)
+          axes[2].plot(dr, sig_xy, **color_stress(nx, stress), lw=1)
+
+      axes[0].legend()
+
+      gplt.savefig('lefm_fit-kII/xx-yy/const-theta/{0:s}_A={1:d}_stress=var.pdf'.format(theta, a))
+      plt.close()

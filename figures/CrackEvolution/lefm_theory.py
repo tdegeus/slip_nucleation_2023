@@ -93,7 +93,7 @@ for ax in axes:
   ax.get_xaxis().set_visible(False)
   ax.get_yaxis().set_visible(False)
 
-gplt.savefig('lefm_theory/stress-field/theta-r.pdf')
+gplt.savefig('lefm_theory/stress-field/theta-r.pdf', bbox_inches='tight')
 
 # ----
 
@@ -125,7 +125,7 @@ for ax in axes:
   ax.get_xaxis().set_visible(False)
   ax.get_yaxis().set_visible(False)
 
-gplt.savefig('lefm_theory/stress-field/stress.pdf')
+gplt.savefig('lefm_theory/stress-field/stress.pdf', bbox_inches='tight')
 
 # ----
 
@@ -150,7 +150,7 @@ for ax in axes:
   ax.get_xaxis().set_visible(False)
   ax.get_yaxis().set_visible(False)
 
-gplt.savefig('lefm_theory/stress-field/stress-equivalent.pdf')
+gplt.savefig('lefm_theory/stress-field/stress-equivalent.pdf', bbox_inches='tight')
 
 # --------------------------------------------------------------------------------------------------
 
