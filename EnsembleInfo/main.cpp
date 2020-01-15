@@ -494,7 +494,7 @@ int main(int argc, const char** argv)
   std::string outname = args["--outname"].asString();
   // - default path
   if (outpath.size() == 0)
-    outpath = cpppath::common_dirname(files);
+    outpath = cpppath::commondirname(files);
   // - convert name to path
   outname = cpppath::join({outpath, outname});
 
