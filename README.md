@@ -1,2 +1,32 @@
-# P22c_code
-Stress drop and dynamics
+# Front dynamics - Codes
+
+Codes to measure stress drop and dynamics from pre-run simulations.
+
+## Codes
+
+### EnsembleInfo
+
+Read information (avalanche size, stress, strain, ...) of an ensemble.
+
+## Environment
+
+For each code the environment can be entirely set using *Conda*. In particular, each code has a file `environment.yaml` which contains the necessary dependencies. 
+
+*   Create an environment based on the environment file:
+
+    ```
+    conda env create --name NAME --file FILE
+    ```
+
+*   Update an environment based on the environment file:
+    
+    ```
+    source activate NAME
+    conda env update --file FILE
+    ```
+
+    or 
+
+    ```
+    conda env update --name NAME --file FILE
+    ```
