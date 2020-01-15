@@ -8,6 +8,10 @@ Codes to measure stress drop and dynamics from pre-run simulations.
 
 Read information (avalanche size, stress, strain, ...) of an ensemble.
 
+### AvalancheEvolution_stress
+
+Extract time evolution of a specific push. This reruns the push and store the output at different avalanche radii `A`.
+
 ## Environment
 
 For each code the environment can be entirely set using *Conda*. In particular, each code has a file `environment.yaml` which contains the necessary dependencies. 

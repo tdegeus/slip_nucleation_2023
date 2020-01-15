@@ -41,5 +41,3 @@ else()
         -DGMATELASTOPLASTICQPOT_ENABLE_ASSERT
         -DGOOSEFEM_ENABLE_ASSERT)
 endif()
-
-configure_file("makeJob.py" "makeJob.py" COPYONLY)
