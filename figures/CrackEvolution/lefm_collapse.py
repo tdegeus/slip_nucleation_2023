@@ -67,66 +67,15 @@ plastic = np.array(plastic).reshape(-1)
 ny = int((regular.nely() - 1)/2)
 
 # --------------------------------------------------------------------------------------------------
-# constant dy
+# theta = [0, pi/4, pi/2], constant A, varying stress
 # --------------------------------------------------------------------------------------------------
 
 if True:
 
-  for dh in [0, 4, 30, 60]:
+  with h5py.File(path(nx=nx, fname='EnsembleInfo.hdf5'), 'r') as data:
 
-    for a in [100, 300, 500, 700]:
-
-      fig, axes = gplt.subplots(ncols=3)
-
-      for ax in axes:
-        ax.set_xlabel(r'$(r - r_\mathrm{tip}) / h$')
-
-      axes[0].set_ylabel(r'$\sigma_{xx}$')
-      axes[1].set_ylabel(r'$\sigma_{yy}$')
-      axes[2].set_ylabel(r'$\sigma_{xy}$')
-
-      for ax in axes:
-        ax.set_xlim([-400, +400])
-
-      axes[0].set_ylim([-0.1, +0.1])
-      axes[1].set_ylim([-0.1, +0.1])
-      axes[2].set_ylim([+0.0, +0.2])
-
-      gplt.text(.05, .9, r'$\Delta y / h = %d$' % dh, units='relative', axis=axes[1], bbox=dict(edgecolor='black', boxstyle=BoxStyle("Round, pad=0.3"), facecolor='white'))
-
-      for stress in ['stress=0d6', 'stress=1d6', 'stress=2d6', 'stress=3d6', 'stress=4d6', 'stress=5d6', 'stress=6d6']:
-
-        with h5py.File(path(key='CrackEvolution_stress', nx=nx, stress=stress, fname='data_sync-A_element-components.hdf5'), 'r') as data:
-
-          sig_xx = data['/sig_xx/{0:d}'.format(a)][...]
-          sig_yy = data['/sig_yy/{0:d}'.format(a)][...]
-          sig_xy = data['/sig_xy/{0:d}'.format(a)][...]
-
-          axes[0].plot(
-            np.arange(N)[:mid] - a/2,
-            sig_xx[plastic+dh*N][:mid],
-            **color_stress(nx, stress), **label_stress_minimal(stress))
-
-          axes[1].plot(
-            np.arange(N)[:mid] - a/2,
-            sig_yy[plastic+dh*N][:mid],
-            **color_stress(nx, stress))
-
-          axes[2].plot(
-            np.arange(N)[:mid] - a/2,
-            sig_xy[plastic+dh*N][:mid],
-            **color_stress(nx, stress))
-
-      axes[0].legend()
-
-      gplt.savefig('lefm/const-dy/dy={0:d}_A={1:d}_stress=var.pdf'.format(dh, a))
-      plt.close()
-
-# --------------------------------------------------------------------------------------------------
-# theta = [0, pi/4, pi/2, -pi/4, -pi/2], constant A, varying stress
-# --------------------------------------------------------------------------------------------------
-
-if True:
+    sig_bot = data['/averages/sigd_bottom'][...]
+    sig_top = data['/averages/sigd_top'][...]
 
   for theta in ['theta=0', 'theta=pi?4', 'theta=pi?2', 'theta=-pi?4', 'theta=-pi?2']:
 
@@ -190,20 +139,22 @@ if True:
       for ax in axes:
         ax.set_xlabel(r'$(r - r_\mathrm{tip}) / h$')
 
-      axes[0].set_ylabel(r'$\sigma_{xx}$')
-      axes[1].set_ylabel(r'$\sigma_{yy}$')
-      axes[2].set_ylabel(r'$\sigma_{xy}$')
+      axes[0].set_ylabel(r'$\sigma_{xx} / (\sigma - \sigma_c)$')
+      axes[1].set_ylabel(r'$\sigma_{yy} / (\sigma - \sigma_c)$')
+      axes[2].set_ylabel(r'$(\sigma_{xy} - \sigma_c) / (\sigma - \sigma_c)$')
 
       for ax in axes:
         ax.set_xlim([0, 500])
 
-      axes[0].set_ylim([-0.1, +0.1])
-      axes[1].set_ylim([-0.1, +0.1])
-      axes[2].set_ylim([+0.0, +0.2])
+      axes[0].set_ylim([-0.4, +0.4])
+      axes[1].set_ylim([-0.4, +0.4])
+      axes[2].set_ylim([-0.4, +0.4])
 
       gplt.text(.05, .9, label, units='relative', axis=axes[1], bbox=dict(edgecolor='black', boxstyle=BoxStyle("Round, pad=0.3"), facecolor='white'))
 
       for stress in ['stress=0d6', 'stress=1d6', 'stress=2d6', 'stress=3d6', 'stress=4d6', 'stress=5d6', 'stress=6d6'][::-1]:
+
+        if stress == 'stress=0d6': continue
 
         with h5py.File(path(key='CrackEvolution_stress', nx=nx, stress=stress, fname='data_sync-A_element-components.hdf5'), 'r') as data:
 
@@ -215,6 +166,12 @@ if True:
           sig_yy = sig_yy[elem]
           sig_xy = sig_xy[elem]
 
+          sig_inf = num_stress(stress) * (sig_top - sig_bot)
+
+          # sigma_c = np.mean(sig_xy[:100])
+          # sigma_c = 0.15490721596789805
+          sigma_c = sig_bot
+
           idx = np.where(np.abs(dr) < h * np.sqrt(2.))[0]
 
           sig_xx[idx] = np.NaN
@@ -223,22 +180,22 @@ if True:
 
           axes[0].plot(
             dr,
-            sig_xx,
+            sig_xx / sig_inf,
             **color_stress(nx, stress), **label_stress_minimal(stress))
 
           axes[1].plot(
             dr,
-            sig_yy,
+            sig_yy / sig_inf,
             **color_stress(nx, stress))
 
           axes[2].plot(
             dr,
-            sig_xy,
+            (sig_xy - sigma_c) / sig_inf,
             **color_stress(nx, stress))
 
       axes[0].legend()
 
-      gplt.savefig('lefm/const-theta/{0:s}_A={1:d}_stress=var.pdf'.format(theta, a))
+      gplt.savefig('lefm_collapse/const-theta/{0:s}_A={1:d}_stress=var.pdf'.format(theta, a))
       plt.close()
 
 # --------------------------------------------------------------------------------------------------
@@ -256,16 +213,16 @@ if True:
       for ax in axes:
         ax.set_xlabel(r'$(r - r_\mathrm{tip}) / h$')
 
-      axes[0].set_ylabel(r'$\sigma_{xx}$')
-      axes[1].set_ylabel(r'$\sigma_{yy}$')
-      axes[2].set_ylabel(r'$\sigma_{xy}$')
+      axes[0].set_ylabel(r'$\sigma_{xx} / \sqrt{A}$')
+      axes[1].set_ylabel(r'$\sigma_{yy} / \sqrt{A}$')
+      axes[2].set_ylabel(r'$(\sigma_{xy} - \sigma_c) / \sqrt{A}$')
 
       for ax in axes:
         ax.set_xlim([0, 500])
 
-      axes[0].set_ylim([-0.1, +0.1])
-      axes[1].set_ylim([-0.1, +0.1])
-      axes[2].set_ylim([+0.0, +0.2])
+      axes[0].set_ylim([-0.01, +0.01])
+      axes[1].set_ylim([-0.01, +0.01])
+      axes[2].set_ylim([-0.01, +0.01])
 
       if   theta == 'theta=0'    : label = r'$\theta = 0$, '         + label_stress(stress)['label']
       elif theta == 'theta=pi?4' : label = r'$\theta = \pi / 4$, '   + label_stress(stress)['label']
@@ -338,6 +295,9 @@ if True:
           sig_yy = sig_yy[elem]
           sig_xy = sig_xy[elem]
 
+          # sigma_c = np.mean(sig_xy[:100])
+          sigma_c = 0.15490721596789805
+
           idx = np.where(np.abs(dr) < h * np.sqrt(2.))[0]
 
           sig_xx[idx] = np.NaN
@@ -349,21 +309,21 @@ if True:
 
           axes[0].plot(
             dr,
-            sig_xx,
+            sig_xx / np.sqrt(1. * a),
             color=cmap(ia), **l)
 
           axes[1].plot(
             dr,
-            sig_yy,
+            sig_yy / np.sqrt(1. * a),
             color=cmap(ia))
 
           axes[2].plot(
             dr,
-            sig_xy,
+            (sig_xy - sigma_c) / np.sqrt(1. * a),
             color=cmap(ia))
 
       axes[0].legend()
 
-      gplt.savefig('lefm/const-theta/{0:s}_{1:s}_A=var.pdf'.format(stress, theta))
+      gplt.savefig('lefm_collapse/const-theta/{0:s}_{1:s}_A=var.pdf'.format(stress, theta))
       plt.close()
 
