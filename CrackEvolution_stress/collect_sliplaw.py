@@ -25,10 +25,7 @@ with h5py.File(files[0], 'r') as data:
 # get normalisation
 # ==================================================================================================
 
-ensemble = os.path.split(os.path.dirname(os.path.abspath(files[0])))[-1].split('_stress')[0]
-dbase = '../../../data'
-
-with h5py.File(os.path.join(dbase, ensemble, 'EnsembleInfo.hdf5'), 'r') as data:
+with h5py.File('EnsembleInfo.hdf5', 'r') as data:
   dt   = data['/normalisation/dt'  ][...]
   t0   = data['/normalisation/t0'  ][...]
   sig0 = data['/normalisation/sig0'][...]

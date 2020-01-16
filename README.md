@@ -21,14 +21,14 @@ Extract time evolution of a specific push at a fixed stress. This reruns the pus
 
 To extract the average output, the following functions are available:
 
-*   Collect synchronised at different `A` (avalanche areas):
+*   Collect synchronised at different `A` (resulting in a scatter in time `t`):
 
     -   `collect_sync-A_element-components.py`
     -   `collect_sync-A_element.py`
     -   `collect_sync-A_global.py`
     -   `collect_sync-A_plastic.py`
 
-*   Collect synchronised at different `t` (times, starting from the moment that the avalanches spanned half the system size):
+*   Collect synchronised at different `t` starting from the moment that the avalanches spanned half the system size (resulting in a scatter in `A`):
 
     -   `collect_sync-t_element.py`
     -   `collect_sync-t_global.py`
