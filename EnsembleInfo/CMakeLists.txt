@@ -8,22 +8,21 @@ set(CMAKE_BUILD_TYPE Release)
 
 add_executable(${PROJECT_NAME} main.cpp)
 
-find_package(BLAS REQUIRED)
-find_package(LAPACK REQUIRED)
-find_package(HDF5 REQUIRED)
+set(HIGHFIVE_USE_BOOST 0)
+set(HIGHFIVE_USE_XTENSOR 1)
+
 find_package(xtensor REQUIRED)
+find_package(HighFive REQUIRED)
 find_package(docopt REQUIRED)
 find_package(GooseFEM REQUIRED)
 find_package(GMatElastoPlasticQPot REQUIRED)
 find_package(fmt REQUIRED)
 
 target_link_libraries(${PROJECT_NAME}
-    ${BLAS_LIBRARIES}
-    ${LAPACK_LIBRARIES}
-    ${HDF5_LIBRARIES}
     xtensor
     xtensor::optimize
     xtensor::use_xsimd
+    HighFive
     GooseFEM
     GMatElastoPlasticQPot
     docopt
