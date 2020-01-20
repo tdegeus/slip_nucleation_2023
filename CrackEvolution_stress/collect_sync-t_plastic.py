@@ -1,3 +1,12 @@
+r'''
+Collected data at synchronised time `t`, for "plastic" blocks along the weak layer.
+
+Usage:
+
+1.  Move to the folder with the output of the C++ program.
+1.  Copy the relevant `EnsembleInfo.hdf5` to this folder.
+2.  Run this script using Python.
+'''
 
 import os, subprocess, h5py
 import numpy      as np
@@ -35,10 +44,7 @@ with h5py.File(files[0], 'r') as data:
 # get normalisation
 # ==================================================================================================
 
-ensemble = os.path.split(os.path.dirname(os.path.abspath(files[0])))[-1].split('_stress')[0]
-dbase = '../../../data'
-
-with h5py.File(os.path.join(dbase, ensemble, 'EnsembleInfo.hdf5'), 'r') as data:
+with h5py.File('EnsembleInfo.hdf5', 'r') as data:
   dt   = float(data['/normalisation/dt'  ][...])
   t0   = float(data['/normalisation/t0'  ][...])
   sig0 = float(data['/normalisation/sig0'][...])

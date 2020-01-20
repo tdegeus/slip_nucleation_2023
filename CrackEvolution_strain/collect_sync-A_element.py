@@ -1,3 +1,13 @@
+r'''
+Collected data at synchronised avalanche area `A`,
+for the local response (at the individual "element" level).
+
+Usage:
+
+1.  Move to the folder with the output of the C++ program.
+1.  Copy the relevant `EnsembleInfo.hdf5` to this folder.
+2.  Run this script using Python.
+'''
 
 import os, subprocess, h5py
 import numpy                  as np
@@ -27,26 +37,17 @@ files = [file for file in files if len(file.split('id='))>1]
 # get constants
 # ==================================================================================================
 
-data = h5py.File(files[0], 'r')
-
-plastic = data['/meta/plastic'][...]
-nx      = len(plastic)
-h       = np.pi
-
-data.close()
+with h5py.File(files[0], 'r') as data:
+  plastic = data['/meta/plastic'][...]
+  nx      = len(plastic)
+  h       = np.pi
 
 # ==================================================================================================
 # get normalisation
 # ==================================================================================================
 
-ensemble = os.path.split(os.path.dirname(os.path.abspath(files[0])))[-1].split('_stress')[0]
-dbase = '../../../data'
-
-data = h5py.File(os.path.join(dbase, ensemble, 'EnsembleInfo.hdf5'), 'r')
-
-sig0 = data['/normalisation/sig0'][...]
-
-data.close()
+with h5py.File('EnsembleInfo.hdf5', 'r') as data:
+  sig0 = data['/normalisation/sig0'][...]
 
 # ==================================================================================================
 # get mapping
@@ -74,118 +75,123 @@ elmat = regular.elementMatrix()
 # crack sizes to read
 A_read = np.arange(nx+1)[::10]
 
-# output
-data = h5py.File('data_sync-A_element.hdf5', 'w')
+# open XDMF-file with metadata that allow ParaView to interpret the HDF5-file
 xdmf = pv.TimeSeries()
 
-# write mesh
-data['/coor'] = coor
-data['/conn'] = conn
+# open the output HDF5-file
+with h5py.File('data_sync-A_element.hdf5', 'w') as out:
 
-# loop over cracks
-for a in A_read:
+  # write mesh
+  out['/coor'] = coor
+  out['/conn'] = conn
 
-  # initialise average
-  Sig_xx = np.zeros(regular.nelem())
-  Sig_xy = np.zeros(regular.nelem())
-  Sig_yy = np.zeros(regular.nelem())
+  # loop over cracks
+  for a in A_read:
 
-  # normalisation
-  norm = 0
+    # initialise average
+    Sig_xx = np.zeros(regular.nelem())
+    Sig_xy = np.zeros(regular.nelem())
+    Sig_yy = np.zeros(regular.nelem())
 
-  # print progress
-  print('A = ', a)
+    # normalisation
+    norm = 0
 
-  # loop over files
-  for file in files:
+    # print progress
+    print('A = ', a)
 
-    # open data file
-    source = h5py.File(file, 'r')
+    # loop over files
+    for file in files:
 
-    # get stored "A"
-    A = source["/sync-A/stored"][...]
+      # open data file
+      with h5py.File(file, 'r') as data:
 
-    # skip file if "a" is not stored
-    if a not in A:
-      source.close()
+        # get stored "A"
+        A = data["/sync-A/stored"][...]
+
+        # skip file if "a" is not stored
+        if a not in A:
+          continue
+
+        # get the reference configuration
+        idx0  = data['/sync-A/plastic/{0:d}/idx' .format(np.min(A))][...]
+        epsp0 = data['/sync-A/plastic/{0:d}/epsp'.format(np.min(A))][...]
+
+        # read data
+        sig_xx = data["/sync-A/element/{0:d}/sig_xx".format(a)][...]
+        sig_xy = data["/sync-A/element/{0:d}/sig_xy".format(a)][...]
+        sig_yy = data["/sync-A/element/{0:d}/sig_yy".format(a)][...]
+
+        # get current configuration
+        idx  = data['/sync-A/plastic/{0:d}/idx' .format(a)][...]
+        epsp = data['/sync-A/plastic/{0:d}/epsp'.format(a)][...]
+        x    = data['/sync-A/plastic/{0:d}/x'   .format(a)][...]
+
+      # indices of blocks where yielding took place
+      icell = np.argwhere(idx0 != idx).ravel()
+
+      # shift to compute barycentre
+      icell[icell > mid] -= nx
+
+      # renumber index
+      if len(icell) > 0:
+        center = np.mean(icell)
+        renum  = getRenumIndex(int(center), 0, nx)
+      else:
+        renum = np.arange(nx)
+
+      # element numbers such that the crack is aligned
+      get = elmat[:, renum].ravel()
+
+      # add to average
+      Sig_xx += mapping.mapToRegular(sig_xx)[get]
+      Sig_xy += mapping.mapToRegular(sig_xy)[get]
+      Sig_yy += mapping.mapToRegular(sig_yy)[get]
+
+      # update normalisation
+      norm += 1
+
+    # ensure sufficient data
+    if norm < 30:
       continue
 
-    # get the reference configuration
-    idx0  = source['/sync-A/plastic/{0:d}/idx' .format(np.min(A))][...]
-    epsp0 = source['/sync-A/plastic/{0:d}/epsp'.format(np.min(A))][...]
+    # average
+    sig_xx = Sig_xx / float(norm)
+    sig_xy = Sig_xy / float(norm)
+    sig_yy = Sig_yy / float(norm)
 
-    # read data
-    sig_xx = source["/sync-A/element/{0:d}/sig_xx".format(a)][...]
-    sig_xy = source["/sync-A/element/{0:d}/sig_xy".format(a)][...]
-    sig_yy = source["/sync-A/element/{0:d}/sig_yy".format(a)][...]
+    # hydrostatic stress
+    sig_m = (sig_xx + sig_yy) / 2.
 
-    # get current configuration
-    idx  = source['/sync-A/plastic/{0:d}/idx' .format(a)][...]
-    epsp = source['/sync-A/plastic/{0:d}/epsp'.format(a)][...]
-    x    = source['/sync-A/plastic/{0:d}/x'   .format(a)][...]
+    # deviatoric stress
+    sigd_xx = sig_xx - sig_m
+    sigd_xy = sig_xy
+    sigd_yy = sig_yy - sig_m
 
-    # close the file
-    source.close()
+    # equivalent stress
+    sig_eq = np.sqrt(2.0 * (sigd_xx**2.0 + sigd_yy**2.0 + 2.0 * sigd_xy**2.0))
 
-    # indices of blocks where yielding took place
-    icell = np.argwhere(idx0 != idx).ravel()
+    # write equivalent stress
+    dataset_eq = '/sig_eq/' + str(a)
+    out[dataset_eq] = sig_eq / sig0
 
-    # shift to compute barycentre
-    icell[icell > mid] -= nx
+    # write hydrostatic stress
+    dataset_m = '/sig_m/' + str(a)
+    out[dataset_m] = sig_m / sig0
 
-    # renumber index
-    if len(icell) > 0:
-      center = np.mean(icell)
-      renum  = getRenumIndex(int(center), 0, nx)
-    else:
-      renum = np.arange(nx)
+    # add to metadata
+    # - initialise Increment
+    xdmf_inc = pv.Increment(
+      pv.Connectivity(out.filename, "/conn", pv.ElementType.Quadrilateral, conn.shape),
+      pv.Coordinates (out.filename, "/coor"                              , coor.shape),
+    )
+    # - add attributes to Increment
+    xdmf_inc.push_back(pv.Attribute(
+      out.filename, dataset_eq, "sig_eq", pv.AttributeType.Cell, out[dataset_eq].shape))
+    # - add attributes to Increment
+    xdmf_inc.push_back(pv.Attribute(
+      out.filename, dataset_m, "sig_m", pv.AttributeType.Cell, out[dataset_m].shape))
+    # - add Increment to TimeSeries
+    xdmf.push_back(xdmf_inc)
 
-    # element numbers such that the crack is aligned
-    get = elmat[:, renum].ravel()
-
-    # add to average
-    Sig_xx += mapping.mapToRegular(sig_xx)[get]
-    Sig_xy += mapping.mapToRegular(sig_xy)[get]
-    Sig_yy += mapping.mapToRegular(sig_yy)[get]
-
-    # update normalisation
-    norm += 1
-
-  # ensure sufficient data
-  if norm < 30:
-    continue
-
-  # average
-  sig_xx = Sig_xx / float(norm)
-  sig_xy = Sig_xy / float(norm)
-  sig_yy = Sig_yy / float(norm)
-
-  # hydrostatic stress
-  sig_m = (sig_xx + sig_yy) / 2.
-
-  # deviatoric stress
-  sigd_xx = sig_xx - sig_m
-  sigd_xy = sig_xy
-  sigd_yy = sig_yy - sig_m
-
-  # equivalent stress
-  sig_eq = np.sqrt(2.0 * (sigd_xx**2.0 + sigd_yy**2.0 + 2.0 * sigd_xy**2.0))
-
-  # write
-  dataset = '/sig_eq/' + str(a)
-  data[dataset] = sig_eq / sig0
-
-  # add to metadata
-  # - initialise Increment
-  xdmf_inc = pv.Increment(
-    pv.Connectivity(data.filename, "/conn", pv.ElementType.Quadrilateral, conn.shape),
-    pv.Coordinates (data.filename, "/coor"                              , coor.shape),
-  )
-  # - add attributes to Increment
-  xdmf_inc.push_back(pv.Attribute(
-    data.filename, dataset, "sig_eq", pv.AttributeType.Cell, data[dataset].shape))
-  # - add Increment to TimeSeries
-  xdmf.push_back(xdmf_inc)
-
-# write output
+# write metadata
 xdmf.write('data_sync-A_element.xdmf')
