@@ -88,9 +88,9 @@ for file in files:
 # save data
 # ==================================================================================================
 
-with h5py.File(output, 'w'):
+with h5py.File(output, 'w') as data:
 
-  output['/A'] = np.arange(nx + 1)
-  output['/norm'] = norm
-  output['/count'] = count
+  data['/A'] = np.arange(nx + 1)
+  data['/norm'] = norm
+  data['/count'] = count
 
