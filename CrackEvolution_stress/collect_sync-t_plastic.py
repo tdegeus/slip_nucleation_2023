@@ -1,16 +1,25 @@
 r'''
-Collected data at synchronised time `t`, for "plastic" blocks along the weak layer.
+Collected data at synchronised time `t`,
+for "plastic" blocks along the weak layer.
 
 Usage:
+  collect_sync-t_plastic.py [options] <files>...
 
-1.  Move to the folder with the output of the C++ program.
-1.  Copy the relevant `EnsembleInfo.hdf5` to this folder.
-2.  Run this script using Python.
+Arguments:
+  <files>   Files from which to collect data.
+
+Options:
+  -o, --output=<N>  Output file. [default: output.hdf5]
+  -i, --info=<N>    Path to EnsembleInfo. [default: EnsembleInfo.hdf5]
 '''
 
-import os, subprocess, h5py
-import numpy      as np
-import GooseFEM   as gf
+import os
+import sys
+import docopt
+import click
+import h5py
+import numpy as np
+import GooseFEM as gf
 
 # ==================================================================================================
 # horizontal shift
@@ -23,13 +32,23 @@ def getRenumIndex(old, new, N):
   return idx[old+N-new: old+2*N-new]
 
 # ==================================================================================================
-# get all simulation files, split in ensembles
+# get files
 # ==================================================================================================
 
-files = subprocess.check_output("find . -iname '*.hdf5'", shell=True).decode('utf-8')
-files = list(filter(None, files.split('\n')))
-files = [os.path.relpath(file) for file in files]
-files = [file for file in files if len(file.split('id='))>1]
+args = docopt.docopt(__doc__)
+
+files = args['<files>']
+info = args['--info']
+output = args['--output']
+
+for file in files + [info]:
+  if not os.path.isfile(file):
+    raise IOError('"{0:s}" does not exist'.format(file))
+
+if os.path.isfile(output):
+  print('"{0:s}" exists'.format(output))
+  if not click.confirm('Proceed?'):
+    sys.exit(1)
 
 # ==================================================================================================
 # get constants
@@ -44,7 +63,7 @@ with h5py.File(files[0], 'r') as data:
 # get normalisation
 # ==================================================================================================
 
-with h5py.File('EnsembleInfo.hdf5', 'r') as data:
+with h5py.File(info, 'r') as data:
   dt   = float(data['/normalisation/dt'  ][...])
   t0   = float(data['/normalisation/t0'  ][...])
   sig0 = float(data['/normalisation/sig0'][...])
@@ -84,7 +103,7 @@ out = {
 
 for key in out:
 
-  out[key]['sig_xx'] = np.zeros((5000, nx), dtype='float')
+  out[key]['sig_xx'] = np.zeros((5000, nx), dtype='float') # (t, x)
   out[key]['sig_xy'] = np.zeros((5000, nx), dtype='float')
   out[key]['sig_yy'] = np.zeros((5000, nx), dtype='float')
   out[key]['epsp'  ] = np.zeros((5000, nx), dtype='float')
@@ -105,7 +124,7 @@ for file in files:
   with h5py.File(file, 'r') as data:
 
     # get stored "A"
-    T = source["/sync-t/stored"][...]
+    T = data["/sync-t/stored"][...]
 
     # normalisation
     norm[T] += 1
@@ -221,7 +240,7 @@ def store(data, key,
 # -----
 
 # open output file
-with h5py.File('data_sync-t_plastic.hdf5', 'w') as data:
+with h5py.File(output, 'w') as data:
 
   # ---------
 
