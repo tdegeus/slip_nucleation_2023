@@ -1,5 +1,6 @@
 r'''
-Collected data at synchronised avalanche area `A`, for "plastic" blocks along the weak layer.
+Collected data at synchronised avalanche area `A`,
+for "plastic" blocks along the weak layer.
 
 Usage:
   collect_sync-A_plastic.py [options] <files>...
@@ -37,14 +38,15 @@ def getRenumIndex(old, new, N):
 args = docopt.docopt(__doc__)
 
 files = args['<files>']
-output = args['--output']
 info = args['--info']
+output = args['--output']
 
 for file in files + [info]:
   if not os.path.isfile(file):
     raise IOError('"{0:s}" does not exist'.format(file))
 
 if os.path.isfile(output):
+  print('"{0:s}" exists'.format(output))
   if not click.confirm('Proceed?'):
     sys.exit(1)
 
@@ -345,5 +347,3 @@ with h5py.File(output, 'w') as data:
   store(data, 'crack',
     m_sig_xx, m_sig_xy, m_sig_yy, m_epsp, m_depsp, m_x, m_S,
     v_sig_xx, v_sig_xy, v_sig_yy, v_epsp, v_depsp, v_x, v_S)
-
-

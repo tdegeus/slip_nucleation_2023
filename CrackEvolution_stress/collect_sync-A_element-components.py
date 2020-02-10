@@ -1,18 +1,27 @@
 r'''
 Collected data at synchronised avalanche area `A`,
 for the local response (at the individual "element" level).
-Note that this function store the individual stress components.
+Note that this function stores the individual stress components.
 
 Usage:
+  collect_sync-A_element-components.py [options] <files>...
 
-1.  Move to the folder with the output of the C++ program.
-1.  Copy the relevant `EnsembleInfo.hdf5` to this folder.
-2.  Run this script using Python.
+Arguments:
+  <files>   Files from which to collect data.
+
+Options:
+  -o, --output=<N>  Output file. [default: output.hdf5]
+  -x, --xdmf=<N>    Extension of XDMF file: basename is "output" option. [default: xdmf]
+  -i, --info=<N>    Path to EnsembleInfo. [default: EnsembleInfo.hdf5]
 '''
 
-import os, subprocess, h5py
-import numpy                  as np
-import GooseFEM               as gf
+import os
+import sys
+import docopt
+import click
+import h5py
+import numpy as np
+import GooseFEM as gf
 import GooseFEM.ParaView.HDF5 as pv
 
 # ==================================================================================================
@@ -26,13 +35,25 @@ def getRenumIndex(old, new, N):
   return idx[old+N-new: old+2*N-new]
 
 # ==================================================================================================
-# get all simulation files, split in ensembles
+# get files
 # ==================================================================================================
 
-files = subprocess.check_output("find . -iname '*.hdf5'", shell=True).decode('utf-8')
-files = list(filter(None, files.split('\n')))
-files = [os.path.relpath(file) for file in files]
-files = [file for file in files if len(file.split('id='))>1]
+args = docopt.docopt(__doc__)
+
+files = args['<files>']
+info = args['--info']
+output = args['--output']
+output_xdmf = os.path.splitext(output)[0] + args['--xdmf']
+
+for file in files + [info]:
+  if not os.path.isfile(file):
+    raise IOError('"{0:s}" does not exist'.format(file))
+
+for file in [output, output_xdmf]:
+  if os.path.isfile(file):
+    print('"{0:s}" exists'.format(file))
+    if not click.confirm('Proceed?'):
+      sys.exit(1)
 
 # ==================================================================================================
 # get constants
@@ -47,7 +68,7 @@ with h5py.File(files[0], 'r') as data:
 # get normalisation
 # ==================================================================================================
 
-with h5py.File('EnsembleInfo.hdf5', 'r') as data:
+with h5py.File(info, 'r') as data:
   sig0 = data['/normalisation/sig0'][...]
 
 # ==================================================================================================
@@ -80,7 +101,7 @@ A_read = np.arange(nx+1)[:mid:10]
 xdmf = pv.TimeSeries()
 
 # open the output HDF5-file
-with h5py.File('data_sync-A_element-components.hdf5', 'w') as out:
+with h5py.File(output, 'w') as out:
 
   # write mesh
   out['/coor'] = coor
@@ -179,4 +200,4 @@ with h5py.File('data_sync-A_element-components.hdf5', 'w') as out:
     xdmf.push_back(xdmf_inc)
 
 # write metadata
-xdmf.write('data_sync-A_element-components.xdmf')
+xdmf.write(output_xdmf)

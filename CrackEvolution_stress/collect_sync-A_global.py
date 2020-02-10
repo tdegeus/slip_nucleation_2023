@@ -1,31 +1,50 @@
 r'''
-Collected data at synchronised avalanche area `A`, for the macroscopic (or "global") response.
+Collected data at synchronised avalanche area `A`,
+for the macroscopic (or "global") response.
 
 Usage:
+  collect_sync-A_global.py [options] <files>...
 
-1.  Move to the folder with the output of the C++ program.
-1.  Copy the relevant `EnsembleInfo.hdf5` to this folder.
-2.  Run this script using Python.
+Arguments:
+  <files>   Files from which to collect data.
+
+Options:
+  -o, --output=<N>  Output file. [default: output.hdf5]
+  -i, --info=<N>    Path to EnsembleInfo. [default: EnsembleInfo.hdf5]
 '''
 
-import os, subprocess, h5py
-import numpy      as np
-import GooseFEM   as gf
+import os
+import sys
+import docopt
+import click
+import h5py
+import numpy as np
+import GooseFEM as gf
 
 # ==================================================================================================
-# get all simulation files, split in ensembles
+# get files
 # ==================================================================================================
 
-files = subprocess.check_output("find . -iname '*.hdf5'", shell=True).decode('utf-8')
-files = list(filter(None, files.split('\n')))
-files = [os.path.relpath(file) for file in files]
-files = [file for file in files if len(file.split('id='))>1]
+args = docopt.docopt(__doc__)
+
+files = args['<files>']
+info = args['--info']
+output = args['--output']
+
+for file in files + [info]:
+  if not os.path.isfile(file):
+    raise IOError('"{0:s}" does not exist'.format(file))
+
+if os.path.isfile(output):
+  print('"{0:s}" exists'.format(output))
+  if not click.confirm('Proceed?'):
+    sys.exit(1)
 
 # ==================================================================================================
 # get normalisation
 # ==================================================================================================
 
-with h5py.File('EnsembleInfo.hdf5', 'r') as data:
+with h5py.File(info, 'r') as data:
   dt   = data['/normalisation/dt'  ][...]
   t0   = data['/normalisation/t0'  ][...]
   sig0 = data['/normalisation/sig0'][...]
@@ -144,7 +163,7 @@ v_sig_eq = v_sig_xx * ((m_sig_xx - 0.5 * (m_sig_xx + m_sig_yy)) / m_sig_eq)**2.0
 # -----
 
 # open output file
-with h5py.File('data_sync-A_global.hdf5', 'w') as data:
+with h5py.File(output, 'w') as data:
 
   # store averages
   data['/avr/A'     ] = (out['1st']['A'] / norm).astype(np.int)
