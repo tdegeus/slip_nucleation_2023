@@ -90,7 +90,11 @@ for file in files:
 
 with h5py.File(output, 'w') as data:
 
+  n = np.where(norm > 0, norm, 1)
+  n = n.reshape(-1, 1)
+  P = count / n
+
   data['/A'] = np.arange(nx + 1)
   data['/norm'] = norm
-  data['/count'] = count
+  data['/P'] = P
 
