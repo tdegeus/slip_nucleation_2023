@@ -28,6 +28,7 @@ To extract the average output, the following functions are available:
     -   `collect_sync-A_global.py`
     -   `collect_sync-A_plastic.py`
     -   `collect_sync-A_connect.py`
+    -   `collect_sync-A_crack-density.py`
 
 *   Collect synchronised at different `t` starting from the moment that the avalanches spanned half the system size (resulting in a scatter in `A`):
 
