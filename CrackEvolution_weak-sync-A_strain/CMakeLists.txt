@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(CrackEvolution_stress)
+project(CrackEvolution_strain)
 
 option(ASSERT "Use assertions" OFF)
 
