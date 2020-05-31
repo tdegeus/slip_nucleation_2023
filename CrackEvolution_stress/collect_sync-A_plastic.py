@@ -95,6 +95,7 @@ elmat = regular.elementMatrix()
 # -------------------------------------------------------------------------
 
 norm = np.zeros((nx+1), dtype='uint')
+norm_x = np.zeros((nx+1), dtype='uint')
 
 out = {
   '1st': {},
@@ -128,6 +129,7 @@ for file in files:
 
     # normalisation
     norm[A] += 1
+    store_x = False
 
     # get the reference configuration
     idx0  = data['/sync-A/plastic/{0:d}/idx' .format(np.min(A))][...]
@@ -137,14 +139,23 @@ for file in files:
     for a in A:
 
       # read data
-      sig_xx = data["/sync-A/element/{0:d}/sig_xx".format(a)][...][plastic]
-      sig_xy = data["/sync-A/element/{0:d}/sig_xy".format(a)][...][plastic]
-      sig_yy = data["/sync-A/element/{0:d}/sig_yy".format(a)][...][plastic]
+      if "/sync-A/element/{0:d}/sig_xx".format(a) in data:
+        sig_xx = data["/sync-A/element/{0:d}/sig_xx".format(a)][...][plastic]
+        sig_xy = data["/sync-A/element/{0:d}/sig_xy".format(a)][...][plastic]
+        sig_yy = data["/sync-A/element/{0:d}/sig_yy".format(a)][...][plastic]
+      else:
+        sig_xx = data["/sync-A/plastic/{0:d}/sig_xx".format(a)][...]
+        sig_xy = data["/sync-A/plastic/{0:d}/sig_xy".format(a)][...]
+        sig_yy = data["/sync-A/plastic/{0:d}/sig_yy".format(a)][...]
 
       # get current configuration
-      idx  = data['/sync-A/plastic/{0:d}/idx' .format(a)][...]
-      epsp = data['/sync-A/plastic/{0:d}/epsp'.format(a)][...]
-      x    = data['/sync-A/plastic/{0:d}/x'   .format(a)][...]
+      idx = data['/sync-A/plastic/{0:d}/idx'.format(a)][...]
+
+      if '/sync-A/plastic/{0:d}/x'.format(a) in data:
+        store_x = True
+        norm_x[A] += 1
+        epsp = data['/sync-A/plastic/{0:d}/epsp'.format(a)][...]
+        x = data['/sync-A/plastic/{0:d}/x'.format(a)][...]
 
       # indices of blocks where yielding took place
       icell = np.argwhere(idx0 != idx).ravel()
@@ -152,30 +163,30 @@ for file in files:
       # shift to compute barycentre
       icell[icell > mid] -= nx
 
-      # renumber index
       if len(icell) > 0:
         center = np.mean(icell)
         renum  = getRenumIndex(int(center), 0, nx)
       else:
         renum = np.arange(nx)
 
-      # add to sum
-      out['1st']['sig_xx'][a,:] += (sig_xx      )[renum]
-      out['1st']['sig_xy'][a,:] += (sig_xy      )[renum]
-      out['1st']['sig_yy'][a,:] += (sig_yy      )[renum]
-      out['1st']['epsp'  ][a,:] += (epsp        )[renum]
-      out['1st']['depsp' ][a,:] += (epsp - epsp0)[renum]
-      out['1st']['x'     ][a,:] += (x           )[renum]
-      out['1st']['S'     ][a,:] += (idx  - idx0 )[renum].astype(np.int)
+      out['1st']['sig_xx'][a,:] += (sig_xx)[renum]
+      out['1st']['sig_xy'][a,:] += (sig_xy)[renum]
+      out['1st']['sig_yy'][a,:] += (sig_yy)[renum]
+      out['1st']['S'][a,:] += (idx  - idx0)[renum].astype(np.int)
+      if store_x:
+        out['1st']['epsp'][a,:] += (epsp)[renum]
+        out['1st']['depsp'][a,:] += (epsp - epsp0)[renum]
+        out['1st']['x'][a,:] += (x)[renum]
 
-      # add to sum
-      out['2nd']['sig_xx'][a,:] += ((sig_xx      )[renum]               ) ** 2.0
-      out['2nd']['sig_xy'][a,:] += ((sig_xy      )[renum]               ) ** 2.0
-      out['2nd']['sig_yy'][a,:] += ((sig_yy      )[renum]               ) ** 2.0
-      out['2nd']['epsp'  ][a,:] += ((epsp        )[renum]               ) ** 2.0
-      out['2nd']['depsp' ][a,:] += ((epsp - epsp0)[renum]               ) ** 2.0
-      out['2nd']['x'     ][a,:] += ((x           )[renum]               ) ** 2.0
-      out['2nd']['S'     ][a,:] += ((idx  - idx0 )[renum].astype(np.int)) ** 2
+      out['2nd']['sig_xx'][a,:] += ((sig_xx)[renum]) ** 2.0
+      out['2nd']['sig_xy'][a,:] += ((sig_xy)[renum]) ** 2.0
+      out['2nd']['sig_yy'][a,:] += ((sig_yy)[renum]) ** 2.0
+      out['2nd']['S'][a,:] += ((idx  - idx0)[renum].astype(np.int)) ** 2
+      if store_x:
+        out['2nd']['epsp'][a,:] += ((epsp)[renum]) ** 2.0
+        out['2nd']['depsp'][a,:] += ((epsp - epsp0)[renum]) ** 2.0
+        out['2nd']['x'][a,:] += ((x)[renum]) ** 2.0
+
 
 # ---------------------------------------------
 # select only measurements with sufficient data
@@ -183,9 +194,10 @@ for file in files:
 
 idx = np.argwhere(norm > 30).ravel()
 
-A    = np.arange(nx + 1)
+A = np.arange(nx + 1)
 norm = norm[idx].astype(np.float)
-A    = A   [idx].astype(np.float)
+norm_x = norm_x[idx].astype(np.float)
+A = A[idx].astype(np.float)
 
 for key in out:
   for field in out[key]:
@@ -250,25 +262,27 @@ with h5py.File(output, 'w') as data:
 
   # allow broadcasting
   norm = norm.reshape((-1,1))
-  A    = A   .reshape((-1,1))
+  norm_x = norm_x.reshape((-1,1))
+  A = A.reshape((-1,1))
 
   # compute mean
   m_sig_xx = out['1st']['sig_xx'] / norm
   m_sig_xy = out['1st']['sig_xy'] / norm
   m_sig_yy = out['1st']['sig_yy'] / norm
-  m_epsp   = out['1st']['epsp'  ] / norm
-  m_depsp  = out['1st']['depsp' ] / norm
-  m_x      = out['1st']['x'     ] / norm
-  m_S      = out['1st']['S'     ] / norm
+  m_S = out['1st']['S'] / norm
+  m_epsp = out['1st']['epsp'] / norm_x
+  m_depsp = out['1st']['depsp'] / norm_x
+  m_x = out['1st']['x'] / norm_x
 
   # compute variance
   v_sig_xx = (out['2nd']['sig_xx'] / norm - (out['1st']['sig_xx'] / norm) ** 2.0 ) * norm / (norm - 1)
   v_sig_xy = (out['2nd']['sig_xy'] / norm - (out['1st']['sig_xy'] / norm) ** 2.0 ) * norm / (norm - 1)
   v_sig_yy = (out['2nd']['sig_yy'] / norm - (out['1st']['sig_yy'] / norm) ** 2.0 ) * norm / (norm - 1)
-  v_epsp   = (out['2nd']['epsp'  ] / norm - (out['1st']['epsp'  ] / norm) ** 2.0 ) * norm / (norm - 1)
-  v_depsp  = (out['2nd']['depsp' ] / norm - (out['1st']['depsp' ] / norm) ** 2.0 ) * norm / (norm - 1)
-  v_x      = (out['2nd']['x'     ] / norm - (out['1st']['x'     ] / norm) ** 2.0 ) * norm / (norm - 1)
-  v_S      = (out['2nd']['S'     ] / norm - (out['1st']['S'     ] / norm) ** 2.0 ) * norm / (norm - 1)
+  v_S = (out['2nd']['S'] / norm - (out['1st']['S'] / norm) ** 2.0 ) * norm / (norm - 1)
+  v_epsp = (out['2nd']['epsp'] / norm_x - (out['1st']['epsp'] / norm_x) ** 2.0 ) * norm_x / (norm_x - 1)
+  v_depsp = (out['2nd']['depsp'] / norm_x - (out['1st']['depsp'] / norm_x) ** 2.0 ) * norm_x / (norm_x - 1)
+  v_x = (out['2nd']['x'] / norm_x - (out['1st']['x'] / norm_x) ** 2.0 ) * norm_x / (norm_x - 1)
+
 
   # store
   store(data, 'element',
@@ -279,25 +293,28 @@ with h5py.File(output, 'w') as data:
 
   # disable broadcasting
   norm = norm.ravel()
-  A    = A   .ravel()
+  norm_x = norm_x.ravel()
+  A = A.ravel()
 
   # compute mean
-  m_sig_xx = np.sum(out['1st']['sig_xx'],axis=1) / (norm*nx)
-  m_sig_xy = np.sum(out['1st']['sig_xy'],axis=1) / (norm*nx)
-  m_sig_yy = np.sum(out['1st']['sig_yy'],axis=1) / (norm*nx)
-  m_epsp   = np.sum(out['1st']['epsp'  ],axis=1) / (norm*nx)
-  m_depsp  = np.sum(out['1st']['depsp' ],axis=1) / (norm*nx)
-  m_x      = np.sum(out['1st']['x'     ],axis=1) / (norm*nx)
-  m_S      = np.sum(out['1st']['S'     ],axis=1) / (norm*nx)
+  m_sig_xx = np.sum(out['1st']['sig_xx'], axis=1) / (norm * nx)
+  m_sig_xy = np.sum(out['1st']['sig_xy'], axis=1) / (norm * nx)
+  m_sig_yy = np.sum(out['1st']['sig_yy'], axis=1) / (norm * nx)
+  m_S = np.sum(out['1st']['S'], axis=1) / (norm * nx)
+  m_epsp = np.sum(out['1st']['epsp'], axis=1) / (norm_x * nx)
+  m_depsp = np.sum(out['1st']['depsp'], axis=1) / (norm_x * nx)
+  m_x = np.sum(out['1st']['x'], axis=1) / (norm_x * nx)
+
 
   # compute variance
-  v_sig_xx = (np.sum(out['2nd']['sig_xx'],axis=1) / (norm*nx) - (np.sum(out['1st']['sig_xx'],axis=1) / (norm*nx)) ** 2.0 ) * (norm*nx) / ((norm*nx) - 1.0)
-  v_sig_xy = (np.sum(out['2nd']['sig_xy'],axis=1) / (norm*nx) - (np.sum(out['1st']['sig_xy'],axis=1) / (norm*nx)) ** 2.0 ) * (norm*nx) / ((norm*nx) - 1.0)
-  v_sig_yy = (np.sum(out['2nd']['sig_yy'],axis=1) / (norm*nx) - (np.sum(out['1st']['sig_yy'],axis=1) / (norm*nx)) ** 2.0 ) * (norm*nx) / ((norm*nx) - 1.0)
-  v_epsp   = (np.sum(out['2nd']['epsp'  ],axis=1) / (norm*nx) - (np.sum(out['1st']['epsp'  ],axis=1) / (norm*nx)) ** 2.0 ) * (norm*nx) / ((norm*nx) - 1.0)
-  v_depsp  = (np.sum(out['2nd']['depsp' ],axis=1) / (norm*nx) - (np.sum(out['1st']['depsp' ],axis=1) / (norm*nx)) ** 2.0 ) * (norm*nx) / ((norm*nx) - 1.0)
-  v_x      = (np.sum(out['2nd']['x'     ],axis=1) / (norm*nx) - (np.sum(out['1st']['x'     ],axis=1) / (norm*nx)) ** 2.0 ) * (norm*nx) / ((norm*nx) - 1.0)
-  v_S      = (np.sum(out['2nd']['S'     ],axis=1) / (norm*nx) - (np.sum(out['1st']['S'     ],axis=1) / (norm*nx)) ** 2.0 ) * (norm*nx) / ((norm*nx) - 1.0)
+  v_sig_xx = (np.sum(out['2nd']['sig_xx'], axis=1) / (norm * nx) - (np.sum(out['1st']['sig_xx'], axis=1) / (norm * nx)) ** 2.0) * (norm * nx) / ((norm * nx) - 1.0)
+  v_sig_xy = (np.sum(out['2nd']['sig_xy'], axis=1) / (norm * nx) - (np.sum(out['1st']['sig_xy'], axis=1) / (norm * nx)) ** 2.0) * (norm * nx) / ((norm * nx) - 1.0)
+  v_sig_yy = (np.sum(out['2nd']['sig_yy'], axis=1) / (norm * nx) - (np.sum(out['1st']['sig_yy'], axis=1) / (norm * nx)) ** 2.0) * (norm * nx) / ((norm * nx) - 1.0)
+  v_S = (np.sum(out['2nd']['S'], axis=1) / (norm * nx) - (np.sum(out['1st']['S'], axis=1) / (norm * nx)) ** 2.0) * (norm * nx) / ((norm * nx) - 1.0)
+  v_epsp = (np.sum(out['2nd']['epsp'], axis=1) / (norm_x * nx) - (np.sum(out['1st']['epsp'], axis=1) / (norm_x * nx)) ** 2.0) * (norm_x * nx) / ((norm_x * nx) - 1.0)
+  v_depsp = (np.sum(out['2nd']['depsp'], axis=1) / (norm_x * nx) - (np.sum(out['1st']['depsp'], axis=1) / (norm_x * nx)) ** 2.0) * (norm_x * nx) / ((norm_x * nx) - 1.0)
+  v_x = (np.sum(out['2nd']['x'], axis=1) / (norm_x * nx) - (np.sum(out['1st']['x'], axis=1) / (norm_x * nx)) ** 2.0) * (norm_x * nx) / ((norm_x * nx) - 1.0)
+
 
   # store
   store(data, 'layer',
