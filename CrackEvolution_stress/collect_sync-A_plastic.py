@@ -129,11 +129,15 @@ for file in files:
 
     # normalisation
     norm[A] += 1
-    store_x = False
 
     # get the reference configuration
-    idx0  = data['/sync-A/plastic/{0:d}/idx' .format(np.min(A))][...]
-    epsp0 = data['/sync-A/plastic/{0:d}/epsp'.format(np.min(A))][...]
+    idx0 = data['/sync-A/plastic/{0:d}/idx'.format(np.min(A))][...]
+
+    if '/sync-A/plastic/{0:d}/epsp'.format(np.min(A)) in data:
+      epsp0 = data['/sync-A/plastic/{0:d}/epsp'.format(np.min(A))][...]
+      store_x = True
+    else:
+      store_x = False
 
     # loop over cracks
     for a in A:
@@ -151,8 +155,7 @@ for file in files:
       # get current configuration
       idx = data['/sync-A/plastic/{0:d}/idx'.format(a)][...]
 
-      if '/sync-A/plastic/{0:d}/x'.format(a) in data:
-        store_x = True
+      if store_x:
         norm_x[A] += 1
         epsp = data['/sync-A/plastic/{0:d}/epsp'.format(a)][...]
         x = data['/sync-A/plastic/{0:d}/x'.format(a)][...]
