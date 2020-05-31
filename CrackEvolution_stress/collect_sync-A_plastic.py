@@ -92,8 +92,8 @@ elmat = regular.elementMatrix()
 # initialise normalisation, and sum of first and second statistical moments
 # -------------------------------------------------------------------------
 
-norm = np.zeros((nx+1), dtype='uint')
-norm_x = np.zeros((nx+1), dtype='uint')
+norm = np.zeros((nx + 1), dtype='uint')
+norm_x = np.zeros((nx + 1), dtype='uint')
 
 out = {
     '1st': {},
@@ -102,13 +102,13 @@ out = {
 
 for key in out:
 
-    out[key]['sig_xx'] = np.zeros((nx+1, nx), dtype='float')  # (A, x)
-    out[key]['sig_xy'] = np.zeros((nx+1, nx), dtype='float')
-    out[key]['sig_yy'] = np.zeros((nx+1, nx), dtype='float')
-    out[key]['epsp'] = np.zeros((nx+1, nx), dtype='float')
-    out[key]['depsp'] = np.zeros((nx+1, nx), dtype='float')
-    out[key]['x'] = np.zeros((nx+1, nx), dtype='float')
-    out[key]['S'] = np.zeros((nx+1, nx), dtype='int')
+    out[key]['sig_xx'] = np.zeros((nx + 1, nx), dtype='float') # (A, x)
+    out[key]['sig_xy'] = np.zeros((nx + 1, nx), dtype='float')
+    out[key]['sig_yy'] = np.zeros((nx + 1, nx), dtype='float')
+    out[key]['epsp'  ] = np.zeros((nx + 1, nx), dtype='float')
+    out[key]['depsp' ] = np.zeros((nx + 1, nx), dtype='float')
+    out[key]['x'     ] = np.zeros((nx + 1, nx), dtype='float')
+    out[key]['S'     ] = np.zeros((nx + 1, nx), dtype='int')
 
 # ---------------
 # loop over files
@@ -116,21 +116,26 @@ for key in out:
 
 for file in files:
 
-    print(file)
-
     with h5py.File(file, 'r') as data:
 
         A = data["/sync-A/stored"][...]
 
-        norm[A] += 1
+        if A[-1] != nx:
+            print('Skipping {0:s}'.format(file))
+            continue
+        else:
+            print('Reading {0:s}'.format(file))
 
         idx0 = data['/sync-A/plastic/{0:d}/idx'.format(np.min(A))][...]
 
         if '/sync-A/plastic/{0:d}/epsp'.format(np.min(A)) in data:
             epsp0 = data['/sync-A/plastic/{0:d}/epsp'.format(np.min(A))][...]
+            norm_x[A] += 1
             store_x = True
         else:
             store_x = False
+
+        norm[A] += 1
 
         for a in A:
 
@@ -146,7 +151,6 @@ for file in files:
             idx = data['/sync-A/plastic/{0:d}/idx'.format(a)][...]
 
             if store_x:
-                norm_x[A] += 1
                 epsp = data['/sync-A/plastic/{0:d}/epsp'.format(a)][...]
                 x = data['/sync-A/plastic/{0:d}/x'.format(a)][...]
 
@@ -245,6 +249,21 @@ def store(data, key,
 # store
 # -----
 
+def compute_average(first, norm):
+    r'''
+first: sum(a)
+norm: number of items in sum
+    '''
+    return first / norm
+
+def compute_variance(first, second, norm):
+    r'''
+first: sum(a)
+second: sum(a ** 2)
+norm: number of items in sum
+    '''
+    return (second / norm - (first / norm) ** 2.0) * norm / (norm - 1.0)
+
 
 # open output file
 with h5py.File(output, 'w') as data:
@@ -259,22 +278,22 @@ with h5py.File(output, 'w') as data:
     A = A.reshape((-1, 1))
 
     # compute mean
-    m_sig_xx = out['1st']['sig_xx'] / norm
-    m_sig_xy = out['1st']['sig_xy'] / norm
-    m_sig_yy = out['1st']['sig_yy'] / norm
-    m_S = out['1st']['S'] / norm
-    m_epsp = out['1st']['epsp'] / norm_x
-    m_depsp = out['1st']['depsp'] / norm_x
-    m_x = out['1st']['x'] / norm_x
+    m_sig_xx = compute_average(out['1st']['sig_xx'], norm)
+    m_sig_xy = compute_average(out['1st']['sig_xy'], norm)
+    m_sig_yy = compute_average(out['1st']['sig_yy'], norm)
+    m_S      = compute_average(out['1st']['S'     ], norm)
+    m_epsp   = compute_average(out['1st']['epsp'  ], norm_x)
+    m_depsp  = compute_average(out['1st']['depsp' ], norm_x)
+    m_x      = compute_average(out['1st']['x'     ], norm_x)
 
     # compute variance
-    v_sig_xx = (out['2nd']['sig_xx'] / norm - (out['1st']['sig_xx'] / norm) ** 2.0) * norm / (norm - 1)
-    v_sig_xy = (out['2nd']['sig_xy'] / norm - (out['1st']['sig_xy'] / norm) ** 2.0) * norm / (norm - 1)
-    v_sig_yy = (out['2nd']['sig_yy'] / norm - (out['1st']['sig_yy'] / norm) ** 2.0) * norm / (norm - 1)
-    v_S = (out['2nd']['S'] / norm - (out['1st']['S'] / norm) ** 2.0) * norm / (norm - 1)
-    v_epsp = (out['2nd']['epsp'] / norm_x - (out['1st']['epsp'] / norm_x) ** 2.0) * norm_x / (norm_x - 1)
-    v_depsp = (out['2nd']['depsp'] / norm_x - (out['1st']['depsp'] / norm_x) ** 2.0) * norm_x / (norm_x - 1)
-    v_x = (out['2nd']['x'] / norm_x - (out['1st']['x'] / norm_x) ** 2.0) * norm_x / (norm_x - 1)
+    v_sig_xx = compute_variance(out['1st']['sig_xx'], out['2nd']['sig_xx'], norm)
+    v_sig_xy = compute_variance(out['1st']['sig_xy'], out['2nd']['sig_xy'], norm)
+    v_sig_yy = compute_variance(out['1st']['sig_yy'], out['2nd']['sig_yy'], norm)
+    v_S      = compute_variance(out['1st']['S'     ], out['2nd']['S'     ], norm)
+    v_epsp   = compute_variance(out['1st']['epsp'  ], out['2nd']['epsp'  ], norm_x)
+    v_depsp  = compute_variance(out['1st']['depsp' ], out['2nd']['depsp' ], norm_x)
+    v_x      = compute_variance(out['1st']['x'     ], out['2nd']['x'     ], norm_x)
 
     # store
     store(data, 'element',
@@ -289,22 +308,22 @@ with h5py.File(output, 'w') as data:
     A = A.ravel()
 
     # compute mean
-    m_sig_xx = np.sum(out['1st']['sig_xx'], axis=1) / (norm * nx)
-    m_sig_xy = np.sum(out['1st']['sig_xy'], axis=1) / (norm * nx)
-    m_sig_yy = np.sum(out['1st']['sig_yy'], axis=1) / (norm * nx)
-    m_S = np.sum(out['1st']['S'], axis=1) / (norm * nx)
-    m_epsp = np.sum(out['1st']['epsp'], axis=1) / (norm_x * nx)
-    m_depsp = np.sum(out['1st']['depsp'], axis=1) / (norm_x * nx)
-    m_x = np.sum(out['1st']['x'], axis=1) / (norm_x * nx)
+    m_sig_xx = compute_average(np.sum(out['1st']['sig_xx'], axis=1), norm * nx)
+    m_sig_xy = compute_average(np.sum(out['1st']['sig_xy'], axis=1), norm * nx)
+    m_sig_yy = compute_average(np.sum(out['1st']['sig_yy'], axis=1), norm * nx)
+    m_S      = compute_average(np.sum(out['1st']['S'     ], axis=1), norm * nx)
+    m_epsp   = compute_average(np.sum(out['1st']['epsp'  ], axis=1), norm_x * nx)
+    m_depsp  = compute_average(np.sum(out['1st']['depsp' ], axis=1), norm_x * nx)
+    m_x      = compute_average(np.sum(out['1st']['x'     ], axis=1), norm_x * nx)
 
     # compute variance
-    v_sig_xx = (np.sum(out['2nd']['sig_xx'], axis=1) / (norm * nx) - (np.sum(out['1st']['sig_xx'], axis=1) / (norm * nx)) ** 2.0) * (norm * nx) / ((norm * nx) - 1.0)
-    v_sig_xy = (np.sum(out['2nd']['sig_xy'], axis=1) / (norm * nx) - (np.sum(out['1st']['sig_xy'], axis=1) / (norm * nx)) ** 2.0) * (norm * nx) / ((norm * nx) - 1.0)
-    v_sig_yy = (np.sum(out['2nd']['sig_yy'], axis=1) / (norm * nx) - (np.sum(out['1st']['sig_yy'], axis=1) / (norm * nx)) ** 2.0) * (norm * nx) / ((norm * nx) - 1.0)
-    v_S = (np.sum(out['2nd']['S'], axis=1) / (norm * nx) - (np.sum(out['1st']['S'], axis=1) / (norm * nx)) ** 2.0) * (norm * nx) / ((norm * nx) - 1.0)
-    v_epsp = (np.sum(out['2nd']['epsp'], axis=1) / (norm_x * nx) - (np.sum(out['1st']['epsp'], axis=1) / (norm_x * nx)) ** 2.0) * (norm_x * nx) / ((norm_x * nx) - 1.0)
-    v_depsp = (np.sum(out['2nd']['depsp'], axis=1) / (norm_x * nx) - (np.sum(out['1st']['depsp'], axis=1) / (norm_x * nx)) ** 2.0) * (norm_x * nx) / ((norm_x * nx) - 1.0)
-    v_x = (np.sum(out['2nd']['x'], axis=1) / (norm_x * nx) - (np.sum(out['1st']['x'], axis=1) / (norm_x * nx)) ** 2.0) * (norm_x * nx) / ((norm_x * nx) - 1.0)
+    v_sig_xx = compute_variance(np.sum(out['1st']['sig_xx'], axis=1), np.sum(out['2nd']['sig_xx'], axis=1), norm * nx)
+    v_sig_xy = compute_variance(np.sum(out['1st']['sig_xy'], axis=1), np.sum(out['2nd']['sig_xy'], axis=1), norm * nx)
+    v_sig_yy = compute_variance(np.sum(out['1st']['sig_yy'], axis=1), np.sum(out['2nd']['sig_yy'], axis=1), norm * nx)
+    v_S      = compute_variance(np.sum(out['1st']['S'     ], axis=1), np.sum(out['2nd']['S'     ], axis=1), norm * nx)
+    v_epsp   = compute_variance(np.sum(out['1st']['epsp'  ], axis=1), np.sum(out['2nd']['epsp'  ], axis=1), norm_x * nx)
+    v_depsp  = compute_variance(np.sum(out['1st']['depsp' ], axis=1), np.sum(out['2nd']['depsp' ], axis=1), norm_x * nx)
+    v_x      = compute_variance(np.sum(out['1st']['x'     ], axis=1), np.sum(out['2nd']['x'     ], axis=1), norm_x * nx)
 
     # store
     store(data, 'layer',
@@ -330,25 +349,25 @@ with h5py.File(output, 'w') as data:
                 out[key][field] = out[key][field].astype(np.float)
                 out[key][field][i, lwr:upr] = 0.
 
-    A[A == 0.] = 1.
+    A[A == 0.0] = 1.0
 
     # compute mean
-    m_sig_xx = np.sum(out['1st']['sig_xx'], axis=1) / (norm * A)
-    m_sig_xy = np.sum(out['1st']['sig_xy'], axis=1) / (norm * A)
-    m_sig_yy = np.sum(out['1st']['sig_yy'], axis=1) / (norm * A)
-    m_S = np.sum(out['1st']['S'], axis=1) / (norm * A)
-    m_epsp = np.sum(out['1st']['epsp'], axis=1) / (norm_x * A)
-    m_depsp = np.sum(out['1st']['depsp'], axis=1) / (norm_x * A)
-    m_x = np.sum(out['1st']['x'], axis=1) / (norm_x * A)
+    m_sig_xx = compute_average(np.sum(out['1st']['sig_xx'], axis=1), norm * A)
+    m_sig_xy = compute_average(np.sum(out['1st']['sig_xy'], axis=1), norm * A)
+    m_sig_yy = compute_average(np.sum(out['1st']['sig_yy'], axis=1), norm * A)
+    m_S      = compute_average(np.sum(out['1st']['S'     ], axis=1), norm * A)
+    m_epsp   = compute_average(np.sum(out['1st']['epsp'  ], axis=1), norm_x * A)
+    m_depsp  = compute_average(np.sum(out['1st']['depsp' ], axis=1), norm_x * A)
+    m_x      = compute_average(np.sum(out['1st']['x'     ], axis=1), norm_x * A)
 
     # compute variance
-    v_sig_xx = (np.sum(out['2nd']['sig_xx'], axis=1) / (norm * A) - (np.sum(out['1st']['sig_xx'], axis=1) / (norm * A)) ** 2.0) * (norm * A) / ((norm * A) - 1.0)
-    v_sig_xy = (np.sum(out['2nd']['sig_xy'], axis=1) / (norm * A) - (np.sum(out['1st']['sig_xy'], axis=1) / (norm * A)) ** 2.0) * (norm * A) / ((norm * A) - 1.0)
-    v_sig_yy = (np.sum(out['2nd']['sig_yy'], axis=1) / (norm * A) - (np.sum(out['1st']['sig_yy'], axis=1) / (norm * A)) ** 2.0) * (norm * A) / ((norm * A) - 1.0)
-    v_S = (np.sum(out['2nd']['S'], axis=1) / (norm * A) - (np.sum(out['1st']['S'], axis=1) / (norm * A)) ** 2.0) * (norm * A) / ((norm * A) - 1.0)
-    v_epsp = (np.sum(out['2nd']['epsp'], axis=1) / (norm_x * A) - (np.sum(out['1st']['epsp'], axis=1) / (norm_x * A)) ** 2.0) * (norm_x * A) / ((norm_x * A) - 1.0)
-    v_depsp = (np.sum(out['2nd']['depsp'], axis=1) / (norm_x * A) - (np.sum(out['1st']['depsp'], axis=1) / (norm_x * A)) ** 2.0) * (norm_x * A) / ((norm_x * A) - 1.0)
-    v_x = (np.sum(out['2nd']['x'], axis=1) / (norm_x * A) - (np.sum(out['1st']['x'], axis=1) / (norm_x * A)) ** 2.0) * (norm_x * A) / ((norm_x * A) - 1.0)
+    v_sig_xx = compute_variance(np.sum(out['1st']['sig_xx'], axis=1), np.sum(out['2nd']['sig_xx'], axis=1) , norm * A)
+    v_sig_xy = compute_variance(np.sum(out['1st']['sig_xy'], axis=1), np.sum(out['2nd']['sig_xy'], axis=1) , norm * A)
+    v_sig_yy = compute_variance(np.sum(out['1st']['sig_yy'], axis=1), np.sum(out['2nd']['sig_yy'], axis=1) , norm * A)
+    v_S      = compute_variance(np.sum(out['1st']['S'     ], axis=1), np.sum(out['2nd']['S'     ], axis=1) , norm * A)
+    v_epsp   = compute_variance(np.sum(out['1st']['epsp'  ], axis=1), np.sum(out['2nd']['epsp'  ], axis=1) , norm_x * A)
+    v_depsp  = compute_variance(np.sum(out['1st']['depsp' ], axis=1), np.sum(out['2nd']['depsp' ], axis=1) , norm_x * A)
+    v_x      = compute_variance(np.sum(out['1st']['x'     ], axis=1), np.sum(out['2nd']['x'     ], axis=1) , norm_x * A)
 
     # store
     store(data, 'crack',
