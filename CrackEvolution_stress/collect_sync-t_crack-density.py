@@ -39,6 +39,7 @@ args = docopt.docopt(__doc__)
 
 files = args['<files>']
 output = args['--output']
+info = args['--info']
 
 for file in files:
     if not os.path.isfile(file):
@@ -54,30 +55,30 @@ if not args['--force']:
 # get constants
 # ==================================================================================================
 
-with h5py.File(files[0], 'r') as data:
-    plastic = data['/meta/plastic'][...]
-    nx = len(plastic)
-
-if nx % 2 == 0:
-    mid = nx / 2
-else:
-    mid = (nx - 1) / 2
+with h5py.File(info, 'r') as data:
+    dt = data['/normalisation/dt'][...]
+    t0 = data['/normalisation/t0'][...]
+    nx = int(data['/normalisation/N'][...])
+    mid = int((nx - nx % 2) / 2)
 
 # ==================================================================================================
 # build histogram
 # ==================================================================================================
 
-count = np.zeros((nx + 1, nx), dtype='int')  # [A, r]
-norm = np.zeros((nx + 1), dtype='int')  # [A]
+niter = 100000
+count = np.zeros((niter, nx), dtype='int')  # [t, r]
+norm = np.zeros((niter), dtype='int')  # [t]
 
 for file in files:
 
-    cracked = np.zeros((nx + 1, nx), dtype='int')  # [A, r]
+    cracked = np.zeros((niter, nx), dtype='int')  # [A, r]
 
     with h5py.File(file, 'r') as data:
 
         A = data["/sync-A/stored"][...]
         idx0 = data['/sync-A/plastic/{0:d}/idx'.format(np.min(A))][...]
+        iiter = data['/sync-A/global/iiter'][...]
+        a_n = 0
 
         if A[-1] != nx:
             print('Skipping {0:s}'.format(file))
@@ -87,9 +88,15 @@ for file in files:
 
         for a in A:
 
+            i = iiter[a_n]
+            j = iiter[a]
+            if i >= niter or i >= niter:
+                print('Range exceeded {0:s}'.format(file))
+                break
             idx = data['/sync-A/plastic/{0:d}/idx'.format(a)][...]
-            cracked[a, :] = (idx != idx0).astype(np.int)
-            norm[a] += 1
+            cracked[i:j, :] = (idx != idx0).astype(np.int)
+            norm[i:j] += 1
+            a_n = a
 
         # center
         a = np.argmin(np.abs(np.sum(cracked, axis=1) - mid))
@@ -105,11 +112,11 @@ for file in files:
 
 with h5py.File(output, 'w') as data:
 
-    data['/A'] = np.arange(nx + 1)
+    data['/t'] = np.arange(niter) * dt / t0
     data['/P'] = count / np.where(norm > 0, norm, 1).reshape(-1, 1)
     data['/norm'] = norm
 
-    data['/A'].attrs['desc'] = 'Avalanche extension A at which /P is stored == np.arange(N + 1)'
+    data['/t'].attrs['desc'] = 'Time at which at which /P is stored'
     data['/P'].attrs['desc'] = 'Probability that a block yielded: realisations are centered before averaging'
-    data['/P'].attrs['shape'] = '[N + 1, N] or [A, x]'
+    data['/P'].attrs['shape'] = '[len(/t), N] or [t, x]'
     data['/norm'].attrs['desc'] = 'Number of measurements per A'
