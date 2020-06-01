@@ -10,6 +10,7 @@ Arguments:
 
 Options:
     -o, --output=<N>    Output file. [default: output.hdf5]
+    -i, --info=<N>      Path to EnsembleInfo. [default: EnsembleInfo.hdf5]
     -f, --force         Overwrite existing output-file.
     -h, --help          Print help.
 '''
