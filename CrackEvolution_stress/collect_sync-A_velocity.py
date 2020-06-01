@@ -53,15 +53,11 @@ v = np.zeros((len(files)), dtype='float')
 
 for ifile, file in enumerate(files):
 
+    print('({0:3d}/{1:3d}) {2:s}'.format(ifile + 1, len(files), file))
+
     with h5py.File(file, 'r') as data:
 
         A = data["/sync-A/stored"][...].astype(np.int)
-
-        if A[-1] != nx:
-            print('Skipping {0:s}'.format(file))
-            continue
-        else:
-            print('Reading {0:s}'.format(file))
 
         i0 = np.argmin(np.abs(A - 400))
         i1 = np.argmin(np.abs(A - 800))

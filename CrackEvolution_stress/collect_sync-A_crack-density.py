@@ -24,12 +24,37 @@ import h5py
 import numpy as np
 
 # ==================================================================================================
-# horizontal shift
+# compute center of mass
+# https://en.wikipedia.org/wiki/Center_of_mass#Systems_with_periodic_boundary_conditions
 # ==================================================================================================
 
-def getRenumIndex(old, new, N):
-    idx = np.tile(np.arange(N), (3))
-    return idx[old+N-new: old+2*N-new]
+def center_of_mass(x, L):
+    if np.allclose(x, 0):
+        return 0
+    theta = 2.0 * np.pi * x / L
+    xi = np.cos(theta)
+    zeta = np.sin(theta)
+    xi_bar = np.mean(xi)
+    zeta_bar = np.mean(zeta)
+    theta_bar = np.arctan2(-zeta_bar, -xi_bar) + np.pi
+    return L * theta_bar / (2.0 * np.pi)
+
+def renumber(x, L):
+    center = center_of_mass(x, L)
+    N = int(L)
+    M = int((N - N % 2) / 2)
+    C = int(center)
+    return np.roll(np.arange(N), M - C)
+
+def mean_renumber(L, *args):
+    centers = []
+    for x in args:
+        centers += [center_of_mass(x, L)]
+    center = np.mean(centers)
+    N = int(L)
+    M = int((N - N % 2) / 2)
+    C = int(center)
+    return np.roll(np.arange(N), M - C)
 
 # ==================================================================================================
 # get files
@@ -57,11 +82,7 @@ if not args['--force']:
 with h5py.File(files[0], 'r') as data:
     plastic = data['/meta/plastic'][...]
     nx = len(plastic)
-
-if nx % 2 == 0:
-    mid = nx / 2
-else:
-    mid = (nx - 1) / 2
+    mid = int((nx - nx % 2) / 2)
 
 # ==================================================================================================
 # build histogram
@@ -70,34 +91,22 @@ else:
 count = np.zeros((nx + 1, nx), dtype='int')  # [A, r]
 norm = np.zeros((nx + 1), dtype='int')  # [A]
 
-for file in files:
-
-    cracked = np.zeros((nx + 1, nx), dtype='int')  # [A, r]
+for ifile, file in enumerate(files):
 
     with h5py.File(file, 'r') as data:
+
+        print('({0:3d}/{1:3d}) {2:s}'.format(ifile + 1, len(files), file))
 
         A = data["/sync-A/stored"][...]
         idx0 = data['/sync-A/plastic/{0:d}/idx'.format(np.min(A))][...]
 
-        if A[-1] != nx:
-            print('Skipping {0:s}'.format(file))
-            continue
-        else:
-            print('Reading {0:s}'.format(file))
-
         for a in A:
 
             idx = data['/sync-A/plastic/{0:d}/idx'.format(a)][...]
-            cracked[a, :] = (idx != idx0).astype(np.int)
+            cracked = (idx != idx0).astype(np.int)
+            renum = renumber(np.argwhere(cracked).ravel(), nx)
+            count[a, :] += cracked[renum]
             norm[a] += 1
-
-        # center
-        a = np.argmin(np.abs(np.sum(cracked, axis=1) - mid))
-        icell = np.argwhere(cracked[a, :]).ravel()
-        icell[icell > mid] -= nx
-        center = np.mean(icell)
-        renum = getRenumIndex(int(center), 0, nx)
-        count += cracked[:, renum]
 
 # ==================================================================================================
 # save data

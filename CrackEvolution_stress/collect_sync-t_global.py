@@ -77,12 +77,10 @@ for key in out:
 # loop over files
 # ---------------
 
-for file in files:
+for ifile, file in enumerate(files):
 
-  # print progress
-  print(file)
+  print('({0:3d}/{1:3d}) {2:s}'.format(ifile + 1, len(files), file))
 
-  # open data file
   with h5py.File(file, 'r') as data:
 
     # get stored "A"

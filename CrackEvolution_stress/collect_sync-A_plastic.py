@@ -22,12 +22,27 @@ import numpy as np
 import GooseFEM as gf
 
 # ==================================================================================================
-# horizontal shift
+# compute center of mass
+# https://en.wikipedia.org/wiki/Center_of_mass#Systems_with_periodic_boundary_conditions
 # ==================================================================================================
 
-def getRenumIndex(old, new, N):
-    idx = np.tile(np.arange(N), (3))
-    return idx[old+N-new: old+2*N-new]
+def center_of_mass(x, L):
+    if np.allclose(x, 0):
+        return 0
+    theta = 2.0 * np.pi * x / L
+    xi = np.cos(theta)
+    zeta = np.sin(theta)
+    xi_bar = np.mean(xi)
+    zeta_bar = np.mean(zeta)
+    theta_bar = np.arctan2(-zeta_bar, -xi_bar) + np.pi
+    return L * theta_bar / (2.0 * np.pi)
+
+def renumber(x, L):
+    center = center_of_mass(x, L)
+    N = int(L)
+    M = int((N - N % 2) / 2)
+    C = int(center)
+    return np.roll(np.arange(N), M - C)
 
 # ==================================================================================================
 # get files
@@ -114,18 +129,13 @@ for key in out:
 # loop over files
 # ---------------
 
-for file in files:
+for ifile, file in enumerate(files):
+
+    print('({0:3d}/{1:3d}) {2:s}'.format(ifile + 1, len(files), file))
 
     with h5py.File(file, 'r') as data:
 
         A = data["/sync-A/stored"][...]
-
-        if A[-1] != nx:
-            print('Skipping {0:s}'.format(file))
-            continue
-        else:
-            print('Reading {0:s}'.format(file))
-
         idx0 = data['/sync-A/plastic/{0:d}/idx'.format(np.min(A))][...]
 
         if '/sync-A/plastic/{0:d}/epsp'.format(np.min(A)) in data:
@@ -154,34 +164,25 @@ for file in files:
                 epsp = data['/sync-A/plastic/{0:d}/epsp'.format(a)][...]
                 x = data['/sync-A/plastic/{0:d}/x'.format(a)][...]
 
-            icell = np.argwhere(idx0 != idx).ravel()
+            renum = renumber(np.argwhere(idx0 != idx).ravel(), nx)
 
-            icell[icell > mid] -= nx
-
-            if len(icell) > 0:
-                center = np.mean(icell)
-                renum = getRenumIndex(int(center), 0, nx)
-            else:
-                renum = np.arange(nx)
-
-            out['1st']['sig_xx'][a, :] += (sig_xx)[renum]
-            out['1st']['sig_xy'][a, :] += (sig_xy)[renum]
-            out['1st']['sig_yy'][a, :] += (sig_yy)[renum]
-            out['1st']['S'][a, :] += (idx - idx0)[renum].astype(np.int)
+            out['1st']['sig_xx'][a, :] += sig_xx[renum]
+            out['1st']['sig_xy'][a, :] += sig_xy[renum]
+            out['1st']['sig_yy'][a, :] += sig_yy[renum]
+            out['1st']['S'     ][a, :] += (idx - idx0)[renum].astype(np.int)
             if store_x:
-                out['1st']['epsp'][a, :] += (epsp)[renum]
+                out['1st']['epsp' ][a, :] += epsp[renum]
                 out['1st']['depsp'][a, :] += (epsp - epsp0)[renum]
-                out['1st']['x'][a, :] += (x)[renum]
+                out['1st']['x'    ][a, :] += x[renum]
 
-            out['2nd']['sig_xx'][a, :] += ((sig_xx)[renum]) ** 2.0
-            out['2nd']['sig_xy'][a, :] += ((sig_xy)[renum]) ** 2.0
-            out['2nd']['sig_yy'][a, :] += ((sig_yy)[renum]) ** 2.0
-            out['2nd']['S'][a, :] += ((idx - idx0)[renum].astype(np.int)) ** 2
+            out['2nd']['sig_xx'][a, :] += (sig_xx[renum]) ** 2.0
+            out['2nd']['sig_xy'][a, :] += (sig_xy[renum]) ** 2.0
+            out['2nd']['sig_yy'][a, :] += (sig_yy[renum]) ** 2.0
+            out['2nd']['S'     ][a, :] += ((idx - idx0)[renum].astype(np.int)) ** 2
             if store_x:
-                out['2nd']['epsp'][a, :] += ((epsp)[renum]) ** 2.0
+                out['2nd']['epsp' ][a, :] += (epsp[renum]) ** 2.0
                 out['2nd']['depsp'][a, :] += ((epsp - epsp0)[renum]) ** 2.0
-                out['2nd']['x'][a, :] += ((x)[renum]) ** 2.0
-
+                out['2nd']['x'    ][a, :] += (x[renum]) ** 2.0
 
 # ---------------------------------------------
 # select only measurements with sufficient data

@@ -24,14 +24,27 @@ import GooseFEM as gf
 import GooseFEM.ParaView.HDF5 as pv
 
 # ==================================================================================================
-# horizontal shift
+# compute center of mass
+# https://en.wikipedia.org/wiki/Center_of_mass#Systems_with_periodic_boundary_conditions
 # ==================================================================================================
 
-def getRenumIndex(old, new, N):
+def center_of_mass(x, L):
+    if np.allclose(x, 0):
+        return 0
+    theta = 2.0 * np.pi * x / L
+    xi = np.cos(theta)
+    zeta = np.sin(theta)
+    xi_bar = np.mean(xi)
+    zeta_bar = np.mean(zeta)
+    theta_bar = np.arctan2(-zeta_bar, -xi_bar) + np.pi
+    return L * theta_bar / (2.0 * np.pi)
 
-  idx = np.tile(np.arange(N), (3))
-
-  return idx[old+N-new: old+2*N-new]
+def renumber(x, L):
+    center = center_of_mass(x, L)
+    N = int(L)
+    M = int((N - N % 2) / 2)
+    C = int(center)
+    return np.roll(np.arange(N), M - C)
 
 # ==================================================================================================
 # get files
@@ -147,20 +160,8 @@ with h5py.File(output, 'w') as out:
         epsp = data['/sync-A/plastic/{0:d}/epsp'.format(a)][...]
         x    = data['/sync-A/plastic/{0:d}/x'   .format(a)][...]
 
-      # indices of blocks where yielding took place
-      icell = np.argwhere(idx0 != idx).ravel()
-
-      # shift to compute barycentre
-      icell[icell > mid] -= nx
-
-      # renumber index
-      if len(icell) > 0:
-        center = np.mean(icell)
-        renum  = getRenumIndex(int(center), 0, nx)
-      else:
-        renum = np.arange(nx)
-
       # element numbers such that the crack is aligned
+      renum = renumber(np.argwhere(idx0 != idx).ravel(), nx)
       get = elmat[:, renum].ravel()
 
       # add to average

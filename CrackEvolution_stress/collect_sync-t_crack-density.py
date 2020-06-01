@@ -24,12 +24,34 @@ import h5py
 import numpy as np
 
 # ==================================================================================================
-# horizontal shift
+# compute center of mass
+# https://en.wikipedia.org/wiki/Center_of_mass#Systems_with_periodic_boundary_conditions
 # ==================================================================================================
 
-def getRenumIndex(old, new, N):
-    idx = np.tile(np.arange(N), (3))
-    return idx[old+N-new: old+2*N-new]
+def center_of_mass(x, L):
+    if np.allclose(x, 0):
+        return 0
+    theta = 2.0 * np.pi * x / L
+    xi = np.cos(theta)
+    zeta = np.sin(theta)
+    xi_bar = np.mean(xi)
+    zeta_bar = np.mean(zeta)
+    theta_bar = np.arctan2(-zeta_bar, -xi_bar) + np.pi
+    return L * theta_bar / (2.0 * np.pi)
+
+def renumber(x, L):
+    center = center_of_mass(x, L)
+    N = int(L)
+    M = int((N - N % 2) / 2)
+    C = int(center)
+    return np.roll(np.arange(N), M - C)
+
+def threshold(i, N):
+    if i < 0:
+        return i
+    if i > N:
+        return N
+    return i
 
 # ==================================================================================================
 # get files
@@ -66,45 +88,37 @@ with h5py.File(info, 'r') as data:
 # ==================================================================================================
 
 niter = 100000
+isync = 80000
 count = np.zeros((niter, nx), dtype='int')  # [t, r]
 norm = np.zeros((niter), dtype='int')  # [t]
 
-for file in files:
+for ifile, file in enumerate(files):
 
-    cracked = np.zeros((niter, nx), dtype='int')  # [A, r]
+    print('({0:3d}/{1:3d}) {2:s}'.format(ifile + 1, len(files), file))
 
     with h5py.File(file, 'r') as data:
 
         A = data["/sync-A/stored"][...]
         idx0 = data['/sync-A/plastic/{0:d}/idx'.format(np.min(A))][...]
-        iiter = data['/sync-A/global/iiter'][...]
+        iiter = data['/sync-A/global/iiter'][...].astype(np.int)
         a_n = 0
 
-        if A[-1] != nx:
-            print('Skipping {0:s}'.format(file))
-            continue
-        else:
-            print('Reading {0:s}'.format(file))
+        i0 = int(iiter[np.argmin(np.abs(A - int(0.8 * nx)))])
+        shift = int(isync - i0)
 
         for a in A:
 
-            i = iiter[a_n]
-            j = iiter[a]
-            if i >= niter or i >= niter:
-                print('Range exceeded {0:s}'.format(file))
-                break
+            i = threshold(shift + iiter[a_n], niter)
+            j = threshold(shift + iiter[a], niter)
             idx = data['/sync-A/plastic/{0:d}/idx'.format(a)][...]
-            cracked[i:j, :] = (idx != idx0).astype(np.int)
+            cracked = (idx != idx0).astype(np.int)
+            renum = renumber(np.argwhere(cracked).ravel(), nx)
+            count[i:j, :] += cracked[renum]
             norm[i:j] += 1
             a_n = a
 
-        # center
-        a = np.argmin(np.abs(np.sum(cracked, axis=1) - mid))
-        icell = np.argwhere(cracked[a, :]).ravel()
-        icell[icell > mid] -= nx
-        center = np.mean(icell)
-        renum = getRenumIndex(int(center), 0, nx)
-        count += cracked[:, renum]
+        count[j:, :] += 1
+        norm[j:] += 1
 
 # ==================================================================================================
 # save data
@@ -112,11 +126,11 @@ for file in files:
 
 with h5py.File(output, 'w') as data:
 
-    data['/t'] = np.arange(niter) * dt / t0
+    data['/t'] = (np.arange(niter) - isync) * dt / t0
     data['/P'] = count / np.where(norm > 0, norm, 1).reshape(-1, 1)
     data['/norm'] = norm
 
-    data['/t'].attrs['desc'] = 'Time at which at which /P is stored'
+    data['/t'].attrs['desc'] = 'Time at which at which /P is stored, relative to synchronisation at A = Ac'
     data['/P'].attrs['desc'] = 'Probability that a block yielded: realisations are centered before averaging'
     data['/P'].attrs['shape'] = '[len(/t), N] or [t, x]'
     data['/norm'].attrs['desc'] = 'Number of measurements per A'

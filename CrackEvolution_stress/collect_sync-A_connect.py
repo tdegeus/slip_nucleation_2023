@@ -147,9 +147,9 @@ count_maxsize  = np.zeros((nx + 1), dtype='int')  # [A]
 norm_clusters  = np.zeros((nx + 1), dtype='int')  # [A]
 norm_distance  = np.zeros((nx + 1), dtype='int')  # [A]
 
-for file in files:
+for ifile, file in enumerate(files):
 
-    print(file)
+    print('({0:3d}/{1:3d}) {2:s}'.format(ifile + 1, len(files), file))
 
     with h5py.File(file, 'r') as data:
 
