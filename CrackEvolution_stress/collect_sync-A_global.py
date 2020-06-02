@@ -11,6 +11,8 @@ Arguments:
 Options:
   -o, --output=<N>  Output file. [default: output.hdf5]
   -i, --info=<N>    Path to EnsembleInfo. [default: EnsembleInfo.hdf5]
+  -f, --force       Overwrite existing output-file.
+  -h, --help        Print help.
 '''
 
 import os
@@ -35,10 +37,11 @@ for file in files + [info]:
   if not os.path.isfile(file):
     raise IOError('"{0:s}" does not exist'.format(file))
 
-if os.path.isfile(output):
-  print('"{0:s}" exists'.format(output))
-  if not click.confirm('Proceed?'):
-    sys.exit(1)
+if not args['--force']:
+  if os.path.isfile(output):
+    print('"{0:s}" exists'.format(output))
+    if not click.confirm('Proceed?'):
+      sys.exit(1)
 
 # ==================================================================================================
 # get normalisation

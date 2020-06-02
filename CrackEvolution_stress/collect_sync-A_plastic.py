@@ -11,6 +11,8 @@ Arguments:
 Options:
   -o, --output=<N>  Output file. [default: output.hdf5]
   -i, --info=<N>    Path to EnsembleInfo. [default: EnsembleInfo.hdf5]
+  -f, --force       Overwrite existing output-file.
+  -h, --help        Print help.
 '''
 
 import os
@@ -58,10 +60,11 @@ for file in files + [info]:
     if not os.path.isfile(file):
         raise IOError('"{0:s}" does not exist'.format(file))
 
-if os.path.isfile(output):
-    print('"{0:s}" exists'.format(output))
-    if not click.confirm('Proceed?'):
-        sys.exit(1)
+if not args['--force']:
+    if os.path.isfile(output):
+        print('"{0:s}" exists'.format(output))
+        if not click.confirm('Proceed?'):
+            sys.exit(1)
 
 # ==================================================================================================
 # get constants
@@ -335,20 +338,15 @@ with h5py.File(output, 'w') as data:
 
     # remove data outside crack
     for i, a in enumerate(A):
-
         a = int(a)
-
-        if a % 2 == 0:
-            lwr = int(a/2)
-            upr = nx - int(a/2)
-        else:
-            lwr = int((a+1)/2)
-            upr = nx - int((a-1)/2)
-
+        mid = int((nx - nx % 2) / 2)
+        il = int(mid - a / 2)
+        iu = int(mid + a / 2)
         for key in out:
             for field in out[key]:
                 out[key][field] = out[key][field].astype(np.float)
-                out[key][field][i, lwr:upr] = 0.
+                out[key][field][i, :il] = 0.
+                out[key][field][i, iu:] = 0.
 
     A[A == 0.0] = 1.0
 

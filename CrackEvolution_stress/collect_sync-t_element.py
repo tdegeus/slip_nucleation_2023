@@ -12,6 +12,8 @@ Options:
   -o, --output=<N>  Output file. [default: output.hdf5]
   -x, --xdmf=<N>    Extension of XDMF file: basename is "output" option. [default: xdmf]
   -i, --info=<N>    Path to EnsembleInfo. [default: EnsembleInfo.hdf5]
+  -f, --force       Overwrite existing output-file.
+  -h, --help        Print help.
 '''
 
 import os
@@ -55,17 +57,18 @@ args = docopt.docopt(__doc__)
 files = args['<files>']
 info = args['--info']
 output = args['--output']
-output_xdmf = os.path.splitext(output)[0] + args['--xdmf']
+output_xdmf = os.path.splitext(output)[0] + '.' + args['--xdmf']
 
 for file in files + [info]:
   if not os.path.isfile(file):
     raise IOError('"{0:s}" does not exist'.format(file))
 
-for file in [output, output_xdmf]:
-  if os.path.isfile(file):
-    print('"{0:s}" exists'.format(file))
-    if not click.confirm('Proceed?'):
-      sys.exit(1)
+if not args['--force']:
+  for file in [output, output_xdmf]:
+    if os.path.isfile(file):
+      print('"{0:s}" exists'.format(file))
+      if not click.confirm('Proceed?'):
+        sys.exit(1)
 
 # ==================================================================================================
 # get constants
@@ -113,6 +116,8 @@ norm = np.zeros((5000), dtype='uint')
 
 for file in files:
   with h5py.File(file, 'r') as data:
+    if "/sync-t/stored" not in data:
+      continue
     T = data["/sync-t/stored"][...]
     norm[T] += 1
 
@@ -152,11 +157,17 @@ with h5py.File(output, 'w') as out:
       # open data file
       with h5py.File(file, 'r') as data:
 
+        if "/sync-t/stored" not in data:
+          continue
+
         # get stored "T"
         T = data["/sync-t/stored"][...]
 
         # skip file if "t" is not stored
         if t not in T:
+          continue
+
+        if "/sync-t/element/{0:d}/sig_xx".format(a) not in data:
           continue
 
         # get the reference configuration
