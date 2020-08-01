@@ -234,6 +234,9 @@ def store(data, key,
                v_sig_xy * (4.0 * m_sig_xy / sig_eq)**2.0
 
     # store mean
+    data['/{0:s}/avr/sig_xx'.format(key)] = m_sig_xx / sig0
+    data['/{0:s}/avr/sig_yy'.format(key)] = m_sig_yy / sig0
+    data['/{0:s}/avr/sig_xy'.format(key)] = m_sig_xy / sig0
     data['/{0:s}/avr/sig_eq'.format(key)] = m_sig_eq / sig0
     data['/{0:s}/avr/sig_m'.format(key)] = m_sig_m / sig0
     data['/{0:s}/avr/epsp'.format(key)] = m_epsp / eps0
@@ -242,6 +245,9 @@ def store(data, key,
     data['/{0:s}/avr/S'.format(key)] = m_S
 
     # store variance
+    data['/{0:s}/std/sig_xx'.format(key)] = v_sig_xx / sig0
+    data['/{0:s}/std/sig_yy'.format(key)] = v_sig_yy / sig0
+    data['/{0:s}/std/sig_xy'.format(key)] = v_sig_xy / sig0
     data['/{0:s}/std/sig_eq'.format(key)] = np.sqrt(np.abs(v_sig_eq)) / sig0
     data['/{0:s}/std/sig_m'.format(key)] = np.sqrt(np.abs(v_sig_m)) / sig0
     data['/{0:s}/std/epsp'.format(key)] = np.sqrt(np.abs(v_epsp)) / eps0

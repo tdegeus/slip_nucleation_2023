@@ -23,6 +23,9 @@ import click
 import h5py
 import numpy as np
 
+import sys
+np.set_printoptions(threshold=sys.maxsize)
+
 # ==================================================================================================
 # compute center of mass
 # https://en.wikipedia.org/wiki/Center_of_mass#Systems_with_periodic_boundary_conditions
@@ -88,7 +91,7 @@ with h5py.File(info, 'r') as data:
 # ==================================================================================================
 
 niter = 100000
-isync = 80000
+iiter_sync = 80000
 count = np.zeros((niter, nx), dtype='int')  # [t, r]
 norm = np.zeros((niter), dtype='int')  # [t]
 
@@ -100,25 +103,31 @@ for ifile, file in enumerate(files):
 
         A = data["/sync-A/stored"][...]
         idx0 = data['/sync-A/plastic/{0:d}/idx'.format(np.min(A))][...]
-        iiter = data['/sync-A/global/iiter'][...].astype(np.int)
-        a_n = 0
+        iiter = data['/sync-A/global/iiter'][...][A].astype(np.int)
+        assert np.all(np.unique(A) == A)
+        assert np.all(np.diff(A) > 0)
+        assert np.all(np.diff(iiter) > 0)
+        iiter_ref = int(iiter[np.argmin(np.abs(A - int(0.8 * nx)))])
+        shift = int(iiter_sync - iiter_ref)
+        iiter += shift
+        iiter = np.where(iiter >= 0, iiter, 0)
+        iiter = np.where(iiter <= niter, iiter, niter)
+        iiter_n = np.roll(np.array(iiter, copy=True), 1)
+        iiter_n[0] = iiter_n[1]
+        assert np.all(iiter - iiter_n >= 0)
 
-        i0 = int(iiter[np.argmin(np.abs(A - int(0.8 * nx)))])
-        shift = int(isync - i0)
-
-        for a in A:
-
-            i = threshold(shift + iiter[a_n], niter)
-            j = threshold(shift + iiter[a], niter)
+        for i, j, a in zip(iiter_n, iiter, A):
             idx = data['/sync-A/plastic/{0:d}/idx'.format(a)][...]
             cracked = (idx != idx0).astype(np.int)
             renum = renumber(np.argwhere(cracked).ravel(), nx)
             count[i:j, :] += cracked[renum]
             norm[i:j] += 1
-            a_n = a
 
+        assert np.sum(cracked) == nx
         count[j:, :] += 1
         norm[j:] += 1
+        assert np.max(norm) <= ifile + 1
+        assert np.min(norm) >= 0
 
 # ==================================================================================================
 # save data
@@ -126,7 +135,7 @@ for ifile, file in enumerate(files):
 
 with h5py.File(output, 'w') as data:
 
-    data['/t'] = (np.arange(niter) - isync) * dt / t0
+    data['/t'] = (np.arange(niter) - iiter_sync) * dt / t0
     data['/P'] = count / np.where(norm > 0, norm, 1).reshape(-1, 1)
     data['/norm'] = norm
 
