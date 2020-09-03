@@ -44,3 +44,20 @@ else()
         -DGMATELASTOPLASTICQPOT_ENABLE_ASSERT
         -DGOOSEFEM_ENABLE_ASSERT)
 endif()
+
+if (APPLE)
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+        MACOSX_RPATH ON
+    )
+else()
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+        BUILD_WITH_INSTALL_RPATH 1
+        SKIP_BUILD_RPATH FALSE
+    )
+endif()
+
+set_target_properties(${PROJECT_NAME} PROPERTIES
+    INSTALL_RPATH_USE_LINK_PATH TRUE
+)
+
+install(TARGETS ${PROJECT_NAME} DESTINATION bin)
