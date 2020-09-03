@@ -73,31 +73,30 @@ conda activate code_velocity
 
 # --------------------------------------------------------------------------------------------------
 
-for name, stress in zip([stress_names[0]], [stresses[0]]):
+name = 'strain'
+commands = get_runs()
+commands = commands[:5]
 
-    commands = get_runs(name, stress)
-    commands = commands[:5]
+dirname = 'EventEvolution_' + name
 
-    dirname = 'EventEvolution_' + name
+if not os.path.isdir(dirname):
+    os.makedirs(dirname)
 
-    if not os.path.isdir(dirname):
-        os.makedirs(dirname)
+for i, command in enumerate(commands):
 
-    for i, command in enumerate(commands):
+    basename = 'job{0:d}'.format(i)
 
-        basename = 'job{0:d}'.format(i)
+    sbatch = {
+        'job-name': 'EventEvolution_{0:s}_{1:d}'.format(name, i),
+        'out': basename + '.out',
+        'nodes': 1,
+        'ntasks': 1,
+        'cpus-per-task': 1,
+        'time': '3h',
+        'account': 'pcsl',
+        'partition': 'serial',
+        'constraint': 'E5v4',
+    }
 
-        sbatch = {
-            'job-name': 'EventEvolution_{0:s}_{1:d}'.format(name, i),
-            'out': basename + '.out',
-            'nodes': 1,
-            'ntasks': 1,
-            'cpus-per-task': 1,
-            'time': '3h',
-            'account': 'pcsl',
-            'partition': 'serial',
-            'constraint': 'E5v4',
-        }
-
-        open(os.path.join(dirname, basename + '.slurm'), 'w').write(
-            gs.scripts.plain(command=slurm.format(command), **sbatch))
+    open(os.path.join(dirname, basename + '.slurm'), 'w').write(
+        gs.scripts.plain(command=slurm.format(command), **sbatch))
