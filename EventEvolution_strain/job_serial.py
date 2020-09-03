@@ -73,7 +73,7 @@ conda activate code_velocity
 
 # --------------------------------------------------------------------------------------------------
 
-name = 'strain'
+name = 'strain=0'
 commands = get_runs()
 commands = commands[:5]
 
