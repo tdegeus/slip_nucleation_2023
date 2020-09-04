@@ -571,6 +571,7 @@ void run(size_t element, size_t inc_c, const std::string& output)
     size_t t_step = 2000; // time-step interval at which to store
     size_t istore = 0; // storage index
     size_t ievent = 0;
+    bool last = false;
 
     // quench: force equilibrium
     for (size_t iiter = 0; ; ++iiter)
