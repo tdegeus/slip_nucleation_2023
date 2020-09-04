@@ -715,10 +715,10 @@ void run(double stress, size_t element, size_t inc_c, const std::string& output)
         }
 
         // store
-        if (((A >= A_next || A == N) && A_store) || S >= (int)S_next || iiter % t_step == 0 || last)
+        if (((A >= A_next || A == N) && A_store) || S >= (int)S_next || iiter % t_step == 0 || last || iiter == 0)
         {
             // macroscopic stress tensor
-            xt::xtensor_fixed<double, xt::xshape<2,2>> Sig_bar = xt::average(m_Sig, dV, {0,1});
+            xt::xtensor_fixed<double, xt::xshape<2,2>> Sig_bar = xt::average(m_Sig, dV, {0, 1});
 
             // element stress tensor
             xt::xtensor<double,3> Sig_elem = xt::average(m_Sig, dV, {1});
@@ -730,7 +730,7 @@ void run(double stress, size_t element, size_t inc_c, const std::string& output)
             // store
             H5Easy::dump(data, "/global/sig", Sig_bar(0, 0), {0, istore});
             H5Easy::dump(data, "/global/sig", Sig_bar(0, 1), {1, istore});
-            H5Easy::dump(data, "/global/sig", Sig_bar(1, 1), {1, istore});
+            H5Easy::dump(data, "/global/sig", Sig_bar(1, 1), {2, istore});
             H5Easy::dump(data, "/global/iiter", iiter, {istore});
             H5Easy::dump(data, fmt::format("/plastic/{0:d}/sig", istore), Sig_plas);
             H5Easy::dump(data, fmt::format("/plastic/{0:d}/idx", istore), idx);
