@@ -687,6 +687,8 @@ void run(double stress, size_t element, size_t inc_c, const std::string& output)
     size_t istore = 0; // storage index
     size_t ievent = 0;
     bool last = false;
+    bool event_attribute = true;
+    bool event = false;
 
     // quench: force equilibrium
     for (size_t iiter = 0; ; ++iiter)
@@ -741,6 +743,7 @@ void run(double stress, size_t element, size_t inc_c, const std::string& output)
                 ievent++;
             }
             xt::noalias(idx_last) = idx;
+            event = true;
         }
 
         // store snapshot
@@ -777,7 +780,7 @@ void run(double stress, size_t element, size_t inc_c, const std::string& output)
         }
 
         // write info
-        if (iiter == 0) {
+        if (event && event_attribute) {
             H5Easy::dumpAttribute(data, "/event/iiter", "desc", std::string("Iteration number for event"));
             H5Easy::dumpAttribute(data, "/event/step", "desc", std::string("Step size for block since the last event"));
             H5Easy::dumpAttribute(data, "/event/r", "desc", std::string("Position of the block"));
@@ -800,6 +803,10 @@ void run(double stress, size_t element, size_t inc_c, const std::string& output)
             H5Easy::dumpAttribute(data, "/event/crack/sig", "xy", static_cast<size_t>(1));
             H5Easy::dumpAttribute(data, "/event/crack/sig", "yy", static_cast<size_t>(2));
 
+            event_attribute = false;
+        }
+
+        if (iiter == 0) {
             H5Easy::dumpAttribute(data, "/interval/global/sig", "xx", static_cast<size_t>(0));
             H5Easy::dumpAttribute(data, "/interval/global/sig", "xy", static_cast<size_t>(1));
             H5Easy::dumpAttribute(data, "/interval/global/sig", "yy", static_cast<size_t>(2));
