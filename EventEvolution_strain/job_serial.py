@@ -75,7 +75,7 @@ conda activate code_velocity
 
 name = 'strain=0'
 commands = get_runs()
-commands = commands[:5]
+commands = commands[:50]
 
 dirname = 'EventEvolution_' + name
 
@@ -84,7 +84,7 @@ if not os.path.isdir(dirname):
 
 for i, command in enumerate(commands):
 
-    basename = 'job{0:d}'.format(i)
+    basename = 'job{0:02d}'.format(i)
 
     sbatch = {
         'job-name': 'EventEvolution_{0:s}_{1:d}'.format(name, i),
