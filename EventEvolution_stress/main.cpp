@@ -675,60 +675,67 @@ void run(double stress, size_t element, size_t inc_c, const std::string& output)
     H5Easy::File data(output, H5Easy::File::Overwrite);
 
     // storage parameters
-    int S = 0; // current avalanche size
-    size_t S_next = 0; // next avalanche size to store
-    size_t S_index = 0; // index of store avalanche size
-    size_t S_step = 50; // avalanche size at which to store
-    size_t A = 0; // current crack area
-    size_t A_next = 0; // next crack area to store
-    size_t A_index = 0; // index of store crack area
-    bool A_store = true; // store synchronised on "A"
-    size_t t_step = 2000; // time-step interval at which to store
-    size_t istore = 0; // storage index
+    int S = 0; // avalanche size (maximum size since beginning)
+    size_t S_next = 0; // next storage value
+    size_t S_index = 0; // storage index
+    size_t S_step = 50; // storage step size
+    size_t A = 0; // current crack area  (maximum size since beginning)
+    size_t A_next = 0; // next storage value
+    size_t A_index = 0; // storage index
+    size_t A_step = 1; // storage step size
+    bool A_store = true; // store synchronised on "A" -> set to false when A == N to avoid continued output
+    size_t t_step = 500; // interval at which to store a global snapshot
+    size_t t_factor = 4; // "t_step * t_factor" is interval at which to store local snapshot
+    size_t ioverview = 0;
+    size_t isnapshot = 0;
     size_t ievent = 0;
     bool last = false;
     bool event_attribute = true;
     bool event = false;
+    xt::xtensor_fixed<double, xt::xshape<2,2>> Sig_bar = xt::average(m_Sig, dV, {0, 1});
+    xt::xtensor<double,3> Sig_elem = xt::average(m_Sig, dV, {1});
+    xt::xtensor<double,2> Sig_plas = xt::empty<double>({3ul, N});
+    xt::xtensor<double,1> sig_weak = xt::empty<double>({3ul});
+    xt::xtensor<double,1> sig_crack = xt::empty<double>({3ul});
+    xt::xtensor<double,1> yielded = xt::empty<double>({N});
+    xt::xtensor<double,2> yielded_2 = xt::empty<double>({3ul, N});
 
     // quench: force equilibrium
     for (size_t iiter = 0; ; ++iiter)
     {
-        // update state
         if (iiter > 0) {
             xt::noalias(idx) = xt::view(m_material.Find(m_Eps), xt::keep(m_plastic), 0);
         }
 
-        // get the 'crack' size (disallow crack to shrink to avoid storage issues in rare cases)
         size_t a = xt::sum(xt::not_equal(idx, idx_n))[0];
         int s = xt::sum(idx - idx_n)[0];
         A = std::max(A, a);
         S = std::max(S, s);
 
-        // macroscopic/element stress tensor
-        xt::xtensor_fixed<double, xt::xshape<2,2>> Sig_bar = xt::average(m_Sig, dV, {0, 1});
-        xt::xtensor<double,3> Sig_elem = xt::average(m_Sig, dV, {1});
-        xt::xtensor<double,2> Sig_plas = xt::empty<double>({3ul, N});
-        xt::view(Sig_plas, 0, xt::all()) = xt::view(Sig_elem, xt::keep(m_plastic), 0, 0);
-        xt::view(Sig_plas, 1, xt::all()) = xt::view(Sig_elem, xt::keep(m_plastic), 0, 1);
-        xt::view(Sig_plas, 2, xt::all()) = xt::view(Sig_elem, xt::keep(m_plastic), 1, 1);
+        bool save_event = xt::any(xt::not_equal(idx, idx_last));
+        bool save_overview = iiter % t_step == 0 || last || iiter == 0;
+        bool save_snapshot = ((A >= A_next || A == N) && A_store) || S >= (int)S_next || iiter % (t_step * t_factor) == 0 || last || iiter == 0;
 
-        // store events
-        if (xt::any(xt::not_equal(idx, idx_last))) {
+        if (save_event || save_overview |  save_snapshot) {
+            xt::noalias(yielded) = xt::not_equal(idx, idx_n);
+            for (size_t k = 0; k < 3; ++k) {
+                xt::view(yielded_2, k, xt::all()) = yielded;
+            }
+            xt::noalias(Sig_bar) = xt::average(m_Sig, dV, {0, 1});
+            xt::noalias(Sig_elem) = xt::average(m_Sig, dV, {1});
+            xt::view(Sig_plas, 0, xt::all()) = xt::view(Sig_elem, xt::keep(m_plastic), 0, 0);
+            xt::view(Sig_plas, 1, xt::all()) = xt::view(Sig_elem, xt::keep(m_plastic), 0, 1);
+            xt::view(Sig_plas, 2, xt::all()) = xt::view(Sig_elem, xt::keep(m_plastic), 1, 1);
+            xt::noalias(sig_weak) = xt::mean(Sig_plas, {1});
+            xt::noalias(sig_crack) = xt::average(Sig_plas, yielded_2, {1});
+        }
+
+        if (save_event) {
             xt::xtensor<size_t,1> r = xt::flatten_indices(xt::argwhere(xt::not_equal(idx, idx_last)));
             for (size_t i = 0; i < r.size(); ++i) {
-                // average stress on the weak layer
-                xt::xtensor<double,1> sig_weak = xt::mean(Sig_plas, 1);
-                // average stress on the blocks that yielded at least once
-                xt::xtensor<double,1> y = xt::not_equal(idx, idx_n);
-                xt::xtensor<double,2> yielded = xt::empty<double>(Sig_plas.shape());
-                for (size_t k = 0; k < 3; ++k) {
-                    xt::view(yielded, k, xt::all()) = y;
-                }
-                xt::xtensor<double,1> sig_crack = xt::average(Sig_plas, yielded, {1});
-                // write
-                H5Easy::dump(data, "/event/iiter", iiter, {ievent});
                 H5Easy::dump(data, "/event/step", idx(r(i)) - idx_last(r(i)), {ievent});
                 H5Easy::dump(data, "/event/r", r(i), {ievent});
+                H5Easy::dump(data, "/event/global/iiter", iiter, {ievent});
                 H5Easy::dump(data, "/event/global/S", s, {ievent});
                 H5Easy::dump(data, "/event/global/A", a, {ievent});
                 H5Easy::dump(data, "/event/global/sig", Sig_bar(0, 0), {0, ievent});
@@ -746,45 +753,60 @@ void run(double stress, size_t element, size_t inc_c, const std::string& output)
             event = true;
         }
 
-        // store snapshot
-        if (((A >= A_next || A == N) && A_store) || S >= (int)S_next || iiter % t_step == 0 || last || iiter == 0)
+        // store global snapshot
+        if (save_overview || save_snapshot)
         {
-            H5Easy::dump(data, "/interval/global/sig", Sig_bar(0, 0), {0, istore});
-            H5Easy::dump(data, "/interval/global/sig", Sig_bar(0, 1), {1, istore});
-            H5Easy::dump(data, "/interval/global/sig", Sig_bar(1, 1), {2, istore});
-            H5Easy::dump(data, "/interval/global/iiter", iiter, {istore});
-            H5Easy::dump(data, fmt::format("/interval/plastic/{0:d}/sig", istore), Sig_plas);
-            H5Easy::dump(data, fmt::format("/interval/plastic/{0:d}/idx", istore), idx);
-            H5Easy::dump(data, "/interval/storage/values", istore, {istore});
+            H5Easy::dump(data, "/overview/global/iiter", iiter, {ioverview});
+            H5Easy::dump(data, "/overview/global/S", s, {ioverview});
+            H5Easy::dump(data, "/overview/global/A", a, {ioverview});
+            H5Easy::dump(data, "/overview/global/sig", Sig_bar(0, 0), {0, ioverview});
+            H5Easy::dump(data, "/overview/global/sig", Sig_bar(0, 1), {1, ioverview});
+            H5Easy::dump(data, "/overview/global/sig", Sig_bar(1, 1), {2, ioverview});
+            H5Easy::dump(data, "/overview/weak/sig", sig_weak(0), {0, ioverview});
+            H5Easy::dump(data, "/overview/weak/sig", sig_weak(1), {1, ioverview});
+            H5Easy::dump(data, "/overview/weak/sig", sig_weak(2), {2, ioverview});
+            H5Easy::dump(data, "/overview/crack/sig", sig_crack(0), {0, ioverview});
+            H5Easy::dump(data, "/overview/crack/sig", sig_crack(1), {1, ioverview});
+            H5Easy::dump(data, "/overview/crack/sig", sig_crack(2), {2, ioverview});
+            ioverview++;
+        }
+
+        // store local snapshot
+        if (save_snapshot)
+        {
+            H5Easy::dump(data, fmt::format("/snapshot/plastic/{0:d}/sig", isnapshot), Sig_plas);
+            H5Easy::dump(data, fmt::format("/snapshot/plastic/{0:d}/idx", isnapshot), idx);
+            H5Easy::dump(data, "/snapshot/storage/overview", ioverview, {isnapshot});
+            H5Easy::dump(data, "/snapshot/storage/snapshot", isnapshot, {isnapshot});
             if ((A >= A_next || A == N) && A_store) {
-                H5Easy::dump(data, "/interval/storage/A/values", A, {A_index});
-                H5Easy::dump(data, "/interval/storage/A/index", istore, {A_index});
-                A_next++;
+                H5Easy::dump(data, "/snapshot/storage/A/values", A, {A_index});
+                H5Easy::dump(data, "/snapshot/storage/A/index", isnapshot, {A_index});
+                A_next += A_step;
                 A_index++;
                 if (A >= N) {
                     A_store = false;
                 }
             }
             if (S >= (int)S_next) {
-                H5Easy::dump(data, "/interval/storage/S/values", S, {S_index});
-                H5Easy::dump(data, "/interval/storage/S/index", istore, {S_index});
+                H5Easy::dump(data, "/snapshot/storage/S/values", S, {S_index});
+                H5Easy::dump(data, "/snapshot/storage/S/index", isnapshot, {S_index});
                 S_next += S_step;
                 S_index++;
             }
-            if (iiter % t_step == 0) {
-                size_t j = iiter / t_step;
-                H5Easy::dump(data, "/interval/storage/iiter/values", iiter, {j});
-                H5Easy::dump(data, "/interval/storage/iiter/index", istore, {j});
+            if (iiter % (t_step * t_factor) == 0) {
+                size_t j = iiter / (t_step * t_factor);
+                H5Easy::dump(data, "/snapshot/storage/iiter/values", iiter, {j});
+                H5Easy::dump(data, "/snapshot/storage/iiter/index", isnapshot, {j});
             }
-            istore++;
+            isnapshot++;
         }
 
         // write info
         if (event && event_attribute) {
-            H5Easy::dumpAttribute(data, "/event/iiter", "desc", std::string("Iteration number for event"));
-            H5Easy::dumpAttribute(data, "/event/step", "desc", std::string("Step size for block since the last event"));
-            H5Easy::dumpAttribute(data, "/event/r", "desc", std::string("Position of the block"));
+            H5Easy::dumpAttribute(data, "/event/step", "desc", std::string("Number of times the block yielded since the last event"));
+            H5Easy::dumpAttribute(data, "/event/r", "desc", std::string("Position of the yielding block"));
 
+            H5Easy::dumpAttribute(data, "/event/global/iiter", "desc", std::string("Iteration number for event"));
             H5Easy::dumpAttribute(data, "/event/global/S", "desc", std::string("Avalanche size at time of event"));
             H5Easy::dumpAttribute(data, "/event/global/A", "desc", std::string("Avalanche radius at time of event"));
 
@@ -807,30 +829,34 @@ void run(double stress, size_t element, size_t inc_c, const std::string& output)
         }
 
         if (iiter == 0) {
-            H5Easy::dumpAttribute(data, "/interval/global/sig", "xx", static_cast<size_t>(0));
-            H5Easy::dumpAttribute(data, "/interval/global/sig", "xy", static_cast<size_t>(1));
-            H5Easy::dumpAttribute(data, "/interval/global/sig", "yy", static_cast<size_t>(2));
-            H5Easy::dumpAttribute(data, "/interval/global/sig", "desc",
-                std::string("Macroscopic stress tensor: each row corresponds to a different component (xx, xy, yy)"));
-            H5Easy::dumpAttribute(data, "/interval/global/sig", "shape", std::string("3, nstore"));
+            H5Easy::dumpAttribute(data, "/overview/global/iiter", "desc", std::string("Iteration number"));
+            H5Easy::dumpAttribute(data, "/overview/global/S", "desc", std::string("Avalanche size"));
+            H5Easy::dumpAttribute(data, "/overview/global/A", "desc", std::string("Avalanche radius"));
 
-            H5Easy::dumpAttribute(data, "/interval/global/iiter", "desc", std::string("Iteration number"));
-            H5Easy::dumpAttribute(data, "/interval/global/iiter", "shape", std::string("nstore"));
+            H5Easy::dumpAttribute(data, "/overview/global/sig", "desc", std::string("Macroscopic stress (xx, xy, yy)"));
+            H5Easy::dumpAttribute(data, "/overview/global/sig", "xx", static_cast<size_t>(0));
+            H5Easy::dumpAttribute(data, "/overview/global/sig", "xy", static_cast<size_t>(1));
+            H5Easy::dumpAttribute(data, "/overview/global/sig", "yy", static_cast<size_t>(2));
 
-            H5Easy::dumpAttribute(data, fmt::format("/interval/plastic/{0:d}/sig", 0), "xx", static_cast<size_t>(0));
-            H5Easy::dumpAttribute(data, fmt::format("/interval/plastic/{0:d}/sig", 0), "xy", static_cast<size_t>(1));
-            H5Easy::dumpAttribute(data, fmt::format("/interval/plastic/{0:d}/sig", 0), "yy", static_cast<size_t>(2));
-            H5Easy::dumpAttribute(data, fmt::format("/interval/plastic/{0:d}/sig", 0), "desc",
-                std::string("Stress tensor along the weak layer: each row corresponds to a different component (xx, xy, yy)"));
-            H5Easy::dumpAttribute(data, fmt::format("/interval/plastic/{0:d}/sig", 0), "shape", std::string("3, N"));
+            H5Easy::dumpAttribute(data, "/overview/weak/sig", "desc", std::string("Stress averaged on weak layer (xx, xy, yy)"));
+            H5Easy::dumpAttribute(data, "/overview/weak/sig", "xx", static_cast<size_t>(0));
+            H5Easy::dumpAttribute(data, "/overview/weak/sig", "xy", static_cast<size_t>(1));
+            H5Easy::dumpAttribute(data, "/overview/weak/sig", "yy", static_cast<size_t>(2));
 
-            H5Easy::dumpAttribute(data, fmt::format("/interval/plastic/{0:d}/idx", 0), "desc",
-                std::string("Index of the current local minimum"));
-            H5Easy::dumpAttribute(data, fmt::format("/interval/plastic/{0:d}/idx", 0), "shape", std::string("N"));
+            H5Easy::dumpAttribute(data, "/overview/crack/sig", "desc", std::string("Stress averaged on yielded blocks (xx, xy, yy)"));
+            H5Easy::dumpAttribute(data, "/overview/crack/sig", "xx", static_cast<size_t>(0));
+            H5Easy::dumpAttribute(data, "/overview/crack/sig", "xy", static_cast<size_t>(1));
+            H5Easy::dumpAttribute(data, "/overview/crack/sig", "yy", static_cast<size_t>(2));
 
-            H5Easy::dump(data, "/interval/storage/A/step", 1);
-            H5Easy::dump(data, "/interval/storage/S/step", S_step);
-            H5Easy::dump(data, "/interval/storage/iiter/step", t_step);
+            H5Easy::dumpAttribute(data, fmt::format("/snapshot/plastic/{0:d}/sig", 0), "xx", static_cast<size_t>(0));
+            H5Easy::dumpAttribute(data, fmt::format("/snapshot/plastic/{0:d}/sig", 0), "xy", static_cast<size_t>(1));
+            H5Easy::dumpAttribute(data, fmt::format("/snapshot/plastic/{0:d}/sig", 0), "yy", static_cast<size_t>(2));
+            H5Easy::dumpAttribute(data, fmt::format("/snapshot/plastic/{0:d}/sig", 0), "desc", std::string("Stress tensor along the weak layer (xx, xy, yy)"));
+            H5Easy::dumpAttribute(data, fmt::format("/snapshot/plastic/{0:d}/idx", 0), "desc", std::string("Index of the current local minimum"));
+
+            H5Easy::dump(data, "/snapshot/storage/A/step", A_step);
+            H5Easy::dump(data, "/snapshot/storage/S/step", S_step);
+            H5Easy::dump(data, "/snapshot/storage/iiter/step", t_step * t_factor);
         }
 
         if (last) {
