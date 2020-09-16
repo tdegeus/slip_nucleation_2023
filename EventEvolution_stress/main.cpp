@@ -11,6 +11,10 @@
 #include <highfive/H5Easy.hpp>
 #include <xtensor/xindex_view.hpp>
 
+#ifndef GIT_COMMIT_HASH
+#define GIT_COMMIT_HASH "?"
+#endif
+
 // alias namespaces
 namespace GF = GooseFEM;
 namespace QD = GooseFEM::Element::Quad4;
@@ -64,7 +68,7 @@ private:
   GF::MatrixDiagonal m_D;
 
   // material definition
-  GM::Matrix m_material;
+  GM::Array<2> m_material;
 
   // convergence check
   GF::Iterate::StopList m_stop;
@@ -253,7 +257,7 @@ void setDamping()
 void setMaterial()
 {
   // allocate
-  m_material = GM::Matrix(m_nelem, m_nip);
+  m_material = GM::Array<2>({m_nelem, m_nip});
 
   // add elastic elements
   {
@@ -385,7 +389,8 @@ void computeStrainStress()
 {
   m_vector.asElement(m_u, m_ue);
   m_quad.symGradN_vector(m_ue, m_Eps);
-  m_material.stress(m_Eps, m_Sig);
+  m_material.setStrain(m_Eps);
+  m_material.stress(m_Sig);
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -411,7 +416,7 @@ std::tuple<xt::xtensor<size_t,1>, xt::xtensor<size_t,1>> getIncPush(double stres
 
   // index of the current quadratic potential,
   // for the first integration point per plastic element
-  auto idx_n = xt::view(m_material.Find(m_Eps), xt::keep(m_plastic), 0);
+  auto idx_n = xt::view(m_material.CurrentIndex(), xt::keep(m_plastic), 0);
 
   // loop over increments
   for (size_t istored = 0; istored < stored.size(); ++istored)
@@ -426,15 +431,15 @@ std::tuple<xt::xtensor<size_t,1>, xt::xtensor<size_t,1>> getIncPush(double stres
     computeStrainStress();
 
     // - index of the current quadratic potential
-    auto idx = xt::view(m_material.Find(m_Eps), xt::keep(m_plastic), 0);
+    auto idx = xt::view(m_material.CurrentIndex(), xt::keep(m_plastic), 0);
 
     // - macroscopic strain/stress tensor
     xt::xtensor_fixed<double, xt::xshape<2,2>> Epsbar = xt::average(m_Eps, dV, {0,1});
     xt::xtensor_fixed<double, xt::xshape<2,2>> Sigbar = xt::average(m_Sig, dV, {0,1});
 
     // - macroscopic equivalent strain/stress
-    epsd(inc) = GM::Epsd(Epsbar);
-    sigd(inc) = GM::Sigd(Sigbar);
+    epsd(inc) = GM::Epsd(Epsbar)();
+    sigd(inc) = GM::Sigd(Sigbar)();
 
     // - avalanche area
     A(inc) = xt::sum(xt::not_equal(idx,idx_n))[0];
@@ -528,7 +533,7 @@ std::tuple<xt::xtensor<size_t,1>, xt::xtensor<size_t,1>> getIncPush(double stres
 void moveForwardToFixedStress(double stress)
 {
   // store current minima (for sanity check)
-  auto idx_n = m_material.Find(m_Eps);
+  auto idx_n = m_material.CurrentIndex();
 
   // integration point volume
   xt::xtensor<double,4> dV = m_quad.DV(2);
@@ -539,8 +544,8 @@ void moveForwardToFixedStress(double stress)
   xt::xtensor_fixed<double, xt::xshape<2,2>> Epsd   = GM::Deviatoric(Epsbar);
 
   // current equivalent deviatoric stress/strain
-  double eps = GM::Epsd(Epsbar);
-  double sig = GM::Sigd(Sigbar);
+  double eps = GM::Epsd(Epsbar)();
+  double sig = GM::Sigd(Sigbar)();
 
   // get homogeneous shear modulus
   double G = m_material.G()(0,0);
@@ -560,10 +565,10 @@ void moveForwardToFixedStress(double stress)
 
   // compute new macroscopic stress (for sanity check)
   Sigbar = xt::average(m_Sig, dV, {0,1});
-  sig = GM::Sigd(Sigbar);
+  sig = GM::Sigd(Sigbar)();
 
   // current minima (for sanity check)
-  auto idx = m_material.Find(m_Eps);
+  auto idx = m_material.CurrentIndex();
 
   // check that the stress is what it was set to (sanity check)
   if (std::abs(stress - sig) / sig > 1.e-4)
@@ -596,8 +601,7 @@ void triggerElement(size_t element)
   xt::xtensor<double,2> eps = GM::Epsd(m_Eps);
 
   // distance to yielding on the positive side
-  xt::xtensor<size_t,2> idx  = m_material.Find(m_Eps);
-  xt::xtensor<double,2> epsy = m_material.Epsy(idx + 1ul);
+  xt::xtensor<double,2> epsy = m_material.CurrentYieldRight();
   xt::xtensor<double,2> deps = eps - epsy;
 
   // find integration point closest to yielding
@@ -664,15 +668,17 @@ void run(double stress, size_t element, size_t inc_c, const std::string& output)
     // extract information needed for storage
     size_t N = m_plastic.size();
     xt::xtensor<double,4> dV = m_quad.DV(2);
-    xt::xtensor<int,1> idx_last = xt::view(m_material.Find(m_Eps), xt::keep(m_plastic), 0);
-    xt::xtensor<int,1> idx_n = xt::view(m_material.Find(m_Eps), xt::keep(m_plastic), 0);
-    xt::xtensor<int,1> idx = xt::view(m_material.Find(m_Eps), xt::keep(m_plastic), 0);
+    xt::xtensor<int,1> idx_last = xt::view(m_material.CurrentIndex(), xt::keep(m_plastic), 0);
+    xt::xtensor<int,1> idx_n = xt::view(m_material.CurrentIndex(), xt::keep(m_plastic), 0);
+    xt::xtensor<int,1> idx = xt::view(m_material.CurrentIndex(), xt::keep(m_plastic), 0);
 
     // perturb the displacement of the set element, to (try to) trigger an avalanche
     triggerElement(element);
 
     // clear/open the output file
     H5Easy::File data(output, H5Easy::File::Overwrite);
+    std::string hash = GIT_COMMIT_HASH;
+    H5Easy::dump(data, "/git/run", hash);
 
     // storage parameters
     int S = 0; // avalanche size (maximum size since beginning)
@@ -704,11 +710,11 @@ void run(double stress, size_t element, size_t inc_c, const std::string& output)
     for (size_t iiter = 0; ; ++iiter)
     {
         if (iiter > 0) {
-            xt::noalias(idx) = xt::view(m_material.Find(m_Eps), xt::keep(m_plastic), 0);
+            idx = xt::view(m_material.CurrentIndex(), xt::keep(m_plastic), 0);
         }
 
-        size_t a = xt::sum(xt::not_equal(idx, idx_n))[0];
-        int s = xt::sum(idx - idx_n)[0];
+        size_t a = xt::sum(xt::not_equal(idx, idx_n))();
+        int s = xt::sum(idx - idx_n)();
         A = std::max(A, a);
         S = std::max(S, s);
 
