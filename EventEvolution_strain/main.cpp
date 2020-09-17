@@ -433,11 +433,11 @@ public:
         m_stop.reset();
 
         // current equivalent deviatoric strain
-        xt::xtensor<double, 2> eps = GM::Epsd(m_Eps);
+        auto eps = GM::Epsd(m_Eps);
 
         // distance to yielding on the positive side
-        xt::xtensor<double, 2> epsy = m_material.CurrentYieldRight();
-        xt::xtensor<double, 2> deps = eps - epsy;
+        auto epsy = m_material.CurrentYieldRight();
+        auto deps = eps - epsy;
 
         // find integration point closest to yielding
         // - isolate element

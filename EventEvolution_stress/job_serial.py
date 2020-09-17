@@ -70,7 +70,7 @@ def get_runs(name, stress):
             id = p_files[p_file[i]].replace('.hdf5', ''))
 
         if os.path.isfile(os.path.join(full_dir, fname)):
-            print('Skipping full')
+            print('Skipping')
             continue
 
         commands += [{
@@ -81,7 +81,7 @@ def get_runs(name, stress):
             'stress' : stress,
         }]
 
-    lines = ['time EventEvolution_stress --file {file:s} --element {element:d} --incc {incc:d} --stress {stress:.8e} --output {output:s}'.format(**c) for c in commands]
+    lines = ['EventEvolution_stress --file {file:s} --element {element:d} --incc {incc:d} --stress {stress:.8e} --output {output:s}'.format(**c) for c in commands]
 
     return lines
 
@@ -93,7 +93,11 @@ export OMP_NUM_THREADS=1
 
 # load conda environment
 source ~/miniconda3/etc/profile.d/conda.sh
-conda activate code_velocity
+if [[ "${{SYS_TYPE}}" == *E5v4* ]]; then
+    conda activate code_velocity_E5v4
+elif [[ "${{SYS_TYPE}}" == *s6g1* ]]; then
+    conda activate code_velocity_s6g1
+fi
 
 {0:s}
 '''
@@ -123,7 +127,6 @@ for name, stress in zip([stress_names[0]], [stresses[0]]):
             'time': '3h',
             'account': 'pcsl',
             'partition': 'serial',
-            'constraint': 'E5v4',
         }
 
         open(os.path.join(dirname, basename + '.slurm'), 'w').write(
