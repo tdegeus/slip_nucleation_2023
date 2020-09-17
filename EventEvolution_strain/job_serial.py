@@ -44,7 +44,7 @@ def get_runs():
             id = p_files[p_file[i]].replace('.hdf5', ''))
 
         if os.path.isfile(os.path.join(full_dir, fname)):
-            print('Skipping full')
+            print('Skipping')
             continue
 
         commands += [{
@@ -66,7 +66,12 @@ export OMP_NUM_THREADS=1
 
 # load conda environment
 source ~/miniconda3/etc/profile.d/conda.sh
-conda activate code_velocity
+
+if [[ "${{SYS_TYPE}}" == *E5v4* ]]; then
+    conda activate code_velocity_E5v4
+elif [[ "${{SYS_TYPE}}" == *s6g1* ]]; then
+    conda activate code_velocity_s6g1
+fi
 
 {0:s}
 '''
@@ -75,7 +80,7 @@ conda activate code_velocity
 
 name = 'strain=0'
 commands = get_runs()
-commands = commands[:150]
+commands = commands[:300]
 
 dirname = 'EventEvolution_' + name
 
@@ -95,7 +100,6 @@ for i, command in enumerate(commands):
         'time': '3h',
         'account': 'pcsl',
         'partition': 'serial',
-        'constraint': 'E5v4',
     }
 
     open(os.path.join(dirname, basename + '.slurm'), 'w').write(
