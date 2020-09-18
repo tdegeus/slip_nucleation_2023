@@ -10,6 +10,7 @@
 #include <xtensor/xstrides.hpp>
 #include <xtensor/xview.hpp>
 
+
 #ifndef GIT_COMMIT_HASH
 #define GIT_COMMIT_HASH "?"
 #endif
@@ -335,13 +336,12 @@ public:
         m_material.stress(m_Sig);
     }
 
-
 public:
 
     xt::xtensor<size_t, 1> getIncPush()
     {
         // integration point volume
-        xt::xtensor<double, 4> dV = m_quad.DV(2);
+        auto dV = m_quad.DV(2);
 
         // number of plastic cells
         size_t N = m_plastic.size();
@@ -419,7 +419,6 @@ public:
         return xt::flatten_indices(xt::argwhere(xt::equal(A, N)));
     }
 
-
 public:
 
     void triggerElement(size_t element)
@@ -494,7 +493,7 @@ public:
 
         // extract information needed for storage
         size_t N = m_plastic.size();
-        xt::xtensor<double, 4> dV = m_quad.DV(2);
+        auto dV = m_quad.DV(2);
         xt::xtensor<int, 1> idx_last = xt::view(m_material.CurrentIndex(), xt::keep(m_plastic), 0);
         xt::xtensor<int, 1> idx_n = xt::view(m_material.CurrentIndex(), xt::keep(m_plastic), 0);
         xt::xtensor<int, 1> idx = xt::view(m_material.CurrentIndex(), xt::keep(m_plastic), 0);

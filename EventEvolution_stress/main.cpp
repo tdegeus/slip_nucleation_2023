@@ -96,7 +96,7 @@ private:
     xt::xtensor<double, 2> m_fext;
     xt::xtensor<double, 2> m_fres;
 
-    // integration point strain and stress
+    // integration point tensors
     xt::xtensor<double, 4> m_Eps;
     xt::xtensor<double, 4> m_Sig;
 
@@ -174,6 +174,7 @@ public:
         MYASSERT(val_elem.size() == m_nelem);
 
         xt::xtensor<double, 2> val_quad = xt::empty<double>({m_nelem, nodalQuad.nip()});
+
         for (size_t q = 0; q < nodalQuad.nip(); ++q) {
             xt::view(val_quad, xt::all(), q) = val_elem;
         }
@@ -196,6 +197,7 @@ public:
         MYASSERT(val_elem.size() == m_nelem);
 
         xt::xtensor<double, 2> val_quad = xt::empty<double>({m_nelem, nodalQuad.nip()});
+
         for (size_t q = 0; q < nodalQuad.nip(); ++q) {
             xt::view(val_quad, xt::all(), q) = val_elem;
         }
@@ -340,7 +342,7 @@ public:
     std::tuple<xt::xtensor<size_t, 1>, xt::xtensor<size_t, 1>> getIncPush(double stress)
     {
         // integration point volume
-        xt::xtensor<double, 4> dV = m_quad.DV(2);
+        auto dV = m_quad.DV(2);
 
         // number of plastic cells
         size_t N = m_plastic.size();
@@ -472,6 +474,10 @@ public:
             // - store
             inc_push(i) = ipush;
         }
+
+        // filter list with increments
+        // (zero can never be a valid increment, because of the restriction set above)
+        inc_push = xt::filter(inc_push, inc_push > 0ul);
 
         return std::make_tuple(inc_system, inc_push);
     }
@@ -621,7 +627,7 @@ public:
 
         // extract information needed for storage
         size_t N = m_plastic.size();
-        xt::xtensor<double, 4> dV = m_quad.DV(2);
+        auto dV = m_quad.DV(2);
         xt::xtensor<int, 1> idx_last = xt::view(m_material.CurrentIndex(), xt::keep(m_plastic), 0);
         xt::xtensor<int, 1> idx_n = xt::view(m_material.CurrentIndex(), xt::keep(m_plastic), 0);
         xt::xtensor<int, 1> idx = xt::view(m_material.CurrentIndex(), xt::keep(m_plastic), 0);
@@ -763,51 +769,51 @@ public:
 
             // write info
             if (event && event_attribute) {
+                H5Easy::dumpAttribute(data, "/event/step", "desc", std::string("Number of times the block yielded since the last event"));
+                H5Easy::dumpAttribute(data, "/event/r", "desc", std::string("Position of the yielding block"));
 
+                H5Easy::dumpAttribute(data, "/event/global/iiter", "desc", std::string("Iteration number for event"));
+                H5Easy::dumpAttribute(data, "/event/global/S", "desc", std::string("Avalanche size at time of event"));
+                H5Easy::dumpAttribute(data, "/event/global/A", "desc", std::string("Avalanche radius at time of event"));
 
+                H5Easy::dumpAttribute(data, "/event/global/sig", "desc", std::string("Macroscopic stress (xx, xy, yy) at time of event"));
                 H5Easy::dumpAttribute(data, "/event/global/sig", "xx", static_cast<size_t>(0));
                 H5Easy::dumpAttribute(data, "/event/global/sig", "xy", static_cast<size_t>(1));
                 H5Easy::dumpAttribute(data, "/event/global/sig", "yy", static_cast<size_t>(2));
 
-                H5Easy::dumpAttribute(data, "/event/weak/sig", "xx", static_cast<size_t>(0));
-                H5Easy::dumpAttribute(data, "/event/weak/sig", "xy", static_cast<size_t>(1));
-                H5Easy::dumpAttribute(data, "/event/weak/sig", "yy", static_cast<size_t>(2));
-
-                H5Easy::dumpAttribute(data, "/event/global/sig", "xx", static_cast<size_t>(0));
-                H5Easy::dumpAttribute(data, "/event/global/sig", "xy", static_cast<size_t>(1));
-                H5Easy::dumpAttribute(data, "/event/global/sig", "yy", static_cast<size_t>(2));
                 H5Easy::dumpAttribute(data, "/event/weak/sig", "desc", std::string("Stress averaged on weak layer (xx, xy, yy) at time of event"));
                 H5Easy::dumpAttribute(data, "/event/weak/sig", "xx", static_cast<size_t>(0));
                 H5Easy::dumpAttribute(data, "/event/weak/sig", "xy", static_cast<size_t>(1));
                 H5Easy::dumpAttribute(data, "/event/weak/sig", "yy", static_cast<size_t>(2));
+
+                H5Easy::dumpAttribute(data, "/event/crack/sig", "desc", std::string("Stress averaged on yielded blocks (xx, xy, yy) at time of event"));
                 H5Easy::dumpAttribute(data, "/event/crack/sig", "xx", static_cast<size_t>(0));
                 H5Easy::dumpAttribute(data, "/event/crack/sig", "xy", static_cast<size_t>(1));
-                H5Easy::dumpAttribute(data, "/event/crack/sig", "yy", static_cast<size_t>(2));
                 H5Easy::dumpAttribute(data, "/event/crack/sig", "yy", static_cast<size_t>(2));
 
                 event_attribute = false;
             }
 
             if (iiter == 0) {
+                H5Easy::dumpAttribute(data, "/overview/global/iiter", "desc", std::string("Iteration number"));
+                H5Easy::dumpAttribute(data, "/overview/global/S", "desc", std::string("Avalanche size"));
+                H5Easy::dumpAttribute(data, "/overview/global/A", "desc", std::string("Avalanche radius"));
 
+                H5Easy::dumpAttribute(data, "/overview/global/sig", "desc", std::string("Macroscopic stress (xx, xy, yy)"));
                 H5Easy::dumpAttribute(data, "/overview/global/sig", "xx", static_cast<size_t>(0));
                 H5Easy::dumpAttribute(data, "/overview/global/sig", "xy", static_cast<size_t>(1));
                 H5Easy::dumpAttribute(data, "/overview/global/sig", "yy", static_cast<size_t>(2));
 
+                H5Easy::dumpAttribute(data, "/overview/weak/sig", "desc", std::string("Stress averaged on weak layer (xx, xy, yy)"));
                 H5Easy::dumpAttribute(data, "/overview/weak/sig", "xx", static_cast<size_t>(0));
                 H5Easy::dumpAttribute(data, "/overview/weak/sig", "xy", static_cast<size_t>(1));
                 H5Easy::dumpAttribute(data, "/overview/weak/sig", "yy", static_cast<size_t>(2));
 
-                H5Easy::dumpAttribute(data, "/overview/crack/sig", "xx", static_cast<size_t>(0));
-                H5Easy::dumpAttribute(data, "/overview/crack/sig", "xy", static_cast<size_t>(1));
-                H5Easy::dumpAttribute(data, "/overview/crack/sig", "yy", static_cast<size_t>(2));
-
-                H5Easy::dumpAttribute(data, "/overview/weak/sig", "xy", static_cast<size_t>(1));
-                H5Easy::dumpAttribute(data, "/overview/weak/sig", "yy", static_cast<size_t>(2));
                 H5Easy::dumpAttribute(data, "/overview/crack/sig", "desc", std::string("Stress averaged on yielded blocks (xx, xy, yy)"));
                 H5Easy::dumpAttribute(data, "/overview/crack/sig", "xx", static_cast<size_t>(0));
                 H5Easy::dumpAttribute(data, "/overview/crack/sig", "xy", static_cast<size_t>(1));
                 H5Easy::dumpAttribute(data, "/overview/crack/sig", "yy", static_cast<size_t>(2));
+
                 H5Easy::dumpAttribute(data, fmt::format("/snapshot/plastic/{0:d}/sig", 0), "xx", static_cast<size_t>(0));
                 H5Easy::dumpAttribute(data, fmt::format("/snapshot/plastic/{0:d}/sig", 0), "xy", static_cast<size_t>(1));
                 H5Easy::dumpAttribute(data, fmt::format("/snapshot/plastic/{0:d}/sig", 0), "yy", static_cast<size_t>(2));
