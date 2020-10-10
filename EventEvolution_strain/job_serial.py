@@ -19,15 +19,17 @@ def get_runs():
         p_file  = data['file'   ][...]
         p_elem  = data['element'][...]
         p_A     = data['A'      ][...]
+        p_S     = data['S'      ][...]
         p_sig   = data['sigd0'  ][...]
         p_sigc  = data['sig_c'  ][...]
         p_incc  = data['inc_c'  ][...]
 
-    idx = np.where(p_A > 10)[0]
+    idx = np.argwhere(p_S > 1).ravel()
 
     p_file = p_file[idx]
     p_elem = p_elem[idx]
     p_A    = p_A   [idx]
+    p_S    = p_S   [idx]
     p_sig  = p_sig [idx]
     p_sigc = p_sigc[idx]
     p_incc = p_incc[idx]
@@ -80,7 +82,8 @@ fi
 
 name = 'strain=0'
 commands = get_runs()
-commands = commands[:300]
+
+print(len(commands))
 
 dirname = 'EventEvolution_' + name
 
@@ -89,7 +92,7 @@ if not os.path.isdir(dirname):
 
 for i, command in enumerate(commands):
 
-    basename = 'job{0:03d}'.format(i)
+    basename = 'job{0:04d}'.format(i)
 
     sbatch = {
         'job-name': 'EventEvolution_{0:s}_{1:d}'.format(name, i),
