@@ -31,7 +31,9 @@ namespace GM = GMatElastoPlasticQPot::Cartesian2d;
     }
 
 
-// #define CHECK_MYSHORTCUT
+#ifdef GMATELASTOPLASTICQPOT_ENABLE_ASSERT
+#define CHECK_MYSHORTCUT
+#endif
 
 
 class Main {
@@ -94,6 +96,7 @@ private:
     // event-driven settings
     size_t m_inc = 0;    // current increment
     double m_deps_kick;  // equivalent strain increment
+    size_t m_nyield;
 
     // nodal displacements, velocities, and accelerations (current and last time-step)
     xt::xtensor<double, 2> m_u;
@@ -140,6 +143,10 @@ public:
         setMaterial();
         readParameters();
         computeStrainStress();
+
+#ifdef CHECK_MYSHORTCUT
+        std::cout << "Checking simplification" << std::endl;
+#endif
     }
 
 public:
@@ -165,7 +172,7 @@ public:
         m_nne = m_conn.shape(1);
 
         m_elastic = xt::sort(H5Easy::load<decltype(m_elastic)>(m_file, "/elastic/elem"));
-        m_plastic = xt::sort(H5Easy::load<decltype(m_plastic)>(m_file, "/plastic/elem"));
+        m_plastic = xt::sort(H5Easy::load<decltype(m_plastic)>(m_file, "/cusp/elem"));
 
         m_nelem_elas = m_elastic.size();
         m_nelem_plas = m_plastic.size();
@@ -262,6 +269,8 @@ public:
     void setMaterial()
     {
         m_material = GM::Array<2>({m_nelem, m_nip});
+        m_material_elas = GM::Array<2>({m_nelem_elas, m_nip});
+        m_material_plas = GM::Array<2>({m_nelem_plas, m_nip});
 
         {
             auto k = H5Easy::load<xt::xtensor<double, 1>>(m_file, "/elastic/K");
@@ -283,6 +292,7 @@ public:
             auto k = H5Easy::load<xt::xtensor<double, 1>>(m_file, "/cusp/K");
             auto g = H5Easy::load<xt::xtensor<double, 1>>(m_file, "/cusp/G");
             auto y = H5Easy::load<xt::xtensor<double, 2>>(m_file, "/cusp/epsy");
+            m_nyield = y.shape(1);
 
             xt::xtensor<size_t, 2> I = xt::zeros<size_t>({m_nelem, m_nip});
             xt::xtensor<size_t, 2> idx = xt::zeros<size_t>({m_nelem, m_nip});
@@ -498,7 +508,7 @@ public:
         }
 
         // check that no yielding took place
-        if (xt::sum(xt::not_equal(idx, idx_n))() != 1) {
+        if (xt::sum(xt::not_equal(idx, idx_n))() == 0 || xt::sum(xt::not_equal(idx, idx_n))() > 4) {
             throw std::runtime_error("Yielding took place where it shouldn't");
         }
     }
@@ -569,6 +579,11 @@ public:
         for (size_t iiter = 0;; ++iiter) {
             if (iiter > 0) {
                 idx = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
+            }
+
+             // break if maximum local strain could be exceeded
+            if (xt::amax(idx)() > static_cast<int>(m_nyield) - 10) {
+                return -1;
             }
 
             size_t a = xt::sum(xt::not_equal(idx, idx_n))();
@@ -723,7 +738,7 @@ Usage:
     PushWeakest [options] --output=N --input=N
 
 Arguments:
-    --output=N      Base pat of the output-file: appended with "_{inc:d}.hdf5"
+    --output=N      Base pat of the output-file: appended with "_ipush={inc:d}.hdf5"
     --input=N       The path to the simulation file.
 
 Options:
@@ -747,7 +762,7 @@ int main(int argc, const char** argv)
     for (size_t i = 0; i < 200; ++i)
     {
         size_t inc = sim.getMaxStored();
-        int S = sim.runIncrement(fmt::format("{0:s}_{1:d}.hdf5", output, inc + 1));
+        int S = sim.runIncrement(fmt::format("{0:s}_ipush={1:d}.hdf5", output, inc + 1));
         if (S <= 0) {
             break;
         }
