@@ -502,8 +502,6 @@ public:
 
         // clear/open the output file
         H5Easy::File data(output, H5Easy::File::Overwrite);
-        std::string hash = GIT_COMMIT_HASH;
-        H5Easy::dump(data, "/git/run", hash);
 
         // storage parameters
         size_t A = 0;
@@ -624,6 +622,9 @@ public:
                 break;
             }
         }
+
+        std::string hash = GIT_COMMIT_HASH;
+        H5Easy::dump(data, "/git/run", hash);
 
         H5Easy::dump(data, "/meta/completed", 1);
         H5Easy::dump(data, "/meta/uuid", H5Easy::load<std::string>(m_file, "/uuid"));

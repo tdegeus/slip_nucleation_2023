@@ -66,11 +66,11 @@ private:
     GM::Array<2> m_material;
 
     // convergence check
-    GF::Iterate::StopList m_stop;
+    GF::Iterate::StopList m_stop = GF::Iterate::StopList(20);
 
-    // current time & time-step
-    double m_t = 0.0;
-    double m_dt;
+    // time evolution
+    double m_t = 0.0;   // current time
+    double m_dt;        // time step
 
     // event-driven settings
     size_t m_inc = 0;                 // current increment
@@ -117,7 +117,6 @@ public:
     {
         m_dt = H5Easy::load<double>(m_file, "/run/dt");
         m_deps_kick = H5Easy::load<double>(m_file, "/run/epsd/kick");
-        m_stop = GF::Iterate::StopList(20);
     }
 
 public:
@@ -503,8 +502,6 @@ public:
 
         // clear/open the output file
         H5Easy::File data(output, H5Easy::File::Overwrite);
-        std::string hash = GIT_COMMIT_HASH;
-        H5Easy::dump(data, "/git/run", hash);
 
         // storage parameters
         int S = 0;           // avalanche size (maximum size since beginning)
@@ -550,7 +547,7 @@ public:
                                  iiter % (t_step * t_factor) == 0 ||
                                  last || iiter == 0;
 
-            if (save_event || save_overview | save_snapshot) {
+            if (save_event || save_overview || save_snapshot) {
                 xt::noalias(yielded) = xt::not_equal(idx, idx_n);
                 for (size_t k = 0; k < 3; ++k) {
                     xt::view(yielded_2, k, xt::all()) = yielded;
@@ -703,6 +700,9 @@ public:
                 last = true;
             }
         }
+
+        std::string hash = GIT_COMMIT_HASH;
+        H5Easy::dump(data, "/git/run", hash);
 
         H5Easy::dump(data, "/meta/completed", 1);
         H5Easy::dump(data, "/meta/uuid", H5Easy::load<std::string>(m_file, "/uuid"));

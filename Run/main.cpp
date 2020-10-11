@@ -66,11 +66,11 @@ private:
     GM::Array<2> m_material;
 
     // convergence check
-    GF::Iterate::StopList m_stop;
+    GF::Iterate::StopList m_stop = GF::Iterate::StopList(20);
 
-    // current time & time-step
-    double m_t = 0.0;
-    double m_dt;
+    // time evolution
+    double m_t = 0.0;   // current time
+    double m_dt;        // time step
 
     // event-driven settings
     size_t m_inc = 0;                 // current increment
