@@ -540,20 +540,12 @@ public:
         // load last increment
         m_inc = getMaxStored();
         m_t = H5Easy::load<decltype(m_t)>(m_file, "/t", {m_inc});
+        double sigbar = H5Easy::load<double>(m_file, "/sigd", {m_inc});
         xt::noalias(m_u) = H5Easy::load<decltype(m_u)>(m_file, fmt::format("/disp/{0:d}", m_inc));
+        computeStrainStress();
         computeStrainStressForcesWeakLayer();
         fmt::print("'{0:s}': Loading, inc = {1:d}\n", m_file.getName(), m_inc);
         m_inc++;
-
-        // extract information needed for storage
-        auto dV = m_quad.AsTensor<2>(m_quad.dV());
-        auto dV_plas = m_quad_plas.AsTensor<2>(m_quad_plas.dV());
-        xt::xtensor<int, 1> idx_last = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
-        xt::xtensor<int, 1> idx_n = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
-        xt::xtensor<int, 1> idx = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
-
-        // trigger weakest point
-        triggerWeakest();
 
         // clear/open the output file
         H5Easy::File data(outfilename, H5Easy::File::Overwrite);
@@ -567,6 +559,11 @@ public:
         bool last = false;
         bool event_attribute = true;
         bool event = false;
+        auto dV = m_quad.AsTensor<2>(m_quad.dV());
+        auto dV_plas = m_quad_plas.AsTensor<2>(m_quad_plas.dV());
+        xt::xtensor<int, 1> idx_last = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
+        xt::xtensor<int, 1> idx_n = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
+        xt::xtensor<int, 1> idx = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
         xt::xtensor<double, 2> Sig_bar = xt::average(m_Sig, dV, {0, 1}); // only shape matters
         xt::xtensor<double, 3> Sig_elem = xt::average(m_Sig_plas, dV_plas, {1}); // only shape matters
         xt::xtensor<double, 2> Sig_plas = xt::empty<double>({3ul, m_N});
@@ -574,6 +571,10 @@ public:
         xt::xtensor<double, 1> sig_crack = xt::empty<double>({3ul});
         xt::xtensor<double, 1> yielded = xt::empty<double>({m_N});
         xt::xtensor<double, 2> yielded_broadcast = xt::empty<double>({3ul, m_N});
+        MYASSERT(std::abs(GM::Sigd(Sig_bar)() - sigbar) < 1e-8);
+
+        // trigger weakest point
+        triggerWeakest();
 
         // quench: force equilibrium
         for (size_t iiter = 0;; ++iiter) {
@@ -710,12 +711,17 @@ public:
             }
         }
 
+        computeStrainStress();
+        xt::noalias(Sig_bar) = xt::average(m_Sig, dV, {0, 1});
+        sigbar = GM::Sigd(Sig_bar)();
+
         std::string hash = GIT_COMMIT_HASH;
         H5Easy::dump(m_file, "/git/run", hash, {m_inc});
         H5Easy::dump(data, "/git/run", hash);
 
         H5Easy::dump(m_file, "/stored", m_inc, {m_inc});
         H5Easy::dump(m_file, "/t", m_t, {m_inc});
+        H5Easy::dump(m_file, "/sigd", sigbar, {m_inc});
         H5Easy::dump(m_file, fmt::format("/disp/{0:d}", m_inc), m_u);
 
         H5Easy::dump(data, "/meta/completed", 1);
