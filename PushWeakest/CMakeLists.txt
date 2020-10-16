@@ -47,10 +47,12 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE "-DGIT_COMMIT_HASH=\"${GIT_CO
 
 if(DEBUG)
     target_link_libraries(${PROJECT_NAME}
+        FrictionQPotFEM::debug
         GooseFEM::debug
         GMatElastoPlasticQPot::debug)
 elseif(ASSERT)
     target_link_libraries(${PROJECT_NAME}
+        FrictionQPotFEM::assert
         GooseFEM::assert
         GMatElastoPlasticQPot::assert)
 else()

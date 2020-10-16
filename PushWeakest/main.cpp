@@ -32,6 +32,8 @@ public:
             H5Easy::load<xt::xtensor<size_t, 1>>(m_file, "/elastic/elem"),
             H5Easy::load<xt::xtensor<size_t, 1>>(m_file, "/cusp/elem"));
 
+        this->initHybridSystem();
+
         this->setMassMatrix(H5Easy::load<xt::xtensor<double, 1>>(m_file, "/rho"));
         this->setDampingMatrix(H5Easy::load<xt::xtensor<double, 1>>(m_file, "/damping/alpha"));
 
