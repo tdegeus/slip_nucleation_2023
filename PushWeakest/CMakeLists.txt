@@ -26,36 +26,33 @@ add_executable(${PROJECT_NAME} main.cpp)
 set(HIGHFIVE_USE_BOOST 0)
 set(HIGHFIVE_USE_XTENSOR 1)
 
+find_package(FrictionQPotFEM REQUIRED)
 find_package(xtensor REQUIRED)
-find_package(xtensor-blas REQUIRED)
 find_package(HighFive REQUIRED)
 find_package(docopt REQUIRED)
 find_package(fmt REQUIRED)
 find_package(cpppath REQUIRED)
-find_package(GooseFEM REQUIRED)
-find_package(GMatElastoPlasticQPot REQUIRED)
 
 target_link_libraries(${PROJECT_NAME}
-    xtensor
+    FrictionQPotFEM
     xtensor::optimize
     xtensor::use_xsimd
-    xtensor-blas
     HighFive
     docopt
     fmt::fmt
     cpppath
-    GooseFEM
-    GooseFEM::compiler_warnings
-    GMatElastoPlasticQPot)
+    FrictionQPotFEM::compiler_warnings)
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE "-DGIT_COMMIT_HASH=\"${GIT_COMMIT_HASH}\"")
 
 if(DEBUG)
     target_link_libraries(${PROJECT_NAME}
+        FrictionQPotFEM::debug
         GooseFEM::debug
         GMatElastoPlasticQPot::debug)
 elseif(ASSERT)
     target_link_libraries(${PROJECT_NAME}
+        FrictionQPotFEM::assert
         GooseFEM::assert
         GMatElastoPlasticQPot::assert)
 else()
