@@ -76,10 +76,10 @@ public:
         // load last increment
         m_inc = this->getMaxStored();
         m_t = H5Easy::load<decltype(m_t)>(m_file, "/t", {m_inc});
-        double sigbar = H5Easy::load<double>(m_file, "/sigd", {m_inc}); // to check
         xt::noalias(m_u) = H5Easy::load<decltype(m_u)>(m_file, fmt::format("/disp/{0:d}", m_inc));
+        double sigbar = H5Easy::load<double>(m_file, "/sigd", {m_inc}); // as check below
         this->computeForceMaterial(); // mandatory in "HybridSystem" after updating "m_u"
-        this->computeStress(); // to read "m_Sig"
+        this->computeStress(); // to compute "m_Sig" for check on "sigbar"
         fmt::print("'{0:s}': Loading, inc = {1:d}\n", m_file.getName(), m_inc);
         m_inc++;
 
@@ -88,13 +88,13 @@ public:
 
         // storage parameters
         int S = 0;            // avalanche size (maximum size since beginning)
-        size_t A = 0;         // current crack area (maximum size since beginning)
+        size_t A = 0;         // current avalanche area (maximum size since beginning)
         size_t t_step = 500;  // interval at which to store a global snapshot
         size_t ioverview = 0; // storage index
         size_t ievent = 0;    // storage index
-        bool last = false;    // == true when equilibrium is reached -> stored equilibrium config.
-        bool event_attribute = true; // store attribute
-        bool event = false;   // == true every time a yielding event took place
+        bool last = false;    // == true when equilibrium is reached -> store equilibrium configuration
+        bool event_attribute = true; // signal to store attribute
+        bool event = false;   // == true every time a yielding event took place -> write "/event/*"
         auto dV = m_quad.AsTensor<2>(m_quad.dV());
         auto dV_plas = m_quad_plas.AsTensor<2>(m_quad_plas.dV());
         xt::xtensor<int, 1> idx_last = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
@@ -109,18 +109,19 @@ public:
         xt::xtensor<double, 2> yielded_broadcast = xt::empty<double>({3ul, m_N});
         MYASSERT(std::abs(GM::Sigd(Sig_bar)() - sigbar) < 1e-8);
 
-        // trigger weakest point
+        // trigger element containing the integration-point closest to yielding
         FrictionQPotFEM::UniformSingleLayer2d::localTriggerWeakestElement(*this, m_deps_kick);
 
-        // quench: force equilibrium
+        // look for force equilibrium
         for (size_t iiter = 0;; ++iiter) {
-            if (iiter > 0) {
-                idx = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
-            }
 
             // break if maximum local strain could be exceeded
             if (!m_material_plas.checkYieldBoundRight(5)) {
                 return -1;
+            }
+
+            if (iiter > 0) {
+                idx = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
             }
 
             size_t a = xt::sum(xt::not_equal(idx, idx_n))();
@@ -169,7 +170,6 @@ public:
                 event = true;
             }
 
-            // store global snapshot
             if (save_overview) {
                 H5Easy::dump(data, "/overview/global/iiter", iiter, {ioverview});
                 H5Easy::dump(data, "/overview/global/S", s, {ioverview});
@@ -186,7 +186,6 @@ public:
                 ioverview++;
             }
 
-            // write info
             if (event && event_attribute) {
                 H5Easy::dumpAttribute(data, "/event/step", "desc", std::string("Number of times the block yielded since the last event"));
                 H5Easy::dumpAttribute(data, "/event/r", "desc", std::string("Position of the yielding block"));
@@ -238,10 +237,8 @@ public:
                 break;
             }
 
-            // time increment
             timeStep();
 
-            // - check for convergence
             if (m_stop.stop(this->residual(), 1e-5)) {
                 last = true;
             }
@@ -280,8 +277,9 @@ private:
 
 static const char USAGE[] =
     R"(PushWeakest
-    Push the weakest element and quench. Store new state to input-file and write evolution
-    to a separate output-file per increment.
+    Push the element containing the integration point closest to yielding
+    (upon a positive strain increase) and compute the force equilibrium.
+    Store new state to input-file and write evolution to a separate output-file per increment.
 
 Usage:
     PushWeakest [options] --output=N --input=N
