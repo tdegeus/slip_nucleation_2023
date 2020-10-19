@@ -5,6 +5,7 @@
 #include <fmt/core.h>
 #include <cpppath.h>
 #include <docopt/docopt.h>
+#include <cstdio>
 
 #ifndef GIT_COMMIT_HASH
 #define GIT_COMMIT_HASH "?"
@@ -117,7 +118,9 @@ public:
 
             // break if maximum local strain could be exceeded
             if (!m_material_plas.checkYieldBoundRight(5)) {
-                return -1;
+                H5Easy::dump(data, "/meta/remove", 1);
+                H5Easy::dump(data, "/meta/completed", 0);
+                return INT_MIN;
             }
 
             if (iiter > 0) {
@@ -305,14 +308,22 @@ int main(int argc, const char** argv)
 
     Main sim(input);
 
-    for (size_t i = 0; i < 200; ++i)
-    {
+    for (size_t i = 0; i < 200; ++i) {
+        // trigger and run
         size_t inc = sim.getMaxStored();
-        int S = sim.runIncrement(fmt::format("{0:s}_ipush={1:d}.hdf5", output, inc + 1));
+        std::string outname =  fmt::format("{0:s}_ipush={1:d}.hdf5", output, inc + 1);
+        int S = sim.runIncrement(outname);
+        // remove event output if the potential energy landscape went out-of-bounds somewhere
+        if (S == INT_MIN) {
+            std::remove(outname.c_str());
+            break;
+        }
+        // stop if the push does not trigger anything anymore
         if (S <= 0) {
             break;
         }
     }
+
     sim.writeCompleted();
 
     return 0;
