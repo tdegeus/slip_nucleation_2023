@@ -255,6 +255,12 @@ public:
         H5Easy::dump(m_file, "/git/run", hash, {m_inc});
         H5Easy::dump(data, "/git/run", hash);
 
+        H5Easy::dump(m_file, "/version/run",
+            cpppath::join(FrictionQPotFEM::UniformSingleLayer2d::versionInfo(), "\n"), {m_inc});
+
+        H5Easy::dump(data, "/version/run",
+            cpppath::join(FrictionQPotFEM::UniformSingleLayer2d::versionInfo(), "\n"));
+
         H5Easy::dump(m_file, "/stored", m_inc, {m_inc});
         H5Easy::dump(m_file, "/t", m_t, {m_inc});
         H5Easy::dump(m_file, "/sigd", sigbar, {m_inc});
