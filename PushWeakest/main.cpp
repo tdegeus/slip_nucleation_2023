@@ -5,6 +5,7 @@
 #include <fmt/core.h>
 #include <cpppath.h>
 #include <docopt/docopt.h>
+#include <cstdio>
 
 #ifndef GIT_COMMIT_HASH
 #define GIT_COMMIT_HASH "?"
@@ -18,7 +19,20 @@
             ": assertion failed (" #expr ") \n\t"); \
     }
 
-class Main : public FrictionQPotFEM::UniformSingleLayer2d::HybridSystem {
+namespace FQF = FrictionQPotFEM::UniformSingleLayer2d;
+
+template <class T>
+inline void dump_check(H5Easy::File& file, const std::string& key, const T& data)
+{
+    if (!file.exist(key)) {
+        H5Easy::dump(file, key, data);
+    }
+    else {
+        MYASSERT(H5Easy::load<T>(file, key) == data);
+    }
+}
+
+class Main : public FQF::HybridSystem {
 
 public:
 
@@ -110,14 +124,16 @@ public:
         MYASSERT(std::abs(GM::Sigd(Sig_bar)() - sigbar) < 1e-8);
 
         // trigger element containing the integration-point closest to yielding
-        FrictionQPotFEM::UniformSingleLayer2d::localTriggerWeakestElement(*this, m_deps_kick);
+        this->localTriggerWeakestElement(m_deps_kick);
 
         // look for force equilibrium
         for (size_t iiter = 0;; ++iiter) {
 
             // break if maximum local strain could be exceeded
             if (!m_material_plas.checkYieldBoundRight(5)) {
-                return -1;
+                H5Easy::dump(data, "/meta/remove", 1);
+                H5Easy::dump(data, "/meta/completed", 0);
+                return INT_MIN;
             }
 
             if (iiter > 0) {
@@ -249,8 +265,10 @@ public:
         sigbar = GM::Sigd(Sig_bar)();
 
         std::string hash = GIT_COMMIT_HASH;
-        H5Easy::dump(m_file, "/git/run", hash, {m_inc});
-        H5Easy::dump(data, "/git/run", hash);
+        dump_check(m_file, "/git/run", hash);
+        dump_check(data, "/git/run", hash);
+        dump_check(m_file, "/version/run", FQF::versionInfo());
+        dump_check(data, "/version/run", FQF::versionInfo());
 
         H5Easy::dump(m_file, "/stored", m_inc, {m_inc});
         H5Easy::dump(m_file, "/t", m_t, {m_inc});
@@ -305,14 +323,22 @@ int main(int argc, const char** argv)
 
     Main sim(input);
 
-    for (size_t i = 0; i < 200; ++i)
-    {
+    for (size_t i = 0; i < 200; ++i) {
+        // trigger and run
         size_t inc = sim.getMaxStored();
-        int S = sim.runIncrement(fmt::format("{0:s}_ipush={1:d}.hdf5", output, inc + 1));
+        std::string outname =  fmt::format("{0:s}_ipush={1:d}.hdf5", output, inc + 1);
+        int S = sim.runIncrement(outname);
+        // remove event output if the potential energy landscape went out-of-bounds somewhere
+        if (S == INT_MIN) {
+            std::remove(outname.c_str());
+            break;
+        }
+        // stop if the push does not trigger anything anymore
         if (S <= 0) {
             break;
         }
     }
+
     sim.writeCompleted();
 
     return 0;
