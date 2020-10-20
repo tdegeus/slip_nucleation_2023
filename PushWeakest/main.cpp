@@ -19,7 +19,20 @@
             ": assertion failed (" #expr ") \n\t"); \
     }
 
-class Main : public FrictionQPotFEM::UniformSingleLayer2d::HybridSystem {
+namespace FQF = FrictionQPotFEM::UniformSingleLayer2d;
+
+template <class T>
+inline void dump_check(H5Easy::File& file, const std::string& key, const T& data)
+{
+    if (!file.exist(key)) {
+        H5Easy::dump(file, key, data);
+    }
+    else {
+        MYASSERT(H5Easy::load<T>(file, key) == data);
+    }
+}
+
+class Main : public FQF::HybridSystem {
 
 public:
 
@@ -111,7 +124,7 @@ public:
         MYASSERT(std::abs(GM::Sigd(Sig_bar)() - sigbar) < 1e-8);
 
         // trigger element containing the integration-point closest to yielding
-        FrictionQPotFEM::UniformSingleLayer2d::localTriggerWeakestElement(*this, m_deps_kick);
+        this->localTriggerWeakestElement(m_deps_kick);
 
         // look for force equilibrium
         for (size_t iiter = 0;; ++iiter) {
@@ -252,14 +265,10 @@ public:
         sigbar = GM::Sigd(Sig_bar)();
 
         std::string hash = GIT_COMMIT_HASH;
-        H5Easy::dump(m_file, "/git/run", hash, {m_inc});
-        H5Easy::dump(data, "/git/run", hash);
-
-        H5Easy::dump(m_file, "/version/run",
-            cpppath::join(FrictionQPotFEM::UniformSingleLayer2d::versionInfo(), "\n"), {m_inc});
-
-        H5Easy::dump(data, "/version/run",
-            cpppath::join(FrictionQPotFEM::UniformSingleLayer2d::versionInfo(), "\n"));
+        dump_check(m_file, "/git/run", hash);
+        dump_check(data, "/git/run", hash);
+        dump_check(m_file, "/version/run", FQF::versionInfo());
+        dump_check(data, "/version/run", FQF::versionInfo());
 
         H5Easy::dump(m_file, "/stored", m_inc, {m_inc});
         H5Easy::dump(m_file, "/t", m_t, {m_inc});
