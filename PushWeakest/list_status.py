@@ -78,6 +78,7 @@ for file in eventfiles:
     basefiles[basename + '.hdf5'] += [file]
 
 output = {
+    'dirname' : os.path.abspath(args['<dirname>']),
     'completed_base' : [],
     'completed_event' : [],
     'partial_base' : [],
