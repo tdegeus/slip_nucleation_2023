@@ -35,6 +35,7 @@ fi
 {0:s}
 '''
 
+
 for file in files:
 
     basename = os.path.splitext(file)[0]
