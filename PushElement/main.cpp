@@ -67,10 +67,18 @@ public:
 
 public:
 
-    size_t get_max_stored()
+    size_t inc()
     {
-        size_t istored = H5Easy::getSize(m_file, "/stored") - std::size_t(1);
-        return H5Easy::load<size_t>(m_file, "/stored", {istored});
+        return m_inc;
+    }
+
+public:
+
+    void restore_last_stored()
+    {
+        m_inc = H5Easy::load<size_t>(m_file, "/stored", {H5Easy::getSize(m_file, "/stored") - size_t(1)});
+        m_t = H5Easy::load<decltype(m_t)>(m_file, "/t", {m_inc});
+        this->setU(H5Easy::load<decltype(m_u)>(m_file, fmt::format("/disp/{0:d}", m_inc)));
     }
 
 public:
@@ -82,25 +90,16 @@ public:
 
 public:
 
-    int run_increment(const std::string& outfilename)
+    int run_push(const std::string& outfilename)
     {
-        this->quench();
-        m_stop.reset();
+        auto dV = m_quad.AsTensor<2>(m_quad.dV());
+        auto dV_plas = m_quad_plas.AsTensor<2>(m_quad_plas.dV());
 
-        // load last increment
-        m_inc = this->get_max_stored();
-        m_t = H5Easy::load<decltype(m_t)>(m_file, "/t", {m_inc});
-        xt::noalias(m_u) = H5Easy::load<decltype(m_u)>(m_file, fmt::format("/disp/{0:d}", m_inc));
-        double sigbar = H5Easy::load<double>(m_file, "/sigd", {m_inc}); // as check below
-        this->computeForceMaterial(); // mandatory in "HybridSystem" after updating "m_u"
-        this->computeStress(); // to compute "m_Sig" for check on "sigbar"
-        fmt::print("'{0:s}': Loading, inc = {1:d}\n", m_file.getName(), m_inc);
-        m_inc++;
+        this->restore_last_stored();
+        this->computeStress();
 
-        // clear/open the output file
         H5Easy::File data(outfilename, H5Easy::File::Overwrite);
 
-        // storage parameters
         int S = 0;              // avalanche size (maximum size since beginning)
         size_t A = 0;           // current avalanche area (maximum size since beginning)
         size_t t_step = 500;    // interval at which to store a global snapshot
@@ -109,8 +108,6 @@ public:
         bool last = false;      // == true when equilibrium is reached -> store equilibrium configuration
         bool attribute = true;  // signal to store attribute
         bool event = false;     // == true every time a yielding event took place -> write "/event/*"
-        auto dV = m_quad.AsTensor<2>(m_quad.dV());
-        auto dV_plas = m_quad_plas.AsTensor<2>(m_quad_plas.dV());
         xt::xtensor<int, 1> idx_last = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
         xt::xtensor<int, 1> idx_n = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
         xt::xtensor<int, 1> idx = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
@@ -121,12 +118,14 @@ public:
         xt::xtensor<double, 1> sig_crack = xt::empty<double>({3ul});
         xt::xtensor<double, 1> yielded = xt::empty<double>({m_N});
         xt::xtensor<double, 2> yielded_broadcast = xt::empty<double>({3ul, m_N});
-        MYASSERT(std::abs(GM::Sigd(Sig_bar)() - sigbar) < 1e-8);
+        MYASSERT(std::abs(GM::Sigd(Sig_bar)() - H5Easy::load<double>(m_file, "/sigd", {m_inc})) < 1e-8);
 
-        // trigger element containing the integration-point closest to yielding
-        this->triggerElementWithLocalSimpleShear(m_deps_kick, H5Easy::load<size_t>(m_file, "/push/element"));
+        size_t trigger_element = H5Easy::load<size_t>(m_file, "/push/element");
+        this->triggerElementWithLocalSimpleShear(m_deps_kick, trigger_element);
 
-        // look for force equilibrium
+        this->quench();
+        m_stop.reset();
+
         for (size_t iiter = 0;; ++iiter) {
 
             // break if maximum local strain could be exceeded
@@ -237,25 +236,27 @@ public:
             }
         }
 
+        m_inc++;
+
         this->computeStress();
         xt::noalias(Sig_bar) = xt::average(m_Sig, dV, {0, 1});
-        sigbar = GM::Sigd(Sig_bar)();
 
         std::string hash = GIT_COMMIT_HASH;
         dump_check(m_file, "/git/run", hash);
-        dump_check(data, "/git/run", hash);
         dump_check(m_file, "/version/run", FQF::versionInfo());
-        dump_check(data, "/version/run", FQF::versionInfo());
 
         H5Easy::dump(m_file, "/stored", m_inc, {m_inc});
         H5Easy::dump(m_file, "/t", m_t, {m_inc});
-        H5Easy::dump(m_file, "/sigd", sigbar, {m_inc});
+        H5Easy::dump(m_file, "/sigd", GM::Sigd(Sig_bar)(), {m_inc});
         H5Easy::dump(m_file, fmt::format("/disp/{0:d}", m_inc), m_u);
+
+        dump_check(data, "/git/run", hash);
+        dump_check(data, "/version/run", FQF::versionInfo());
 
         H5Easy::dump(data, "/meta/completed", 1);
         H5Easy::dump(data, "/meta/uuid", H5Easy::load<std::string>(m_file, "/uuid"));
         H5Easy::dump(data, "/meta/push/inc", H5Easy::load<size_t>(m_file, "/push/inc"));
-        H5Easy::dump(data, "/meta/push/element", H5Easy::load<size_t>(m_file, "/push/element"));
+        H5Easy::dump(data, "/meta/push/element", trigger_element);
         H5Easy::dump(data, "/meta/inc", m_inc);
         H5Easy::dump(data, "/meta/dt", m_dt);
         H5Easy::dump(data, "/meta/N", m_N);
@@ -303,9 +304,10 @@ int main(int argc, const char** argv)
 
     for (size_t i = 0; i < 200; ++i) {
         // trigger and run
-        size_t inc = sim.get_max_stored();
-        std::string outname =  fmt::format("{0:s}_ipush={1:d}.hdf5", output, inc + 1);
-        int S = sim.run_increment(outname);
+        sim.restore_last_stored();
+        std::string outname =  fmt::format("{0:s}_push={1:d}.hdf5", output, sim.inc() + 1);
+        fmt::print("Writing to {0:s}\n", outname);
+        int S = sim.run_push(outname);
         // remove event output if the potential energy landscape went out-of-bounds somewhere
         if (S == INT_MIN) {
             std::remove(outname.c_str());
