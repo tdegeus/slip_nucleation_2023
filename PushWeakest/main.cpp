@@ -67,7 +67,7 @@ public:
 
 public:
 
-    size_t getMaxStored()
+    size_t get_max_stored()
     {
         size_t istored = H5Easy::getSize(m_file, "/stored") - std::size_t(1);
         return H5Easy::load<size_t>(m_file, "/stored", {istored});
@@ -75,20 +75,30 @@ public:
 
 public:
 
-    void writeCompleted()
+    void write_completed()
     {
         H5Easy::dump(m_file, "/completed", 1);
     }
 
 public:
 
-    int runIncrement(const std::string& outfilename)
+    inline size_t find_weakest_element() {
+        auto eps = GM::Epsd(this->plastic_Eps());
+        auto epsy = this->plastic_CurrentYieldRight();
+        auto deps = epsy - eps;
+        auto index = xt::unravel_index(xt::argmin(deps)(), deps.shape());
+        return index[0];
+    }
+
+public:
+
+    int run_increment(const std::string& outfilename)
     {
         this->quench();
         m_stop.reset();
 
         // load last increment
-        m_inc = this->getMaxStored();
+        m_inc = this->get_max_stored();
         m_t = H5Easy::load<decltype(m_t)>(m_file, "/t", {m_inc});
         xt::noalias(m_u) = H5Easy::load<decltype(m_u)>(m_file, fmt::format("/disp/{0:d}", m_inc));
         double sigbar = H5Easy::load<double>(m_file, "/sigd", {m_inc}); // as check below
@@ -101,14 +111,14 @@ public:
         H5Easy::File data(outfilename, H5Easy::File::Overwrite);
 
         // storage parameters
-        int S = 0;            // avalanche size (maximum size since beginning)
-        size_t A = 0;         // current avalanche area (maximum size since beginning)
-        size_t t_step = 500;  // interval at which to store a global snapshot
-        size_t ioverview = 0; // storage index
-        size_t ievent = 0;    // storage index
-        bool last = false;    // == true when equilibrium is reached -> store equilibrium configuration
-        bool event_attribute = true; // signal to store attribute
-        bool event = false;   // == true every time a yielding event took place -> write "/event/*"
+        int S = 0;              // avalanche size (maximum size since beginning)
+        size_t A = 0;           // current avalanche area (maximum size since beginning)
+        size_t t_step = 500;    // interval at which to store a global snapshot
+        size_t ioverview = 0;   // storage index
+        size_t ievent = 0;      // storage index
+        bool last = false;      // == true when equilibrium is reached -> store equilibrium configuration
+        bool attribute = true;  // signal to store attribute
+        bool event = false;     // == true every time a yielding event took place -> write "/event/*"
         auto dV = m_quad.AsTensor<2>(m_quad.dV());
         auto dV_plas = m_quad_plas.AsTensor<2>(m_quad_plas.dV());
         xt::xtensor<int, 1> idx_last = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
@@ -124,15 +134,15 @@ public:
         MYASSERT(std::abs(GM::Sigd(Sig_bar)() - sigbar) < 1e-8);
 
         // trigger element containing the integration-point closest to yielding
-        this->localTriggerWeakestElement(m_deps_kick);
+        size_t trigger_element = this->find_weakest_element();
+        this->triggerElementWithLocalSimpleShear(m_deps_kick, trigger_element);
 
         // look for force equilibrium
         for (size_t iiter = 0;; ++iiter) {
 
             // break if maximum local strain could be exceeded
             if (!m_material_plas.checkYieldBoundRight(5)) {
-                H5Easy::dump(data, "/meta/remove", 1);
-                H5Easy::dump(data, "/meta/completed", 0);
+                H5Easy::dump(data, "/meta/corrupt", 1);
                 return INT_MIN;
             }
 
@@ -202,51 +212,29 @@ public:
                 ioverview++;
             }
 
-            if (event && event_attribute) {
-                H5Easy::dumpAttribute(data, "/event/step", "desc", std::string("Number of times the block yielded since the last event"));
-                H5Easy::dumpAttribute(data, "/event/r", "desc", std::string("Position of the yielding block"));
-
-                H5Easy::dumpAttribute(data, "/event/global/iiter", "desc", std::string("Iteration number for event"));
-                H5Easy::dumpAttribute(data, "/event/global/S", "desc", std::string("Avalanche size at time of event"));
-                H5Easy::dumpAttribute(data, "/event/global/A", "desc", std::string("Avalanche radius at time of event"));
-
-                H5Easy::dumpAttribute(data, "/event/global/sig", "desc", std::string("Macroscopic stress (xx, xy, yy) at time of event"));
-                H5Easy::dumpAttribute(data, "/event/global/sig", "xx", static_cast<size_t>(0));
-                H5Easy::dumpAttribute(data, "/event/global/sig", "xy", static_cast<size_t>(1));
-                H5Easy::dumpAttribute(data, "/event/global/sig", "yy", static_cast<size_t>(2));
-
-                H5Easy::dumpAttribute(data, "/event/weak/sig", "desc", std::string("Stress averaged on weak layer (xx, xy, yy) at time of event"));
-                H5Easy::dumpAttribute(data, "/event/weak/sig", "xx", static_cast<size_t>(0));
-                H5Easy::dumpAttribute(data, "/event/weak/sig", "xy", static_cast<size_t>(1));
-                H5Easy::dumpAttribute(data, "/event/weak/sig", "yy", static_cast<size_t>(2));
-
-                H5Easy::dumpAttribute(data, "/event/crack/sig", "desc", std::string("Stress averaged on yielded blocks (xx, xy, yy) at time of event"));
-                H5Easy::dumpAttribute(data, "/event/crack/sig", "xx", static_cast<size_t>(0));
-                H5Easy::dumpAttribute(data, "/event/crack/sig", "xy", static_cast<size_t>(1));
-                H5Easy::dumpAttribute(data, "/event/crack/sig", "yy", static_cast<size_t>(2));
-
-                event_attribute = false;
+            if (event && attribute) {
+                H5Easy::dumpAttribute(data, "/event/global/sig", "xx", size_t(0));
+                H5Easy::dumpAttribute(data, "/event/global/sig", "xy", size_t(1));
+                H5Easy::dumpAttribute(data, "/event/global/sig", "yy", size_t(2));
+                H5Easy::dumpAttribute(data, "/event/weak/sig", "xx", size_t(0));
+                H5Easy::dumpAttribute(data, "/event/weak/sig", "xy", size_t(1));
+                H5Easy::dumpAttribute(data, "/event/weak/sig", "yy", size_t(2));
+                H5Easy::dumpAttribute(data, "/event/crack/sig", "xx", size_t(0));
+                H5Easy::dumpAttribute(data, "/event/crack/sig", "xy", size_t(1));
+                H5Easy::dumpAttribute(data, "/event/crack/sig", "yy", size_t(2));
+                attribute = false;
             }
 
             if (iiter == 0) {
-                H5Easy::dumpAttribute(data, "/overview/global/iiter", "desc", std::string("Iteration number"));
-                H5Easy::dumpAttribute(data, "/overview/global/S", "desc", std::string("Avalanche size"));
-                H5Easy::dumpAttribute(data, "/overview/global/A", "desc", std::string("Avalanche radius"));
-
-                H5Easy::dumpAttribute(data, "/overview/global/sig", "desc", std::string("Macroscopic stress (xx, xy, yy)"));
-                H5Easy::dumpAttribute(data, "/overview/global/sig", "xx", static_cast<size_t>(0));
-                H5Easy::dumpAttribute(data, "/overview/global/sig", "xy", static_cast<size_t>(1));
-                H5Easy::dumpAttribute(data, "/overview/global/sig", "yy", static_cast<size_t>(2));
-
-                H5Easy::dumpAttribute(data, "/overview/weak/sig", "desc", std::string("Stress averaged on weak layer (xx, xy, yy)"));
-                H5Easy::dumpAttribute(data, "/overview/weak/sig", "xx", static_cast<size_t>(0));
-                H5Easy::dumpAttribute(data, "/overview/weak/sig", "xy", static_cast<size_t>(1));
-                H5Easy::dumpAttribute(data, "/overview/weak/sig", "yy", static_cast<size_t>(2));
-
-                H5Easy::dumpAttribute(data, "/overview/crack/sig", "desc", std::string("Stress averaged on yielded blocks (xx, xy, yy)"));
-                H5Easy::dumpAttribute(data, "/overview/crack/sig", "xx", static_cast<size_t>(0));
-                H5Easy::dumpAttribute(data, "/overview/crack/sig", "xy", static_cast<size_t>(1));
-                H5Easy::dumpAttribute(data, "/overview/crack/sig", "yy", static_cast<size_t>(2));
+                H5Easy::dumpAttribute(data, "/overview/global/sig", "xx", size_t(0));
+                H5Easy::dumpAttribute(data, "/overview/global/sig", "xy", size_t(1));
+                H5Easy::dumpAttribute(data, "/overview/global/sig", "yy", size_t(2));
+                H5Easy::dumpAttribute(data, "/overview/weak/sig", "xx", size_t(0));
+                H5Easy::dumpAttribute(data, "/overview/weak/sig", "xy", size_t(1));
+                H5Easy::dumpAttribute(data, "/overview/weak/sig", "yy", size_t(2));
+                H5Easy::dumpAttribute(data, "/overview/crack/sig", "xx", size_t(0));
+                H5Easy::dumpAttribute(data, "/overview/crack/sig", "xy", size_t(1));
+                H5Easy::dumpAttribute(data, "/overview/crack/sig", "yy", size_t(2));
             }
 
             if (last) {
@@ -277,6 +265,8 @@ public:
 
         H5Easy::dump(data, "/meta/completed", 1);
         H5Easy::dump(data, "/meta/uuid", H5Easy::load<std::string>(m_file, "/uuid"));
+        H5Easy::dump(data, "/meta/push/inc", H5Easy::load<size_t>(m_file, "/push/inc"));
+        H5Easy::dump(data, "/meta/push/element", trigger_element);
         H5Easy::dump(data, "/meta/inc", m_inc);
         H5Easy::dump(data, "/meta/dt", m_dt);
         H5Easy::dump(data, "/meta/N", m_N);
@@ -325,9 +315,9 @@ int main(int argc, const char** argv)
 
     for (size_t i = 0; i < 200; ++i) {
         // trigger and run
-        size_t inc = sim.getMaxStored();
+        size_t inc = sim.get_max_stored();
         std::string outname =  fmt::format("{0:s}_ipush={1:d}.hdf5", output, inc + 1);
-        int S = sim.runIncrement(outname);
+        int S = sim.run_increment(outname);
         // remove event output if the potential energy landscape went out-of-bounds somewhere
         if (S == INT_MIN) {
             std::remove(outname.c_str());
@@ -339,7 +329,7 @@ int main(int argc, const char** argv)
         }
     }
 
-    sim.writeCompleted();
+    sim.write_completed();
 
     return 0;
 }

@@ -71,6 +71,7 @@ for i in range(len(p_file)):
                 output[key] = data[key][...]
 
             output['/push/element'] = element
+            output['/push/inc'] = inc
             output['/disp/0'] = data['disp'][str(inc)][...]
 
             dset = output.create_dataset('/stored', (1, ), maxshape=(None, ), dtype=np.int)

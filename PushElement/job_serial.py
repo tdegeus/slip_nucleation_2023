@@ -39,7 +39,7 @@ for file in files:
 
     basename = os.path.splitext(file)[0]
 
-    command = 'PushWeakest --input="{0:s}" --output="{1:s}"'.format(file, basename)
+    command = 'PushElement --input="{0:s}" --output="{1:s}"'.format(file, basename)
     command = slurm.format(command)
 
     sbatch = {
@@ -48,7 +48,7 @@ for file in files:
         'nodes': 1,
         'ntasks': 1,
         'cpus-per-task': 1,
-        'time': '3h',
+        'time': '4h',
         'account': 'pcsl',
         'partition': 'serial',
     }

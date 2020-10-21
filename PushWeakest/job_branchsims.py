@@ -106,6 +106,7 @@ for stress, inc, file in zip(stresses, incs, files):
             for key in keys:
                 output[key] = data[key][...]
 
+            output['/push/inc'] = inc
             output['/disp/0'] = data['disp'][str(inc)][...]
 
             dset = output.create_dataset('/stored', (1, ), maxshape=(None, ), dtype=np.int)
