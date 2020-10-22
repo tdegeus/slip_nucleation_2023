@@ -83,9 +83,10 @@ public:
 
 public:
 
-    void write_completed()
+    void write_completed(int A)
     {
-        H5Easy::dump(m_file, "/completed", 1);
+        H5Easy::dump(m_file, "/completed/finished", 1);
+        H5Easy::dump(m_file, "/completed/A", A);
     }
 
 public:
@@ -319,7 +320,7 @@ int main(int argc, const char** argv)
         }
     }
 
-    sim.write_completed();
+    sim.write_completed(100);
 
     return 0;
 }
