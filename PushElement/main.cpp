@@ -131,7 +131,7 @@ public:
             // break if maximum local strain could be exceeded
             if (!m_material_plas.checkYieldBoundRight(5)) {
                 H5Easy::dump(data, "/meta/corrupt", 1);
-                return INT_MIN;
+                return -1;
             }
 
             if (iiter > 0) {
@@ -261,7 +261,7 @@ public:
         H5Easy::dump(data, "/meta/dt", m_dt);
         H5Easy::dump(data, "/meta/N", m_N);
 
-        return xt::sum(idx - idx_n)();
+        return xt::sum(xt::not_equal(idx, idx_n))();
     }
 
 private:
@@ -307,14 +307,14 @@ int main(int argc, const char** argv)
         sim.restore_last_stored();
         std::string outname =  fmt::format("{0:s}_push={1:d}.hdf5", output, sim.inc() + 1);
         fmt::print("Writing to {0:s}\n", outname);
-        int S = sim.run_push(outname);
+        int A = sim.run_push(outname);
         // remove event output if the potential energy landscape went out-of-bounds somewhere
-        if (S == INT_MIN) {
+        if (A < INT_MIN) {
             std::remove(outname.c_str());
             break;
         }
         // stop if the push does not trigger anything anymore
-        if (S <= 0) {
+        if (A <= 100) {
             break;
         }
     }

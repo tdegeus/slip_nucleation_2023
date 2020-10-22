@@ -42,7 +42,7 @@ with h5py.File(os.path.join(dbase, 'AvalancheAfterPush_strain=00d10.hdf5'), 'r')
     p_sigc  = data['sig_c'  ][...]
     p_incc  = data['inc_c'  ][...]
 
-idx = np.argwhere(p_S > 1).ravel()
+idx = np.argwhere(p_A == N).ravel()
 
 p_file = p_file[idx]
 p_elem = p_elem[idx]
