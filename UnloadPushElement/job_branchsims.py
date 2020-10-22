@@ -96,30 +96,33 @@ push_stresses = np.array([0.6 * sigc, 0.8 * sigc, 1.0 * sigc])
 
 for stress, inc, file in zip(stresses, incs, files):
 
-    outfilename = '{0:s}_inc={1:d}.hdf5'.format(file.split('.hdf5')[0], inc)
-
     # assert np.allclose([stress], [check_stress(os.path.join(dbase, file), inc)])
     print(file, inc, stress)
 
-    with h5py.File(os.path.join(dbase, file), 'r') as data:
+    for element in [146, 511, 730, 949, 1241, 1387]:
 
-        with h5py.File(outfilename, 'w') as output:
+        outfilename = '{0:s}_element={1:d}_inc={2:d}.hdf5'.format(file.split('.hdf5')[0], element, inc)
 
-            for key in keys:
-                output[key] = data[key][...]
+        with h5py.File(os.path.join(dbase, file), 'r') as data:
 
-            output['/push/stresses'] = push_stresses
-            output['/push/inc'] = inc
-            output['/disp/0'] = data['disp'][str(inc)][...]
+            with h5py.File(outfilename, 'w') as output:
 
-            dset = output.create_dataset('/stored', (1, ), maxshape=(None, ), dtype=np.int)
-            dset[0] = 0
+                for key in keys:
+                    output[key] = data[key][...]
 
-            dset = output.create_dataset('/sigd', (1, ), maxshape=(None, ), dtype=np.float)
-            dset[0] = stress
+                output['/push/stresses'] = push_stresses
+                output['/push/inc'] = inc
+                output['/push/element'] = element
+                output['/disp/0'] = data['disp'][str(inc)][...]
 
-            dset = output.create_dataset('/t', (1, ), maxshape=(None, ), dtype=np.float)
-            dset[0] = float(data['/t'][inc])
+                dset = output.create_dataset('/stored', (1, ), maxshape=(None, ), dtype=np.int)
+                dset[0] = 0
+
+                dset = output.create_dataset('/sigd', (1, ), maxshape=(None, ), dtype=np.float)
+                dset[0] = stress
+
+                dset = output.create_dataset('/t', (1, ), maxshape=(None, ), dtype=np.float)
+                dset[0] = float(data['/t'][inc])
 
 
 

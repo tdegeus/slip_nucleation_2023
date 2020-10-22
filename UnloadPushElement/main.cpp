@@ -63,6 +63,7 @@ public:
         this->setDt(H5Easy::load<double>(m_file, "/run/dt"));
 
         m_deps_kick = H5Easy::load<double>(m_file, "/run/epsd/kick");
+        m_dV = m_quad.AsTensor<2>(m_quad.dV());
     }
 
 public:
@@ -90,27 +91,38 @@ public:
 
 public:
 
-    bool target_stress_in_reach(double target_stress)
+    // return +1 : have to pass events by shearing right
+    // return -1 : have to pass events by shearing left
+    // return 0 : stress can be reached elastically
+    int how_to_reach_stress(double target_stress)
     {
-        xt::xtensor<double, 2> Sig_bar = xt::empty<double>({2, 2});
-        auto dV = m_quad.AsTensor<2>(m_quad.dV());
-
         this->restore_last_stored();
-        this->addSimpleShearEventDriven(m_deps_kick, false, -1.0);
-
-        this->computeStress();
-        xt::noalias(Sig_bar) = xt::average(m_Sig, dV, {0, 1});
-
-        return GM::Sigd(Sig_bar)() <= target_stress || Sig_bar(0, 1) < 0;
+        double df_stress = this->addSimpleShearToFixedStress(target_stress, true);
+        double df_elas_neg = this->addSimpleShearEventDriven(1e-2 * m_deps_kick, false, -1.0, true);
+        double df_elas_pos = this->addSimpleShearEventDriven(1e-2 * m_deps_kick, false, +1.0, true);
+        if (df_stress < 0) {
+            if (df_stress < df_elas_neg) {
+                return -1;
+            }
+            else {
+                return 0;
+            }
+        }
+        if (df_stress > 0) {
+            if (df_stress > df_elas_pos) {
+                return +1;
+            }
+            else {
+                return 0;
+            }
+        }
+        return 0;
     }
 
 public:
 
     size_t run_two_event_driven_steps()
     {
-        xt::xtensor<double, 2> Sig_bar = xt::empty<double>({2, 2});
-        auto dV = m_quad.AsTensor<2>(m_quad.dV());
-
         this->restore_last_stored();
 
         std::vector<int> kicks = {0, 1};
@@ -124,16 +136,17 @@ public:
             }
 
             m_inc++;
-            this->computeStress();
-            xt::noalias(Sig_bar) = xt::average(m_Sig, dV, {0, 1});
+
+            double sig = GM::Sigd<xt::xtensor<double, 2>>(xt::average(this->Sig(), m_dV, {0, 1}))();
 
             std::string hash = GIT_COMMIT_HASH;
+
             dump_check(m_file, "/git/run", hash);
             dump_check(m_file, "/version/run", FQF::versionInfo());
 
             H5Easy::dump(m_file, "/stored", m_inc, {m_inc});
             H5Easy::dump(m_file, "/t", m_t, {m_inc});
-            H5Easy::dump(m_file, "/sigd", GM::Sigd(Sig_bar)(), {m_inc});
+            H5Easy::dump(m_file, "/sigd", sig, {m_inc});
             H5Easy::dump(m_file, fmt::format("/disp/{0:d}", m_inc), m_u);
         }
 
@@ -144,11 +157,17 @@ public:
 
     int run_push(const std::string& outfilename, double target_stress)
     {
-        auto dV = m_quad.AsTensor<2>(m_quad.dV());
         auto dV_plas = m_quad_plas.AsTensor<2>(m_quad_plas.dV());
 
         this->restore_last_stored();
-        this->addSimpleShearToFixedStress(target_stress);
+
+        MYASSERT(std::abs(
+            GM::Sigd<xt::xtensor<double, 2>>(xt::average(this->Sig(), m_dV, {0, 1}))() -
+            H5Easy::load<double>(m_file, "/sigd", {m_inc})) < 1e-8);
+
+        if (this->how_to_reach_stress(target_stress) == 0) {
+            this->addSimpleShearToFixedStress(target_stress);
+        }
         this->computeStress();
 
         H5Easy::File data(outfilename, H5Easy::File::Overwrite);
@@ -164,14 +183,13 @@ public:
         xt::xtensor<int, 1> idx_last = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
         xt::xtensor<int, 1> idx_n = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
         xt::xtensor<int, 1> idx = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
-        xt::xtensor<double, 2> Sig_bar = xt::average(m_Sig, dV, {0, 1}); // only shape matters
+        xt::xtensor<double, 2> Sig_bar = xt::average(m_Sig, m_dV, {0, 1}); // only shape matters
         xt::xtensor<double, 3> Sig_elem = xt::average(m_Sig_plas, dV_plas, {1}); // only shape matters
         xt::xtensor<double, 2> Sig_plas = xt::empty<double>({3ul, m_N});
         xt::xtensor<double, 1> sig_weak = xt::empty<double>({3ul});
         xt::xtensor<double, 1> sig_crack = xt::empty<double>({3ul});
         xt::xtensor<double, 1> yielded = xt::empty<double>({m_N});
         xt::xtensor<double, 2> yielded_broadcast = xt::empty<double>({3ul, m_N});
-        MYASSERT(std::abs(GM::Sigd(Sig_bar)() - H5Easy::load<double>(m_file, "/sigd", {m_inc})) < 1e-8);
 
         size_t trigger_element = H5Easy::load<size_t>(m_file, "/push/element");
         this->triggerElementWithLocalSimpleShear(m_deps_kick, trigger_element);
@@ -205,7 +223,7 @@ public:
                 for (size_t k = 0; k < 3; ++k) {
                     xt::view(yielded_broadcast, k, xt::all()) = yielded;
                 }
-                xt::noalias(Sig_bar) = xt::average(m_Sig, dV, {0, 1});
+                xt::noalias(Sig_bar) = xt::average(m_Sig, m_dV, {0, 1});
                 xt::noalias(Sig_elem) = xt::average(m_Sig_plas, dV_plas, {1});
                 xt::view(Sig_plas, 0, xt::all()) = xt::view(Sig_elem, xt::all(), 0, 0);
                 xt::view(Sig_plas, 1, xt::all()) = xt::view(Sig_elem, xt::all(), 0, 1);
@@ -296,7 +314,7 @@ public:
         }
 
         this->computeStress();
-        xt::noalias(Sig_bar) = xt::average(m_Sig, dV, {0, 1});
+        xt::noalias(Sig_bar) = xt::average(m_Sig, m_dV, {0, 1});
 
         std::string hash = GIT_COMMIT_HASH;
         dump_check(m_file, "/git/run", hash);
@@ -335,6 +353,7 @@ private:
     GooseFEM::Iterate::StopList m_stop = GF::Iterate::StopList(20);
     size_t m_inc;
     double m_deps_kick;
+    xt::xtensor<double, 4> m_dV;
 
 };
 
@@ -372,12 +391,20 @@ int main(int argc, const char** argv)
     for (size_t i = 0; i < stresses.size(); ++i) {
         // unload if needed
         for (size_t u = 0; u < 10; u++) {
-            if (sim.target_stress_in_reach(stresses(i))) {
+            int dir = sim.how_to_reach_stress(stresses(i));
+            if (dir == 0) {
                 break;
             }
-            sim.run_two_event_driven_steps();
+            else if (dir < 0) {
+                fmt::print("Event driven unload {0:s}\n", input);
+                sim.run_two_event_driven_steps();
+            }
+            else if (dir > 0) {
+                fmt::print("Positive loading would be needed, triggering at current state {0:s}\n", input);
+                break;
+            }
             if (u == 8) {
-                throw std::runtime_error("Target stress not found");
+                throw std::runtime_error("Target stress not found within max. number of unloading steps");
             }
         }
         // trigger and run
