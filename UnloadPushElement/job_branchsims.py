@@ -92,7 +92,7 @@ with h5py.File(os.path.join(dbase, 'EnsembleInfo.hdf5'), 'r') as data:
     stresses = data['/avalanche/sigd'][idx] * sig0
 
 sigc = 0.15464095 * sig0
-push_stresses = np.array([0.6 * sigc, 0.8 * sigc, 1.0 * sigc])
+push_stresses = np.array([1.0 * sigc, 0.8 * sigc, 0.6 * sigc])
 
 for stress, inc, file in zip(stresses, incs, files):
 
