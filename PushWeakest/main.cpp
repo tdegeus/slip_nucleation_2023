@@ -287,6 +287,7 @@ static const char USAGE[] =
     R"(PushWeakest
     Push the element containing the integration point closest to yielding
     (upon a positive strain increase) and compute the force equilibrium.
+    Repeat this until nothing is triggered anymore.
     Store new state to input-file and write evolution to a separate output-file per increment.
 
 Usage:
