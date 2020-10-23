@@ -41,17 +41,20 @@ def isCompleted(filename):
 
 def hasRun(filename):
     with h5py.File(filename, 'r') as data:
-        if 'stored' in data:
-            if data['stored'].size > 0:
-                return True
+        if 'push' in data:
+            if 'stored' in data['push']:
+                if data['/push/stored'].size > 0:
+                    return True
     return False
 
 
 def getStored(filename):
     with h5py.File(filename, 'r') as data:
-        if 'stored' not in data:
+        if 'push' not in data:
             return []
-        return data['stored'][1:]
+        if 'stored' not in data['push']:
+            return []
+        return data['/push/stored'][...]
 
 
 def getOnDisk(eventfiles):

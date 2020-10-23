@@ -36,7 +36,8 @@ def isCompleted(filename):
     with h5py.File(filename, 'r') as data:
         if 'completed' not in data:
             return False
-        return int(data['completed'][...])
+        if 'finished' in data['completed']:
+            return int(data['/completed/finished'][...])
 
 
 def hasRun(filename):

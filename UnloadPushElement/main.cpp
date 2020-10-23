@@ -100,6 +100,12 @@ public:
         double df_stress = this->addSimpleShearToFixedStress(target_stress, true);
         double df_elas_neg = this->addSimpleShearEventDriven(1e-2 * m_deps_kick, false, -1.0, true);
         double df_elas_pos = this->addSimpleShearEventDriven(1e-2 * m_deps_kick, false, +1.0, true);
+        xt::xtensor<double, 2> Sig_bar = xt::average(this->Sig(), m_dV, {0, 1});
+
+        if (Sig_bar(0, 1) < 0) {
+            return +1;
+        }
+
         if (df_stress < 0) {
             if (df_stress < df_elas_neg) {
                 return -1;
@@ -158,6 +164,7 @@ public:
     int run_push(const std::string& outfilename, double target_stress)
     {
         auto dV_plas = m_quad_plas.AsTensor<2>(m_quad_plas.dV());
+        bool target_stress_exact = false;
 
         this->restore_last_stored();
 
@@ -167,6 +174,7 @@ public:
 
         if (this->how_to_reach_stress(target_stress) == 0) {
             this->addSimpleShearToFixedStress(target_stress);
+            target_stress_exact = true;
         }
         this->computeStress();
 
@@ -333,6 +341,8 @@ public:
         H5Easy::dump(data, "/meta/push/push", push);
         H5Easy::dump(data, "/meta/push/inc", H5Easy::load<size_t>(m_file, "/push/inc"));
         H5Easy::dump(data, "/meta/push/element", trigger_element);
+        H5Easy::dump(data, "/meta/push/target_stress", target_stress);
+        H5Easy::dump(data, "/meta/push/target_stress_exact", static_cast<int>(target_stress_exact));
         H5Easy::dump(data, "/meta/inc", m_inc);
         H5Easy::dump(data, "/meta/dt", m_dt);
         H5Easy::dump(data, "/meta/N", m_N);
@@ -408,7 +418,7 @@ int main(int argc, const char** argv)
             }
         }
         // trigger and run
-        std::string outname =  fmt::format("{0:s}_push={1:d}.hdf5", output, i + 1);
+        std::string outname = fmt::format("{0:s}_push={1:d}.hdf5", output, i);
         fmt::print("Writing to {0:s}\n", outname);
         int S = sim.run_push(outname, stresses(i));
         // remove event output if the potential energy landscape went out-of-bounds somewhere
