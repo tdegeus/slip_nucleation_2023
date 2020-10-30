@@ -121,6 +121,7 @@ public:
         xt::xtensor<int, 1> idx_last = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
         xt::xtensor<int, 1> idx_n = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
         xt::xtensor<int, 1> idx = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
+        xt::xtensor<int, 2> Idx_n = xt::view(m_material_plas.CurrentIndex(), xt::all(), xt::all());
         xt::xtensor<double, 2> Sig_bar = xt::average(m_Sig, dV, {0, 1}); // only shape matters
         xt::xtensor<double, 3> Sig_elem = xt::average(m_Sig_plas, dV_plas, {1}); // only shape matters
         xt::xtensor<double, 2> Sig_plas = xt::empty<double>({3ul, m_N});
@@ -131,7 +132,7 @@ public:
         MYASSERT(std::abs(GM::Sigd(Sig_bar)() - H5Easy::load<double>(m_file, "/sigd", {m_inc})) < 1e-8);
 
         size_t trigger_element = this->find_weakest_element();
-        this->triggerElementWithLocalSimpleShear(m_deps_kick, trigger_element);
+        this->triggerElementWithLocalSimpleShear(m_deps_kick, trigger_element, false);
 
         this->quench();
         m_stop.reset();
@@ -271,7 +272,8 @@ public:
         H5Easy::dump(data, "/meta/dt", m_dt);
         H5Easy::dump(data, "/meta/N", m_N);
 
-        return xt::sum(idx - idx_n)();
+        xt::xtensor<int, 2> Idx = xt::view(m_material_plas.CurrentIndex(), xt::all(), xt::all());
+        return xt::sum(Idx - Idx_n)();
     }
 
 private:

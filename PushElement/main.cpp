@@ -6,6 +6,8 @@
 #include <cpppath.h>
 #include <docopt/docopt.h>
 #include <cstdio>
+#include <ctime>
+#include <xtensor/xrandom.hpp>
 
 #ifndef GIT_COMMIT_HASH
 #define GIT_COMMIT_HASH "?"
@@ -112,6 +114,7 @@ public:
         xt::xtensor<int, 1> idx_last = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
         xt::xtensor<int, 1> idx_n = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
         xt::xtensor<int, 1> idx = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
+        xt::xtensor<int, 2> Idx_n = xt::view(m_material_plas.CurrentIndex(), xt::all(), xt::all());
         xt::xtensor<double, 2> Sig_bar = xt::average(m_Sig, dV, {0, 1}); // only shape matters
         xt::xtensor<double, 3> Sig_elem = xt::average(m_Sig_plas, dV_plas, {1}); // only shape matters
         xt::xtensor<double, 2> Sig_plas = xt::empty<double>({3ul, m_N});
@@ -121,8 +124,9 @@ public:
         xt::xtensor<double, 2> yielded_broadcast = xt::empty<double>({3ul, m_N});
         MYASSERT(std::abs(GM::Sigd(Sig_bar)() - H5Easy::load<double>(m_file, "/sigd", {m_inc})) < 1e-8);
 
-        size_t trigger_element = H5Easy::load<size_t>(m_file, "/push/element");
-        this->triggerElementWithLocalSimpleShear(m_deps_kick, trigger_element);
+        xt::xtensor<size_t, 1> random = xt::random::randint({1,}, 0, static_cast<int>(m_N));
+        size_t trigger_element = random(0);
+        this->triggerElementWithLocalSimpleShear(m_deps_kick, trigger_element, false);
 
         this->quench();
         m_stop.reset();
@@ -262,7 +266,8 @@ public:
         H5Easy::dump(data, "/meta/dt", m_dt);
         H5Easy::dump(data, "/meta/N", m_N);
 
-        return xt::sum(xt::not_equal(idx, idx_n))();
+        xt::xtensor<int, 2> Idx = xt::view(m_material_plas.CurrentIndex(), xt::all(), xt::all());
+        return xt::sum(Idx - Idx_n)();
     }
 
 private:
@@ -295,6 +300,8 @@ Options:
 
 int main(int argc, const char** argv)
 {
+    xt::random::seed(time(NULL));
+
     std::map<std::string, docopt::value> args =
         docopt::docopt(USAGE, {argv + 1, argv + argc}, true, "v0.0.1");
 
