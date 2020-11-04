@@ -177,6 +177,7 @@ public:
             this->addSimpleShearToFixedStress(target_stress);
         }
         this->computeStress();
+        auto u0 = this->u();
 
         H5Easy::File data(outfilename, H5Easy::File::Overwrite);
 
@@ -332,6 +333,9 @@ public:
         H5Easy::dump(m_file, "/push/t", m_t, {push});
         H5Easy::dump(m_file, "/push/sigd", GM::Sigd(Sig_bar)(), {push});
         H5Easy::dump(m_file, fmt::format("/push/disp/{0:d}", push), m_u);
+
+        H5Easy::dump(m_file, "/push/init/inc", m_inc, {push});
+        H5Easy::dump(m_file, fmt::format("/push/init/disp/{0:d}", push), u0);
 
         dump_check(data, "/git/run", hash);
         dump_check(data, "/version/run", FQF::versionInfo());
