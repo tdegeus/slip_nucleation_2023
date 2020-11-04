@@ -164,7 +164,6 @@ public:
     int run_push(const std::string& outfilename, double target_stress)
     {
         auto dV_plas = m_quad_plas.AsTensor<2>(m_quad_plas.dV());
-        bool target_stress_exact = false;
 
         this->restore_last_stored();
 
@@ -172,9 +171,10 @@ public:
             GM::Sigd<xt::xtensor<double, 2>>(xt::average(this->Sig(), m_dV, {0, 1}))() -
             H5Easy::load<double>(m_file, "/sigd", {m_inc})) < 1e-8);
 
-        if (this->how_to_reach_stress(target_stress) == 0) {
+        bool target_stress_exact = this->how_to_reach_stress(target_stress) == 0;
+
+        if (target_stress_exact) {
             this->addSimpleShearToFixedStress(target_stress);
-            target_stress_exact = true;
         }
         this->computeStress();
 
