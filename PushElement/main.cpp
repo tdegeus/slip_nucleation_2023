@@ -85,10 +85,16 @@ public:
 
 public:
 
-    void write_completed(int A)
+    void write_limit()
     {
-        H5Easy::dump(m_file, "/completed/finished", 1);
-        H5Easy::dump(m_file, "/completed/A", A);
+        H5Easy::dump(m_file, "/limit_epsy_reached", 1);
+    }
+
+public:
+
+    void write_completed(size_t nstep)
+    {
+        H5Easy::dump(m_file, "/completed", nstep, H5Easy::DumpMode::Overwrite);
     }
 
 public:
@@ -309,25 +315,24 @@ int main(int argc, const char** argv)
     std::string input = args["--input"].asString();
 
     Main sim(input);
+    size_t nstep = 100;
 
-    for (size_t i = 0; i < 200; ++i) {
+    for (size_t push = 0; push < nstep; ++push) {
         // trigger and run
         sim.restore_last_stored();
         std::string outname =  fmt::format("{0:s}_push={1:d}.hdf5", output, sim.inc() + 1);
         fmt::print("Writing to {0:s}\n", outname);
         int A = sim.run_push(outname);
         // remove event output if the potential energy landscape went out-of-bounds somewhere
-        if (A < INT_MIN) {
+        if (A < 0) {
+            sim.write_limit();
+            fmt::print("Yield limit reached {0:s}\n", input);
             std::remove(outname.c_str());
-            break;
-        }
-        // stop if the push does not trigger anything anymore
-        if (A <= 100) {
             break;
         }
     }
 
-    sim.write_completed(100);
+    sim.write_completed(nstep);
 
     return 0;
 }

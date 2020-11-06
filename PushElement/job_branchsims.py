@@ -15,7 +15,7 @@ keys = [
     '/cusp/G',
     '/cusp/K',
     '/cusp/elem',
-    '/cusp/epsy',
+    # '/cusp/epsy',
     '/damping/alpha',
     '/damping/eta_d',
     '/damping/eta_v',
@@ -42,7 +42,7 @@ with h5py.File(os.path.join(dbase, 'EnsembleInfo.hdf5'), 'r') as data:
 
 for stress, inc, file in zip(stresses, incs, files):
 
-    for realisation in range(5):
+    for realisation in range(1):
 
         outfilename = '{0:s}_inc={1:d}_branch={2:d}.hdf5'.format(file.split('.hdf5')[0], inc, realisation)
 
@@ -54,6 +54,16 @@ for stress, inc, file in zip(stresses, incs, files):
 
                 for key in keys:
                     output[key] = data[key][...]
+
+                epsy0 = data['/cusp/epsy'][...]
+                N = epsy0.shape[0]
+                M = epsy0.shape[1] * 4
+                k = 2.0
+                epsy = 1.e-5 + 1.e-3 * np.random.weibull(k, size=(N * M)).reshape(N, M)
+                epsy[:, 0] += epsy0[:, -1]
+                epsy = np.cumsum(epsy, axis=1)
+                epsy_extendend = np.hstack((epsy0, epsy))
+                output['/cusp/epsy'] = epsy_extendend
 
                 output['/push/inc'] = inc
                 output['/disp/0'] = data['disp'][str(inc)][...]
