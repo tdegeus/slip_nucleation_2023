@@ -85,13 +85,6 @@ public:
 
 public:
 
-    void write_limit()
-    {
-        H5Easy::dump(m_file, "/limit_epsy_reached", 1);
-    }
-
-public:
-
     void write_completed(size_t nstep)
     {
         H5Easy::dump(m_file, "/completed", nstep, H5Easy::DumpMode::Overwrite);
@@ -117,6 +110,8 @@ public:
         bool last = false;      // == true when equilibrium is reached -> store equilibrium configuration
         bool attribute = true;  // signal to store attribute
         bool event = false;     // == true every time a yielding event took place -> write "/event/*"
+        size_t iiter_last = 0;
+        size_t A_last = 0;
         xt::xtensor<int, 1> idx_last = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
         xt::xtensor<int, 1> idx_n = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
         xt::xtensor<int, 1> idx = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
@@ -142,6 +137,7 @@ public:
             // break if maximum local strain could be exceeded
             if (!m_material_plas.checkYieldBoundRight(5)) {
                 H5Easy::dump(data, "/meta/corrupt", 1);
+                H5Easy::dump(m_file, "/limit_epsy_reached", 1);
                 return -1;
             }
 
@@ -153,6 +149,18 @@ public:
             int s = xt::sum(idx - idx_n)();
             A = std::max(A, a);
             S = std::max(S, s);
+
+            // if nothing was triggered, stop and retry on another randomly selected element
+            // the number of iterations has been check phenomenologically
+            if ((iiter == 20000 && A <= 1) || (A_last == 0 && iiter > iiter_last + 20000 && iiter > 30000)) {
+                size_t failed = 0;
+                if (m_file.exist("/failed_push/element")) {
+                    failed = H5Easy::getSize(m_file, "/failed_push/element");
+                }
+                H5Easy::dump(m_file, "/failed_push/element", trigger_element, {failed});
+                H5Easy::dump(m_file, "/failed_push/inc", m_inc, {failed});
+                return -2;
+            }
 
             bool save_event = xt::any(xt::not_equal(idx, idx_last));
             bool save_overview = iiter % t_step == 0 || last || iiter == 0;
@@ -192,6 +200,8 @@ public:
                     ievent++;
                 }
                 xt::noalias(idx_last) = idx;
+                iiter_last = iiter;
+                A_last = a;
                 event = true;
             }
 
@@ -315,24 +325,33 @@ int main(int argc, const char** argv)
     std::string input = args["--input"].asString();
 
     Main sim(input);
-    size_t nstep = 100;
+    size_t npush = 200;
+    size_t ipush = 0;
 
-    for (size_t push = 0; push < nstep; ++push) {
+    for (size_t i = 0; i < npush * 100; ++i) {
         // trigger and run
         sim.restore_last_stored();
-        std::string outname =  fmt::format("{0:s}_push={1:d}.hdf5", output, sim.inc() + 1);
+        std::string outname = fmt::format("{0:s}_push={1:d}.hdf5", output, sim.inc() + 1);
         fmt::print("Writing to {0:s}\n", outname);
         int A = sim.run_push(outname);
-        // remove event output if the potential energy landscape went out-of-bounds somewhere
-        if (A < 0) {
-            sim.write_limit();
-            fmt::print("Yield limit reached {0:s}\n", input);
+        // retry if nothing was triggered
+        if (A == -2) {
+            fmt::print("Abandoning and retrying, removing {0:s}\n", outname);
             std::remove(outname.c_str());
+        }
+        // remove event output if the potential energy landscape went out-of-bounds somewhere
+        if (A == -1) {
+            fmt::print("Yield limit reached {0:s}\n", outname);
+            std::remove(outname.c_str());
+            break;
+        }
+        ipush++;
+        if (ipush >= npush) {
             break;
         }
     }
 
-    sim.write_completed(nstep);
+    sim.write_completed(npush);
 
     return 0;
 }
