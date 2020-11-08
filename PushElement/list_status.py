@@ -72,21 +72,20 @@ output = {
     'completed_event' : [],
     'partial_base' : [],
     'partial_event' : [],
+    'cut' : [],
     'error' : [],
     'new' : [],
 }
 
 files = sorted(list(filter(None, subprocess.check_output(
-    "find {0:s} -iname '*.hdf5'".format(args['<dirname>']), shell=True).decode('utf-8').split('\n'))))
+    "find {0:s} -iname 'id*.hdf5'".format(args['<dirname>']), shell=True).decode('utf-8').split('\n'))))
 
 files = [os.path.relpath(file) for file in files]
 
 basefiles = {file: [] for file in files if len(file.split('push')) == 1}
 eventfiles = [file for file in files if len(file.split('push')) > 1]
-output['error'] = [file for file in eventfiles if not eventIsCompleted(file)]
-eventfiles = [file for file in eventfiles if file not in output['error']]
-
-print('Basic error:', output['error'])
+output['cut'] = [file for file in eventfiles if not eventIsCompleted(file)]
+eventfiles = [file for file in eventfiles if file not in output['cut']]
 
 for file in eventfiles:
     basename = file.split('_push')[0]
@@ -101,8 +100,6 @@ for file in basefiles:
         stored = getStored(file)
         completed = isCompleted(file)
 
-        print('hasRun', file, completed, stored, ondisk)
-
         if completed and np.array_equal(ondisk, stored):
             output['completed_base'] += [file]
             output['completed_event'] += basefiles[file]
@@ -113,8 +110,6 @@ for file in basefiles:
             output['error'] += [file] + basefiles[file]
 
     else:
-
-        print('new', file)
 
         output['new'] += [file] + basefiles[file]
 

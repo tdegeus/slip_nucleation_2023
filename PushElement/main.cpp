@@ -115,7 +115,6 @@ public:
         xt::xtensor<int, 1> idx_last = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
         xt::xtensor<int, 1> idx_n = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
         xt::xtensor<int, 1> idx = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
-        xt::xtensor<int, 2> Idx_n = xt::view(m_material_plas.CurrentIndex(), xt::all(), xt::all());
         xt::xtensor<double, 2> Sig_bar = xt::average(m_Sig, dV, {0, 1}); // only shape matters
         xt::xtensor<double, 3> Sig_elem = xt::average(m_Sig_plas, dV_plas, {1}); // only shape matters
         xt::xtensor<double, 2> Sig_plas = xt::empty<double>({3ul, m_N});
@@ -282,8 +281,7 @@ public:
         H5Easy::dump(data, "/meta/dt", m_dt);
         H5Easy::dump(data, "/meta/N", m_N);
 
-        xt::xtensor<int, 2> Idx = xt::view(m_material_plas.CurrentIndex(), xt::all(), xt::all());
-        return xt::sum(Idx - Idx_n)();
+        return 0;
     }
 
 private:
@@ -332,16 +330,16 @@ int main(int argc, const char** argv)
         // trigger and run
         sim.restore_last_stored();
         std::string outname = fmt::format("{0:s}_push={1:d}.hdf5", output, sim.inc() + 1);
-        fmt::print("Writing to {0:s}\n", outname);
+        fmt::print("Writing  : {0:s}\n", outname);
         int A = sim.run_push(outname);
         // retry if nothing was triggered
         if (A == -2) {
-            fmt::print("Abandoning and retrying, removing {0:s}\n", outname);
+            fmt::print("Retrying : {0:s}\n", outname);
             std::remove(outname.c_str());
         }
         // remove event output if the potential energy landscape went out-of-bounds somewhere
         if (A == -1) {
-            fmt::print("Yield limit reached {0:s}\n", outname);
+            fmt::print("Aborting : {0:s}\n", outname);
             std::remove(outname.c_str());
             break;
         }
@@ -352,6 +350,7 @@ int main(int argc, const char** argv)
     }
 
     sim.write_completed(npush);
+    fmt::print("Complete : {0:s}\n", input);
 
     return 0;
 }

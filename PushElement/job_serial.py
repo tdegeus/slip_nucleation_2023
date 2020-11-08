@@ -11,11 +11,13 @@ import GooseSLURM as gs
 files = sorted(list(filter(None, subprocess.check_output(
     "find . -iname 'id*.hdf5'", shell=True).decode('utf-8').split('\n'))))
 
-def is_completed(file):
+def getCompleted(file):
     with h5py.File(file, 'r') as data:
-        return 'completed' in data
+        if 'completed' in data:
+            return int(data['completed'][...])
+    return 0
 
-files = [os.path.relpath(file) for file in files if not is_completed(file)]
+files = [os.path.relpath(file) for file in files if getCompleted(file) != 200]
 
 # ----
 
@@ -48,7 +50,7 @@ for file in files:
         'nodes': 1,
         'ntasks': 1,
         'cpus-per-task': 1,
-        'time': '8h',
+        'time': '12h',
         'account': 'pcsl',
         'partition': 'serial',
     }
