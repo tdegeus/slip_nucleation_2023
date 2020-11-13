@@ -36,8 +36,7 @@ def isCompleted(filename):
     with h5py.File(filename, 'r') as data:
         if 'completed' not in data:
             return False
-        if 'finished' in data['completed']:
-            return int(data['/completed/finished'][...])
+        return int(data['completed'][...])
 
 
 def hasRun(filename):
@@ -98,7 +97,7 @@ for file in basefiles:
     if len(ondisk) > 0:
 
         stored = getStored(file)
-        completed = isCompleted(file)
+        completed = isCompleted(file) == 200
 
         if completed and np.array_equal(ondisk, stored):
             output['completed_base'] += [file]

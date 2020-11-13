@@ -29,9 +29,9 @@ inline void dump_check(H5Easy::File& file, const std::string& key, const T& data
     if (!file.exist(key)) {
         H5Easy::dump(file, key, data);
     }
-    else {
-        MYASSERT(H5Easy::load<T>(file, key) == data);
-    }
+    // else {
+    //     MYASSERT(H5Easy::load<T>(file, key) == data);
+    // }
 }
 
 class Main : public FQF::HybridSystem {
