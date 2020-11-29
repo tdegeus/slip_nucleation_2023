@@ -310,11 +310,11 @@ static const char USAGE[] =
     Store new state to input-file and write evolution to a separate output-file per increment.
 
 Usage:
-    PushElementThermal [options] --output=N --input=N
+    PushElementThermal <input.hdf5> <output.hdf5>
 
 Arguments:
-    --output=N      Base pat of the output-file: appended with "_ipush={inc:d}.hdf5"
-    --input=N       The path to the simulation file.
+    input   The path to the simulation file.
+    output  Base pat of the output-file: appended with "_ipush={inc:d}.hdf5.
 
 Options:
     -h, --help      Show help.
@@ -331,8 +331,8 @@ int main(int argc, const char** argv)
     std::map<std::string, docopt::value> args =
         docopt::docopt(USAGE, {argv + 1, argv + argc}, true, "v0.0.1");
 
-    std::string output = args["--output"].asString();
-    std::string input = args["--input"].asString();
+    std::string input = args["<input.hdf5>"].asString();
+    std::string output = args["<output.hdf5>"].asString();
 
     Main sim(input);
 
