@@ -37,7 +37,7 @@ with h5py.File(os.path.join(dbase, 'EnsembleInfo.hdf5'), 'r') as data:
     A = data['/avalanche/A'][...]
     idx = np.argwhere(A == N).ravel()
     incs = data['/avalanche/inc'][idx]
-    files = [file.decode('UTF-8') for file in data['/files'][...][data['/avalanche/file'][idx]]]
+    files = data['/files'].asstr()[...][data['/avalanche/file'][idx]]
     stresses = data['/avalanche/sigd'][idx] * sig0
 
 sigc = 0.15464095 * sig0
