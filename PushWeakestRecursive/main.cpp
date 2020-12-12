@@ -6,6 +6,7 @@
 #include <cpppath.h>
 #include <docopt/docopt.h>
 #include <cstdio>
+#include <ctime>
 
 #ifndef GIT_COMMIT_HASH
 #define GIT_COMMIT_HASH "?"
@@ -38,15 +39,13 @@ public:
 
     Main(const std::string& fname) : m_file(fname, H5Easy::File::ReadWrite)
     {
-        this->initGeometry(
+        this->initHybridSystem(
             H5Easy::load<xt::xtensor<double, 2>>(m_file, "/coor"),
             H5Easy::load<xt::xtensor<size_t, 2>>(m_file, "/conn"),
             H5Easy::load<xt::xtensor<size_t, 2>>(m_file, "/dofs"),
             H5Easy::load<xt::xtensor<size_t, 1>>(m_file, "/dofsP"),
             H5Easy::load<xt::xtensor<size_t, 1>>(m_file, "/elastic/elem"),
             H5Easy::load<xt::xtensor<size_t, 1>>(m_file, "/cusp/elem"));
-
-        this->initHybridSystem();
 
         this->setMassMatrix(H5Easy::load<xt::xtensor<double, 1>>(m_file, "/rho"));
         this->setDampingMatrix(H5Easy::load<xt::xtensor<double, 1>>(m_file, "/damping/alpha"));
@@ -100,6 +99,20 @@ public:
 
 public:
 
+    void set_seed()
+    {
+        size_t seed = time(NULL);
+        if (m_file.exist("/meta/seed")) {
+            seed = H5Easy::load<size_t>(m_file, "/meta/seed");
+        }
+        else {
+            H5Easy::dump(m_file, "/meta/seed", seed);
+        }
+        xt::random::seed(seed);
+    }
+
+public:
+
     int run_push(const std::string& outfilename)
     {
         auto dV = m_quad.AsTensor<2>(m_quad.dV());
@@ -107,6 +120,7 @@ public:
 
         this->restore_last_stored();
         this->computeStress();
+        FQF::LocalTriggerFineLayer trigger(*this);
 
         H5Easy::File data(outfilename, H5Easy::File::Overwrite);
 
@@ -130,13 +144,11 @@ public:
         xt::xtensor<double, 1> yielded = xt::empty<double>({m_N});
         xt::xtensor<double, 2> yielded_broadcast = xt::empty<double>({3ul, m_N});
         MYASSERT(std::abs(GM::Sigd(Sig_bar)() - H5Easy::load<double>(m_file, "/sigd", {m_inc})) < 1e-8);
-        double sigbar = GM::Sigd(Sig_bar)();      // last known stress
-        int s_last_trigger = 0;                   // avalanche size at the last trigger
-        GooseFEM::Iterate::StopList delta_s(40);  // avalanche size change between the last 10 triggers
+        double sigbar = GM::Sigd(Sig_bar)();
         double target_stress = H5Easy::load<double>(m_file, "/push/stress");
+        size_t iiter_last_event = 0;
+        size_t ntrigger = 0;
         size_t iiter_trigger = 0;
-
-        this->triggerElementWithLocalSimpleShear(m_deps_kick, this->find_weakest_element(), false, 3.0);
 
         this->quench();
         m_stop.reset();
@@ -149,6 +161,28 @@ public:
                 return -2;
             }
 
+            // every so often, trigger the weakest element
+            // stop if nothing is happening anymore
+            if (iiter == 0 || (iiter > iiter_last_event + 5000 && iiter > iiter_trigger + 5000 && sigbar > target_stress)) {
+                this->computeStress();
+                trigger.setStateMin(m_Eps, m_Sig, this->plastic_CurrentYieldRight() + m_deps_kick);
+                xt::xtensor<double, 2> barriers = trigger.barriers();
+                xt::xtensor<double, 1> B = xt::amax(barriers, 1);
+                xt::xtensor<double, 1> P = xt::exp(-B);
+                xt::xtensor<double, 1> c = xt::cumsum(P);
+                xt::xtensor<double, 1> r = c(0) + c(c.size() - 1) * xt::random::rand<double>({1});
+                size_t etrigger = xt::argmin(r >= c)();
+                size_t qtrigger = xt::argmax(xt::view(barriers, etrigger, xt::all()))();
+                this->setU(m_u + trigger.delta_u(etrigger, qtrigger));
+                H5Easy::dump(data, "/trigger/iiter", iiter, {ntrigger});
+                H5Easy::dump(data, "/trigger/r", etrigger, {ntrigger});
+                H5Easy::dump(data, "/trigger/q", qtrigger, {ntrigger});
+                H5Easy::dump(data, "/trigger/p", trigger.p(etrigger, qtrigger), {ntrigger});
+                H5Easy::dump(data, "/trigger/s", trigger.s(etrigger, qtrigger), {ntrigger});
+                ntrigger++;
+                iiter_trigger = iiter;
+            }
+
             if (iiter > 0) {
                 idx = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
             }
@@ -157,17 +191,6 @@ public:
             int s = xt::sum(idx - idx_n)();
             A = std::max(A, a);
             S = std::max(S, s);
-
-            // every so often, trigger the weakest element
-            // stop if nothing is happening anymore
-            if (iiter > 0 && iiter % 2000 == 0 && sigbar > target_stress) {
-                if (delta_s.stop(static_cast<double>(std::abs(s - s_last_trigger)), 3.0)) {
-                    return -1;
-                }
-                s_last_trigger = s;
-                iiter_trigger = iiter;
-                this->triggerElementWithLocalSimpleShear(m_deps_kick, this->find_weakest_element(), false, 3.0);
-            }
 
             bool save_event = xt::any(xt::not_equal(idx, idx_last));
             bool save_overview = iiter % t_step == 0 || last || iiter == 0;
@@ -209,6 +232,7 @@ public:
                 }
                 xt::noalias(idx_last) = idx;
                 event = true;
+                iiter_last_event = iiter;
             }
 
             if (save_overview) {
@@ -309,11 +333,7 @@ static const char USAGE[] =
     Store new state to input-file and write evolution to a separate output-file per increment.
 
 Usage:
-    PushWeakest [options] --output=N --input=N
-
-Arguments:
-    --output=N      Base pat of the output-file: appended with "_ipush={inc:d}.hdf5"
-    --input=N       The path to the simulation file.
+    PushWeakest <input> <output>
 
 Options:
     -h, --help      Show help.
@@ -327,12 +347,13 @@ int main(int argc, const char** argv)
     std::map<std::string, docopt::value> args =
         docopt::docopt(USAGE, {argv + 1, argv + argc}, true, "v0.0.1");
 
-    std::string output = args["--output"].asString();
-    std::string input = args["--input"].asString();
+    std::string output = args["<output>"].asString();
+    std::string input = args["<input>"].asString();
 
     Main sim(input);
 
     // trigger and run
+    sim.set_seed();
     sim.restore_last_stored();
     std::string outname =  fmt::format("{0:s}_push={1:d}.hdf5", output, sim.inc() + 1);
     fmt::print("Writing to {0:s}\n", outname);
