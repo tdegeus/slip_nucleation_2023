@@ -62,6 +62,7 @@ public:
         this->setDt(H5Easy::load<double>(m_file, "/run/dt"));
 
         m_deps_kick = H5Easy::load<double>(m_file, "/run/epsd/kick");
+        m_epsy = H5Easy::load<xt::xtensor<double, 2>>(m_file, "/cusp/epsy");
     }
 
 public:
@@ -113,6 +114,20 @@ public:
 
 public:
 
+    xt::xtensor<double, 2> yieldRight(size_t offset = 0) const
+    {
+        auto idx = this->plastic_CurrentIndex();
+        xt::xtensor<double, 2> ret = xt::empty<double>(idx.shape());
+        for (size_t e = 0; e < idx.shape(0); ++e) {
+            for (size_t q = 0; q < idx.shape(1); ++q) {
+                ret(e, q) = m_epsy(e, idx(e, q) + offset);
+            }
+        }
+        return ret;
+    }
+
+public:
+
     int run_push(const std::string& outfilename)
     {
         auto dV = m_quad.AsTensor<2>(m_quad.dV());
@@ -120,7 +135,11 @@ public:
 
         this->restore_last_stored();
         this->computeStress();
+        // todo: remove when implementation in QPot and GMatElastoPlasticQPot
+        MYASSERT(xt::allclose(this->yieldRight(0), this->plastic_CurrentYieldRight()));
         FQF::LocalTriggerFineLayer trigger(*this);
+
+
 
         H5Easy::File data(outfilename, H5Easy::File::Overwrite);
 
@@ -165,7 +184,7 @@ public:
             // stop if nothing is happening anymore
             if (iiter == 0 || (iiter > iiter_last_event + 5000 && iiter > iiter_trigger + 5000 && sigbar > target_stress)) {
                 this->computeStress();
-                trigger.setStateMin(m_Eps, m_Sig, this->plastic_CurrentYieldRight() + m_deps_kick);
+                trigger.setStateMin(m_Eps, m_Sig, this->yieldRight(1) + 0.5 * m_deps_kick);
                 xt::xtensor<double, 2> barriers = trigger.barriers();
                 xt::xtensor<double, 1> B = xt::amax(barriers, 1);
                 xt::xtensor<double, 1> P = xt::exp(-B);
@@ -322,6 +341,7 @@ private:
     GooseFEM::Iterate::StopList m_stop = GF::Iterate::StopList(20);
     size_t m_inc;
     double m_deps_kick;
+    xt::xtensor<double, 2> m_epsy;
 
 };
 
