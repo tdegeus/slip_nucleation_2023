@@ -153,15 +153,15 @@ public:
 
             // if nothing was triggered, stop and retry on another randomly selected element
             // the number of iterations has been check phenomenologically
-            if ((iiter == 20000 && A <= 1) || (A_last == 0 && iiter > iiter_last + 20000 && iiter > 30000)) {
-                size_t failed = 0;
-                if (m_file.exist("/failed_push/element")) {
-                    failed = H5Easy::getSize(m_file, "/failed_push/element");
-                }
-                H5Easy::dump(m_file, "/failed_push/element", trigger_element, {failed});
-                H5Easy::dump(m_file, "/failed_push/inc", m_inc, {failed});
-                return -2;
-            }
+            // if ((iiter == 20000 && A <= 1) || (A_last == 0 && iiter > iiter_last + 20000 && iiter > 30000)) {
+            //     size_t failed = 0;
+            //     if (m_file.exist("/failed_push/element")) {
+            //         failed = H5Easy::getSize(m_file, "/failed_push/element");
+            //     }
+            //     H5Easy::dump(m_file, "/failed_push/element", trigger_element, {failed});
+            //     H5Easy::dump(m_file, "/failed_push/inc", m_inc, {failed});
+            //     return -2;
+            // }
 
             // Switch of temperature when the target stress was reached
             if (sigbar <= target_stress) {

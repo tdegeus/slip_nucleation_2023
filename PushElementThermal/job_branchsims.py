@@ -48,9 +48,9 @@ for stress, inc, file in zip(stresses, incs, files):
 
     for push_stress, push_name in zip(push_stresses, push_names):
 
-        for kBT in [0.1, 1.0, 10.0, 100.0, 1000.0]:
+        for kBT in [1e-10, 1e-8]:
 
-            outfilename = '{0:s}_inc={1:d}_target={2:s}_kBT={3:d}.hdf5'.format(file.split('.hdf5')[0], inc, push_name, int(kBT))
+            outfilename = '{0:s}_inc={1:d}_target={2:s}_kBT={3:.0e}.hdf5'.format(file.split('.hdf5')[0], inc, push_name, kBT)
 
             print(file, inc, stress, push_name, kBT)
 
