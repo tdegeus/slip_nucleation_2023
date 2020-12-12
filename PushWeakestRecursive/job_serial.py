@@ -48,7 +48,7 @@ for file in files:
         'nodes': 1,
         'ntasks': 1,
         'cpus-per-task': 1,
-        'time': '8h',
+        'time': '12h',
         'account': 'pcsl',
         'partition': 'serial',
     }
