@@ -34,6 +34,9 @@ keys = [
 with h5py.File(os.path.join(dbase, 'EnsembleInfo.hdf5'), 'r') as data:
 
     sig0 = float(data['/normalisation/sig0'][...])
+    dt = float(data['/normalisation/dt'][...])
+    l0 = float(data['/normalisation/l0'][...])
+    cs = float(data['/normalisation/cs'][...])
     A = data['/avalanche/A'][...]
     idx = np.argwhere(A == N).ravel()
     incs = data['/avalanche/inc'][idx]
@@ -43,12 +46,14 @@ with h5py.File(os.path.join(dbase, 'EnsembleInfo.hdf5'), 'r') as data:
 sigc = 0.15464095 * sig0
 push_stresses = np.array([1.0 * sigc, 0.8 * sigc, 0.6 * sigc])
 push_names = ['sigc-1d0', 'sigc-0d8', 'sigc-0d6']
+push_interval = 0.01 / (dt * cs / (l0 * N))
+push_interval = int(push_interval - push_interval % 1000)
 
 for stress, inc, file in zip(stresses, incs, files):
 
     for push_stress, push_name in zip(push_stresses, push_names):
 
-        outfilename = '{0:s}_inc={1:d}_target={2:s}.hdf5'.format(file.split('.hdf5')[0], inc, push_name)
+        outfilename = '{0:s}_inc={1:d}_target={2:s}_pushinterval={3:.0e}.hdf5'.format(file.split('.hdf5')[0], inc, push_name, push_interval)
 
         print(file, inc, stress, push_name)
 
@@ -71,6 +76,7 @@ for stress, inc, file in zip(stresses, incs, files):
 
                 output['/push/inc'] = inc
                 output['/push/stress'] = push_stress
+                output['/push/interval'] = int(push_interval)
                 output['/disp/0'] = data['disp'][str(inc)][...]
 
                 dset = output.create_dataset('/stored', (1, ), maxshape=(None, ), dtype=np.int)
