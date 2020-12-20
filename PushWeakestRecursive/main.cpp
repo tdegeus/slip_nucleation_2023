@@ -90,16 +90,6 @@ public:
 
 public:
 
-    inline size_t find_weakest_element() {
-        auto eps = GM::Epsd(this->plastic_Eps());
-        auto epsy = this->plastic_CurrentYieldRight();
-        auto deps = epsy - eps;
-        auto index = xt::unravel_index(xt::argmin(deps)(), deps.shape());
-        return index[0];
-    }
-
-public:
-
     void set_seed()
     {
         size_t seed = time(NULL);
@@ -114,21 +104,6 @@ public:
 
 public:
 
-    // TODO: remove when implemented in QPot and GMatElastoPlasticQPot
-    xt::xtensor<double, 2> plas_CurrentYieldRight(size_t offset) const
-    {
-        auto idx = this->plastic_CurrentIndex();
-        xt::xtensor<double, 2> ret = xt::empty<double>(idx.shape());
-        for (size_t e = 0; e < idx.shape(0); ++e) {
-            for (size_t q = 0; q < idx.shape(1); ++q) {
-                ret(e, q) = m_epsy(e, idx(e, q) + offset);
-            }
-        }
-        return ret;
-    }
-
-public:
-
     int run_push(const std::string& outfilename)
     {
         auto dV = m_quad.AsTensor<2>(m_quad.dV());
@@ -136,8 +111,6 @@ public:
 
         this->restore_last_stored();
         this->computeStress();
-        // TODO: remove when implemented in QPot and GMatElastoPlasticQPot
-        MYASSERT(xt::allclose(this->plas_CurrentYieldRight(0), this->plastic_CurrentYieldRight()));
         FQF::LocalTriggerFineLayer trigger(*this);
 
         H5Easy::File data(outfilename, H5Easy::File::Overwrite);
@@ -164,10 +137,9 @@ public:
         MYASSERT(xt::allclose(GM::Sigd(Sig_bar)(), H5Easy::load<double>(m_file, "/sigd", {m_inc})));
         double sigbar = GM::Sigd(Sig_bar)();
         double target_stress = H5Easy::load<double>(m_file, "/push/stress");
-        size_t iiter_last_event = 0;
-        size_t ntrigger = 0;
-        size_t iiter_trigger = 0;
         size_t trigger_interval = H5Easy::load<size_t>(m_file, "/push/interval");
+        double T = H5Easy::load<double>(m_file, "/push/kBT");
+        size_t ntrigger = 0;
 
         this->quench();
         m_stop.reset();
@@ -180,29 +152,29 @@ public:
                 return -2;
             }
 
-            // every so often, trigger the weakest element
-            bool nucleate = iiter > iiter_last_event + trigger_interval &&
-                            iiter > iiter_trigger + trigger_interval &&
-                            sigbar > target_stress;
-
-            if (iiter == 0 || nucleate) {
+            // every so often, thermally trigger
+            if (iiter % trigger_interval == 0) {
                 this->computeStress();
-                trigger.setStateMin(m_Eps, m_Sig, this->plas_CurrentYieldRight(1) + 0.5 * m_deps_kick);
-                xt::xtensor<double, 2> barriers = trigger.barriers();
-                xt::xtensor<double, 1> B = xt::amax(barriers, 1);
-                xt::xtensor<double, 1> P = xt::exp(-B);
-                xt::xtensor<double, 1> c = xt::cumsum(P);
-                xt::xtensor<double, 1> r = c(0) + c(c.size() - 1) * xt::random::rand<double>({1});
-                size_t etrigger = xt::argmin(r >= c)();
-                size_t qtrigger = xt::argmax(xt::view(barriers, etrigger, xt::all()))();
-                this->setU(m_u + trigger.delta_u(etrigger, qtrigger));
-                H5Easy::dump(data, "/trigger/iiter", iiter, {ntrigger});
-                H5Easy::dump(data, "/trigger/r", etrigger, {ntrigger});
-                H5Easy::dump(data, "/trigger/q", qtrigger, {ntrigger});
-                H5Easy::dump(data, "/trigger/p", trigger.p(etrigger, qtrigger), {ntrigger});
-                H5Easy::dump(data, "/trigger/s", trigger.s(etrigger, qtrigger), {ntrigger});
-                ntrigger++;
-                iiter_trigger = iiter;
+                trigger.setStateSimpleShear(m_Eps, m_Sig, this->plastic_CurrentYieldRight(1) + 0.5 * m_deps_kick);
+                auto barriers = trigger.barriers();
+                auto p = trigger.p();
+                auto s = trigger.s();
+                xt::xtensor<double, 1> E = xt::amax(barriers, 1);
+                xt::xtensor<size_t, 1> qtrigger = xt::argmax(barriers, 1);
+                xt::xtensor<double, 1> P = xt::exp(-E / T);
+                xt::xtensor<double, 1> R = xt::random::rand<double>(P.shape());
+                auto etrigger = xt::flatten_indices(xt::argwhere(R >= P));
+
+                for (auto& e : etrigger) {
+                    size_t q = qtrigger(e);
+                    this->setU(m_u + trigger.delta_u(e, q));
+                    H5Easy::dump(data, "/trigger/iiter", iiter, {ntrigger});
+                    H5Easy::dump(data, "/trigger/r", e, {ntrigger});
+                    H5Easy::dump(data, "/trigger/q", q, {ntrigger});
+                    H5Easy::dump(data, "/trigger/p", p(e, q), {ntrigger});
+                    H5Easy::dump(data, "/trigger/s", s(e, q), {ntrigger});
+                    ntrigger++;
+                }
             }
 
             if (iiter > 0) {
@@ -254,11 +226,9 @@ public:
                 }
                 xt::noalias(idx_last) = idx;
                 event = true;
-                iiter_last_event = iiter;
             }
 
             if (save_overview) {
-                H5Easy::dump(data, "/overview/global/last_trigger", iiter_trigger, {ioverview});
                 H5Easy::dump(data, "/overview/global/iiter", iiter, {ioverview});
                 H5Easy::dump(data, "/overview/global/S", s, {ioverview});
                 H5Easy::dump(data, "/overview/global/A", a, {ioverview});
