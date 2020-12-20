@@ -173,6 +173,7 @@ public:
                     H5Easy::dump(data, "/trigger/q", q, {ntrigger});
                     H5Easy::dump(data, "/trigger/p", p(e, q), {ntrigger});
                     H5Easy::dump(data, "/trigger/s", s(e, q), {ntrigger});
+                    H5Easy::dump(data, "/trigger/W", barriers(e, q), {ntrigger});
                     ntrigger++;
                 }
             }
