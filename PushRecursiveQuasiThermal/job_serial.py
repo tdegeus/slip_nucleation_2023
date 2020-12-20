@@ -39,7 +39,7 @@ for file in files:
 
     basename = os.path.splitext(file)[0]
 
-    command = 'PushWeakestRecursive "{0:s}" "{1:s}"'.format(file, basename)
+    command = 'PushRecursiveQuasiThermal "{0:s}" "{1:s}"'.format(file, basename)
     command = slurm.format(command)
 
     sbatch = {

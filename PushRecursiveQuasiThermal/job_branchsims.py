@@ -77,6 +77,7 @@ for stress, inc, file in zip(stresses, incs, files):
                 output['/push/inc'] = inc
                 output['/push/stress'] = push_stress
                 output['/push/interval'] = int(push_interval)
+                output['/push/kBT'] = 1e-8
                 output['/disp/0'] = data['disp'][str(inc)][...]
 
                 dset = output.create_dataset('/stored', (1, ), maxshape=(None, ), dtype=np.int)
