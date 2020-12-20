@@ -161,9 +161,9 @@ public:
                 auto s = trigger.s();
                 xt::xtensor<double, 1> E = xt::amax(barriers, 1);
                 xt::xtensor<size_t, 1> qtrigger = xt::argmax(barriers, 1);
-                xt::xtensor<double, 1> P = xt::exp(-E / T);
+                xt::xtensor<double, 1> P = xt::exp(- E / T);
                 xt::xtensor<double, 1> R = xt::random::rand<double>(P.shape());
-                auto etrigger = xt::flatten_indices(xt::argwhere(R >= P));
+                auto etrigger = xt::flatten_indices(xt::argwhere(R <= P));
 
                 for (auto& e : etrigger) {
                     size_t q = qtrigger(e);
