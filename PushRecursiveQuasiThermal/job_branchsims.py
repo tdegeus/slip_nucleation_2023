@@ -51,41 +51,43 @@ for stress, inc, file in zip(stresses, incs, files):
 
     for push_stress, push_name in zip(push_stresses, push_names):
 
-        outfilename = '{0:s}_inc={1:d}_target={2:s}.hdf5'.format(file.split('.hdf5')[0], inc, push_name)
+        for T in [1e-7, 5e-7, 1e-6, 1e-5]:
 
-        print(file, inc, stress, push_name)
+            outfilename = '{0:s}_inc={1:d}_target={2:s}_kBT={3:.0e}.hdf5'.format(file.split('.hdf5')[0], inc, push_name, T)
 
-        with h5py.File(os.path.join(dbase, file), 'r') as data:
+            print(file, inc, stress, push_name)
 
-            with h5py.File(outfilename, 'w') as output:
+            with h5py.File(os.path.join(dbase, file), 'r') as data:
 
-                for key in keys:
-                    output[key] = data[key][...]
+                with h5py.File(outfilename, 'w') as output:
 
-                epsy0 = data['/cusp/epsy'][...]
-                N = epsy0.shape[0]
-                M = epsy0.shape[1] * 4
-                k = 2.0
-                epsy = 1.e-5 + 1.e-3 * np.random.weibull(k, size=(N * M)).reshape(N, M)
-                epsy[:, 0] += epsy0[:, -1]
-                epsy = np.cumsum(epsy, axis=1)
-                epsy_extendend = np.hstack((epsy0, epsy))
-                output['/cusp/epsy'] = epsy_extendend
+                    for key in keys:
+                        output[key] = data[key][...]
 
-                output['/push/inc'] = inc
-                output['/push/stress'] = push_stress
-                output['/push/interval'] = 100
-                output['/push/kBT'] = 1e-7
-                output['/disp/0'] = data['disp'][str(inc)][...]
+                    epsy0 = data['/cusp/epsy'][...]
+                    N = epsy0.shape[0]
+                    M = epsy0.shape[1] * 4
+                    k = 2.0
+                    epsy = 1.e-5 + 1.e-3 * np.random.weibull(k, size=(N * M)).reshape(N, M)
+                    epsy[:, 0] += epsy0[:, -1]
+                    epsy = np.cumsum(epsy, axis=1)
+                    epsy_extendend = np.hstack((epsy0, epsy))
+                    output['/cusp/epsy'] = epsy_extendend
 
-                dset = output.create_dataset('/stored', (1, ), maxshape=(None, ), dtype=np.int)
-                dset[0] = 0
+                    output['/push/inc'] = inc
+                    output['/push/stress'] = push_stress
+                    output['/push/interval'] = 100
+                    output['/push/kBT'] = T
+                    output['/disp/0'] = data['disp'][str(inc)][...]
 
-                dset = output.create_dataset('/sigd', (1, ), maxshape=(None, ), dtype=np.float)
-                dset[0] = stress
+                    dset = output.create_dataset('/stored', (1, ), maxshape=(None, ), dtype=np.int)
+                    dset[0] = 0
 
-                dset = output.create_dataset('/t', (1, ), maxshape=(None, ), dtype=np.float)
-                dset[0] = float(data['/t'][inc])
+                    dset = output.create_dataset('/sigd', (1, ), maxshape=(None, ), dtype=np.float)
+                    dset[0] = stress
+
+                    dset = output.create_dataset('/t', (1, ), maxshape=(None, ), dtype=np.float)
+                    dset[0] = float(data['/t'][inc])
 
 
 

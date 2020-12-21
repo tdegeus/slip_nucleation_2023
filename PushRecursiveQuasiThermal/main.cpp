@@ -163,11 +163,20 @@ public:
                 xt::xtensor<size_t, 1> qtrigger = xt::argmax(barriers, 1);
                 xt::xtensor<double, 1> P = xt::exp(- E / T);
                 xt::xtensor<double, 1> R = xt::random::rand<double>(P.shape());
-                auto etrigger = xt::flatten_indices(xt::argwhere(R <= P));
+                xt::xtensor<size_t, 1> etrigger = xt::flatten_indices(xt::argwhere(R <= P));
+
+                if (iiter == 0 && etrigger.size() == 0) {
+                    size_t i = xt::argmin(E)();
+                    etrigger = xt::xtensor<size_t, 1>{i};
+                }
+
+                if (etrigger.size() > 0) {
+                    std::cout << "Triggering: " << etrigger << std::endl;
+                }
 
                 for (auto& e : etrigger) {
                     size_t q = qtrigger(e);
-                    this->setU(m_u + trigger.delta_u(e, q));
+                    this->setU(this->u() + s(e, q) * trigger.u_s(e)); // see "setStateSimpleShear"
                     H5Easy::dump(data, "/trigger/iiter", iiter, {ntrigger});
                     H5Easy::dump(data, "/trigger/r", e, {ntrigger});
                     H5Easy::dump(data, "/trigger/q", q, {ntrigger});
@@ -178,10 +187,7 @@ public:
                 }
             }
 
-            if (iiter > 0) {
-                idx = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
-            }
-
+            idx = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
             size_t a = xt::sum(xt::not_equal(idx, idx_n))();
             int s = xt::sum(idx - idx_n)();
             A = std::max(A, a);
