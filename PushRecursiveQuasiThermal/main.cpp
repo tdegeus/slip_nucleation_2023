@@ -131,7 +131,7 @@ public:
         xt::xtensor<double, 3> Sig_elem = xt::average(m_Sig_plas, dV_plas, {1}); // only shape matters
         xt::xtensor<double, 2> Sig_plas = xt::empty<double>({3ul, m_N});
         xt::xtensor<double, 1> sig_weak = xt::empty<double>({3ul});
-        xt::xtensor<double, 1> sig_crack = xt::empty<double>({3ul});
+        // xt::xtensor<double, 1> sig_crack = xt::empty<double>({3ul});
         xt::xtensor<double, 1> yielded = xt::empty<double>({m_N});
         xt::xtensor<double, 2> yielded_broadcast = xt::empty<double>({3ul, m_N});
         MYASSERT(xt::allclose(GM::Sigd(Sig_bar)(), H5Easy::load<double>(m_file, "/sigd", {m_inc})));
@@ -153,7 +153,7 @@ public:
             }
 
             // every so often, thermally trigger
-            if (iiter % trigger_interval == 0) {
+            if (iiter % trigger_interval == 0 && sigbar > target_stress) {
                 this->computeStress();
                 trigger.setStateSimpleShear(m_Eps, m_Sig, this->plastic_CurrentYieldRight(1) + 0.5 * m_deps_kick);
                 auto barriers = trigger.barriers();
@@ -180,8 +180,8 @@ public:
                     H5Easy::dump(data, "/trigger/iiter", iiter, {ntrigger});
                     H5Easy::dump(data, "/trigger/r", e, {ntrigger});
                     H5Easy::dump(data, "/trigger/q", q, {ntrigger});
-                    H5Easy::dump(data, "/trigger/p", p(e, q), {ntrigger});
-                    H5Easy::dump(data, "/trigger/s", s(e, q), {ntrigger});
+                    // H5Easy::dump(data, "/trigger/p", p(e, q), {ntrigger});
+                    // H5Easy::dump(data, "/trigger/s", s(e, q), {ntrigger});
                     H5Easy::dump(data, "/trigger/W", barriers(e, q), {ntrigger});
                     ntrigger++;
                 }
@@ -208,7 +208,7 @@ public:
                 xt::view(Sig_plas, 1, xt::all()) = xt::view(Sig_elem, xt::all(), 0, 1);
                 xt::view(Sig_plas, 2, xt::all()) = xt::view(Sig_elem, xt::all(), 1, 1);
                 xt::noalias(sig_weak) = xt::mean(Sig_plas, {1});
-                xt::noalias(sig_crack) = xt::average(Sig_plas, yielded_broadcast, {1});
+                // xt::noalias(sig_crack) = xt::average(Sig_plas, yielded_broadcast, {1});
                 sigbar = GM::Sigd(Sig_bar)();
             }
 
@@ -226,9 +226,9 @@ public:
                     H5Easy::dump(data, "/event/weak/sig", sig_weak(0), {0, ievent});
                     H5Easy::dump(data, "/event/weak/sig", sig_weak(1), {1, ievent});
                     H5Easy::dump(data, "/event/weak/sig", sig_weak(2), {2, ievent});
-                    H5Easy::dump(data, "/event/crack/sig", sig_crack(0), {0, ievent});
-                    H5Easy::dump(data, "/event/crack/sig", sig_crack(1), {1, ievent});
-                    H5Easy::dump(data, "/event/crack/sig", sig_crack(2), {2, ievent});
+                    // H5Easy::dump(data, "/event/crack/sig", sig_crack(0), {0, ievent});
+                    // H5Easy::dump(data, "/event/crack/sig", sig_crack(1), {1, ievent});
+                    // H5Easy::dump(data, "/event/crack/sig", sig_crack(2), {2, ievent});
                     ievent++;
                 }
                 xt::noalias(idx_last) = idx;
@@ -245,9 +245,9 @@ public:
                 H5Easy::dump(data, "/overview/weak/sig", sig_weak(0), {0, ioverview});
                 H5Easy::dump(data, "/overview/weak/sig", sig_weak(1), {1, ioverview});
                 H5Easy::dump(data, "/overview/weak/sig", sig_weak(2), {2, ioverview});
-                H5Easy::dump(data, "/overview/crack/sig", sig_crack(0), {0, ioverview});
-                H5Easy::dump(data, "/overview/crack/sig", sig_crack(1), {1, ioverview});
-                H5Easy::dump(data, "/overview/crack/sig", sig_crack(2), {2, ioverview});
+                // H5Easy::dump(data, "/overview/crack/sig", sig_crack(0), {0, ioverview});
+                // H5Easy::dump(data, "/overview/crack/sig", sig_crack(1), {1, ioverview});
+                // H5Easy::dump(data, "/overview/crack/sig", sig_crack(2), {2, ioverview});
                 ioverview++;
             }
 
@@ -258,9 +258,9 @@ public:
                 H5Easy::dumpAttribute(data, "/event/weak/sig", "xx", size_t(0));
                 H5Easy::dumpAttribute(data, "/event/weak/sig", "xy", size_t(1));
                 H5Easy::dumpAttribute(data, "/event/weak/sig", "yy", size_t(2));
-                H5Easy::dumpAttribute(data, "/event/crack/sig", "xx", size_t(0));
-                H5Easy::dumpAttribute(data, "/event/crack/sig", "xy", size_t(1));
-                H5Easy::dumpAttribute(data, "/event/crack/sig", "yy", size_t(2));
+                // H5Easy::dumpAttribute(data, "/event/crack/sig", "xx", size_t(0));
+                // H5Easy::dumpAttribute(data, "/event/crack/sig", "xy", size_t(1));
+                // H5Easy::dumpAttribute(data, "/event/crack/sig", "yy", size_t(2));
                 attribute = false;
             }
 
@@ -271,9 +271,9 @@ public:
                 H5Easy::dumpAttribute(data, "/overview/weak/sig", "xx", size_t(0));
                 H5Easy::dumpAttribute(data, "/overview/weak/sig", "xy", size_t(1));
                 H5Easy::dumpAttribute(data, "/overview/weak/sig", "yy", size_t(2));
-                H5Easy::dumpAttribute(data, "/overview/crack/sig", "xx", size_t(0));
-                H5Easy::dumpAttribute(data, "/overview/crack/sig", "xy", size_t(1));
-                H5Easy::dumpAttribute(data, "/overview/crack/sig", "yy", size_t(2));
+                // H5Easy::dumpAttribute(data, "/overview/crack/sig", "xx", size_t(0));
+                // H5Easy::dumpAttribute(data, "/overview/crack/sig", "xy", size_t(1));
+                // H5Easy::dumpAttribute(data, "/overview/crack/sig", "yy", size_t(2));
             }
 
             if (last) {
