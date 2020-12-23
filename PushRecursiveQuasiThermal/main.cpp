@@ -62,7 +62,6 @@ public:
         this->setDt(H5Easy::load<double>(m_file, "/run/dt"));
 
         m_deps_kick = H5Easy::load<double>(m_file, "/run/epsd/kick");
-        m_epsy = H5Easy::load<xt::xtensor<double, 2>>(m_file, "/cusp/epsy");
     }
 
 public:
@@ -104,6 +103,99 @@ public:
 
 public:
 
+    int run_push_no_output()
+    {
+        auto dV = m_quad.AsTensor<2>(m_quad.dV());
+        auto dV_plas = m_quad_plas.AsTensor<2>(m_quad_plas.dV());
+
+        this->restore_last_stored();
+        this->computeStress();
+        FQF::LocalTriggerFineLayer trigger(*this);
+
+        xt::xtensor<double, 2> Sig_bar = xt::average(m_Sig, dV, {0, 1}); // only shape matters
+        MYASSERT(xt::allclose(GM::Sigd(Sig_bar)(), H5Easy::load<double>(m_file, "/sigd", {m_inc})));
+        double sigbar = GM::Sigd(Sig_bar)();
+        double target_stress = H5Easy::load<double>(m_file, "/push/stress");
+        size_t trigger_interval = H5Easy::load<size_t>(m_file, "/push/interval");
+        double T = H5Easy::load<double>(m_file, "/push/kBT");
+
+        this->quench();
+        m_stop.reset();
+
+        bool quench = false;
+
+        for (size_t iiter = 0;; ++iiter) {
+
+            // break if maximum local strain could be exceeded
+            if (!m_material_plas.checkYieldBoundRight(5)) {
+                return -2;
+            }
+
+            // check macroscopic stress
+            if (iiter % trigger_interval == 0) {
+                this->computeStress();
+                xt::noalias(Sig_bar) = xt::average(m_Sig, dV, {0, 1});
+                sigbar = GM::Sigd(Sig_bar)();
+                if (sigbar <= target_stress) {
+                    quench = true;
+                }
+            }
+
+            // every so often, thermally trigger
+            if (iiter % trigger_interval == 0 && !quench) {
+                trigger.setStateSimpleShear(
+                    this->Eps(),
+                    this->Sig(),
+                    this->plastic_CurrentYieldRight(1) + 0.5 * m_deps_kick);
+                auto barriers = trigger.barriers();
+                auto p = trigger.p();
+                auto s = trigger.s();
+                xt::xtensor<double, 1> E = xt::amax(barriers, 1);
+                xt::xtensor<size_t, 1> qtrigger = xt::argmax(barriers, 1);
+                xt::xtensor<double, 1> P = xt::exp(- E / T);
+                xt::xtensor<double, 1> R = xt::random::rand<double>(P.shape());
+                xt::xtensor<size_t, 1> etrigger = xt::flatten_indices(xt::argwhere(R <= P));
+
+                if (iiter == 0 && etrigger.size() == 0) {
+                    size_t i = xt::argmin(E)();
+                    etrigger = xt::xtensor<size_t, 1>{i};
+                }
+
+                if (etrigger.size() > 0) {
+                    std::cout << "Triggering: " << etrigger << ", stress = " << sigbar / target_stress << std::endl;
+                }
+
+                for (auto& e : etrigger) {
+                    size_t q = qtrigger(e);
+                    this->setU(this->u() + s(e, q) * trigger.u_s(e)); // see "setStateSimpleShear"
+                }
+            }
+
+            timeStep();
+
+            if (m_stop.stop(this->residual(), 1e-5) && quench) {
+                break;
+            }
+        }
+
+        m_inc++;
+
+        xt::noalias(Sig_bar) = xt::average(this->Sig(), dV, {0, 1});
+
+        std::string hash = GIT_COMMIT_HASH;
+        dump_check(m_file, "/git/run", hash);
+        dump_check(m_file, "/version/run", FQF::versionInfo());
+
+        H5Easy::dump(m_file, "/stored", m_inc, {m_inc});
+        H5Easy::dump(m_file, "/t", m_t, {m_inc});
+        H5Easy::dump(m_file, "/sigd", GM::Sigd(Sig_bar)(), {m_inc});
+        H5Easy::dump(m_file, fmt::format("/disp/{0:d}", m_inc), m_u);
+
+        return 1;
+    }
+
+public:
+
     int run_push(const std::string& outfilename)
     {
         auto dV = m_quad.AsTensor<2>(m_quad.dV());
@@ -131,7 +223,6 @@ public:
         xt::xtensor<double, 3> Sig_elem = xt::average(m_Sig_plas, dV_plas, {1}); // only shape matters
         xt::xtensor<double, 2> Sig_plas = xt::empty<double>({3ul, m_N});
         xt::xtensor<double, 1> sig_weak = xt::empty<double>({3ul});
-        // xt::xtensor<double, 1> sig_crack = xt::empty<double>({3ul});
         xt::xtensor<double, 1> yielded = xt::empty<double>({m_N});
         xt::xtensor<double, 2> yielded_broadcast = xt::empty<double>({3ul, m_N});
         MYASSERT(xt::allclose(GM::Sigd(Sig_bar)(), H5Easy::load<double>(m_file, "/sigd", {m_inc})));
@@ -154,8 +245,10 @@ public:
 
             // every so often, thermally trigger
             if (iiter % trigger_interval == 0 && sigbar > target_stress) {
-                this->computeStress();
-                trigger.setStateSimpleShear(m_Eps, m_Sig, this->plastic_CurrentYieldRight(1) + 0.5 * m_deps_kick);
+                trigger.setStateSimpleShear(
+                    this->Eps(),
+                    this->Sig(),
+                    this->plastic_CurrentYieldRight(1) + 0.5 * m_deps_kick);
                 auto barriers = trigger.barriers();
                 auto p = trigger.p();
                 auto s = trigger.s();
@@ -180,8 +273,6 @@ public:
                     H5Easy::dump(data, "/trigger/iiter", iiter, {ntrigger});
                     H5Easy::dump(data, "/trigger/r", e, {ntrigger});
                     H5Easy::dump(data, "/trigger/q", q, {ntrigger});
-                    // H5Easy::dump(data, "/trigger/p", p(e, q), {ntrigger});
-                    // H5Easy::dump(data, "/trigger/s", s(e, q), {ntrigger});
                     H5Easy::dump(data, "/trigger/W", barriers(e, q), {ntrigger});
                     ntrigger++;
                 }
@@ -208,7 +299,6 @@ public:
                 xt::view(Sig_plas, 1, xt::all()) = xt::view(Sig_elem, xt::all(), 0, 1);
                 xt::view(Sig_plas, 2, xt::all()) = xt::view(Sig_elem, xt::all(), 1, 1);
                 xt::noalias(sig_weak) = xt::mean(Sig_plas, {1});
-                // xt::noalias(sig_crack) = xt::average(Sig_plas, yielded_broadcast, {1});
                 sigbar = GM::Sigd(Sig_bar)();
             }
 
@@ -226,9 +316,6 @@ public:
                     H5Easy::dump(data, "/event/weak/sig", sig_weak(0), {0, ievent});
                     H5Easy::dump(data, "/event/weak/sig", sig_weak(1), {1, ievent});
                     H5Easy::dump(data, "/event/weak/sig", sig_weak(2), {2, ievent});
-                    // H5Easy::dump(data, "/event/crack/sig", sig_crack(0), {0, ievent});
-                    // H5Easy::dump(data, "/event/crack/sig", sig_crack(1), {1, ievent});
-                    // H5Easy::dump(data, "/event/crack/sig", sig_crack(2), {2, ievent});
                     ievent++;
                 }
                 xt::noalias(idx_last) = idx;
@@ -245,9 +332,6 @@ public:
                 H5Easy::dump(data, "/overview/weak/sig", sig_weak(0), {0, ioverview});
                 H5Easy::dump(data, "/overview/weak/sig", sig_weak(1), {1, ioverview});
                 H5Easy::dump(data, "/overview/weak/sig", sig_weak(2), {2, ioverview});
-                // H5Easy::dump(data, "/overview/crack/sig", sig_crack(0), {0, ioverview});
-                // H5Easy::dump(data, "/overview/crack/sig", sig_crack(1), {1, ioverview});
-                // H5Easy::dump(data, "/overview/crack/sig", sig_crack(2), {2, ioverview});
                 ioverview++;
             }
 
@@ -258,9 +342,6 @@ public:
                 H5Easy::dumpAttribute(data, "/event/weak/sig", "xx", size_t(0));
                 H5Easy::dumpAttribute(data, "/event/weak/sig", "xy", size_t(1));
                 H5Easy::dumpAttribute(data, "/event/weak/sig", "yy", size_t(2));
-                // H5Easy::dumpAttribute(data, "/event/crack/sig", "xx", size_t(0));
-                // H5Easy::dumpAttribute(data, "/event/crack/sig", "xy", size_t(1));
-                // H5Easy::dumpAttribute(data, "/event/crack/sig", "yy", size_t(2));
                 attribute = false;
             }
 
@@ -271,9 +352,6 @@ public:
                 H5Easy::dumpAttribute(data, "/overview/weak/sig", "xx", size_t(0));
                 H5Easy::dumpAttribute(data, "/overview/weak/sig", "xy", size_t(1));
                 H5Easy::dumpAttribute(data, "/overview/weak/sig", "yy", size_t(2));
-                // H5Easy::dumpAttribute(data, "/overview/crack/sig", "xx", size_t(0));
-                // H5Easy::dumpAttribute(data, "/overview/crack/sig", "xy", size_t(1));
-                // H5Easy::dumpAttribute(data, "/overview/crack/sig", "yy", size_t(2));
             }
 
             if (last) {
@@ -289,8 +367,7 @@ public:
 
         m_inc++;
 
-        this->computeStress();
-        xt::noalias(Sig_bar) = xt::average(m_Sig, dV, {0, 1});
+        xt::noalias(Sig_bar) = xt::average(this->Sig(), dV, {0, 1});
 
         std::string hash = GIT_COMMIT_HASH;
         dump_check(m_file, "/git/run", hash);
@@ -322,19 +399,15 @@ private:
     GooseFEM::Iterate::StopList m_stop = GF::Iterate::StopList(20);
     size_t m_inc;
     double m_deps_kick;
-    xt::xtensor<double, 2> m_epsy;
-
 };
 
 static const char USAGE[] =
-    R"(PushWeakest
-    Push the element containing the integration point closest to yielding
-    (upon a positive strain increase) and compute the force equilibrium.
-    Repeat this until nothing is triggered anymore.
-    Store new state to input-file and write evolution to a separate output-file per increment.
+    R"(PushRecursiveQuasiThermal
+    Mimic temperature to trigger events, until a target-stress is reached.
 
 Usage:
-    PushWeakest <input> <output>
+    PushRecursiveQuasiThermal <input>
+    PushRecursiveQuasiThermal <input> <output>
 
 Options:
     -h, --help      Show help.
@@ -348,20 +421,27 @@ int main(int argc, const char** argv)
     std::map<std::string, docopt::value> args =
         docopt::docopt(USAGE, {argv + 1, argv + argc}, true, "v0.0.1");
 
-    std::string output = args["<output>"].asString();
     std::string input = args["<input>"].asString();
-
     Main sim(input);
 
-    // trigger and run
     sim.set_seed();
     sim.restore_last_stored();
-    std::string outname =  fmt::format("{0:s}_push={1:d}.hdf5", output, sim.inc() + 1);
-    fmt::print("Writing to {0:s}\n", outname);
-    int ret = sim.run_push(outname);
-    // remove event output if the potential energy landscape went out-of-bounds somewhere
-    if (ret == -2) {
-        std::remove(outname.c_str());
+
+    int ret;
+
+    if (args["<output>"]) {
+        std::string output = args["<output>"].asString();
+        std::string outname = fmt::format("{0:s}_push={1:d}.hdf5", output, sim.inc() + 1);
+        fmt::print("Writing to {0:s}\n", outname);
+        ret = sim.run_push(outname);
+
+        if (ret == -2) {
+            std::remove(outname.c_str());
+        }
+    }
+    else {
+        fmt::print("Running without output {0:s}\n", input);
+        ret = sim.run_push_no_output();
     }
 
     sim.write_completed(ret);

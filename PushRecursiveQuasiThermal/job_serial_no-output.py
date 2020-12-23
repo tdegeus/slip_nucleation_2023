@@ -33,7 +33,7 @@ for file in files:
 
     basename = os.path.splitext(file)[0]
 
-    command = 'time PushRecursiveQuasiThermal "{0:s}" "{1:s}"'.format(file, basename)
+    command = 'time PushRecursiveQuasiThermal "{0:s}"'.format(file)
     command = slurm.format(command)
 
     sbatch = {
