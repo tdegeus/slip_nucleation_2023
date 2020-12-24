@@ -184,7 +184,7 @@ public:
             // if nothing was triggered, stop and retry on another randomly selected element
             // the number of iterations has been check phenomenologically
             bool retry = (iiter == 20000 && A <= 1) ||
-                         (iiter == 20000 && a <= 1 && std::abs(s) == 1) ||
+                         (iiter == 20000 && a <= 1 && std::abs(s) <= 1) ||
                          (A_last == 0 && iiter > iiter_last + 20000 && iiter > 30000);
 
             if (retry) {
@@ -311,6 +311,7 @@ public:
 
         H5Easy::dump(data, "/meta/completed", 1);
         H5Easy::dump(data, "/meta/uuid", H5Easy::load<std::string>(m_file, "/uuid"));
+        H5Easy::dump(data, "/meta/trigger/i", itrigger);
         H5Easy::dump(data, "/meta/push/element", e);
         H5Easy::dump(data, "/meta/inc", m_inc);
         H5Easy::dump(data, "/meta/dt", m_dt);

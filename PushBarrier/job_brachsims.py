@@ -43,7 +43,7 @@ def is_completed(file):
 files = [file for file in files if is_completed(file)]
 
 N = int(3 ** 6 * 2)
-itrigger = [int(3 ** 6), int(3 ** 6) + 50, int(3 ** 6) + 100, int(3 ** 6) + 150]
+itrigger = [0, 100, 200, int(N / 2), int(N / 2) + 100, int(N / 2) + 200, N - 201, N - 101, N - 1]
 
 for file in files:
 
