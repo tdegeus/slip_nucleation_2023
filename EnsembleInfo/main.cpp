@@ -416,8 +416,10 @@ Options:
 
 int main(int argc, const char** argv)
 {
+    std::string hash = GIT_COMMIT_HASH;
+
     std::map<std::string, docopt::value> args =
-        docopt::docopt(USAGE, {argv + 1, argv + argc}, true, "v0.0.1");
+        docopt::docopt(USAGE, {argv + 1, argv + argc}, true, hash);
 
     std::vector<std::string> files = args["<data.hdf5>"].asStringList();
     if (files.size() == 0) {
