@@ -45,7 +45,7 @@ for file in files:
         'time': '12h',
         'account': 'pcsl',
         'partition': 'serial',
-        'memory' : '5G',
+        'mem' : '5G',
     }
 
     open(basename + '.slurm', 'w').write(gs.scripts.plain(command=slurm.format(command), **sbatch))
