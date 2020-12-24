@@ -13,3 +13,4 @@ for file in files:
 
     with h5py.File(file, 'a') as data:
         data['/trigger/i'] = i
+        data['/completed'] = 0

@@ -85,7 +85,7 @@ public:
 
     void write_completed()
     {
-        H5Easy::dump(m_file, "/completed", 1);
+        H5Easy::dump(m_file, "/completed", 1, H5Easy::DumpMode::Overwrite);
     }
 
 public:
@@ -183,7 +183,11 @@ public:
 
             // if nothing was triggered, stop and retry on another randomly selected element
             // the number of iterations has been check phenomenologically
-            if ((iiter == 20000 && A <= 1) || (A_last == 0 && iiter > iiter_last + 20000 && iiter > 30000)) {
+            bool retry = (iiter == 20000 && A <= 1) ||
+                         (iiter == 20000 && a <= 1 && std::abs(s) == 1) ||
+                         (A_last == 0 && iiter > iiter_last + 20000 && iiter > 30000);
+
+            if (retry) {
                 size_t failed = 0;
                 if (m_file.exist("/failed_push/element")) {
                     failed = H5Easy::getSize(m_file, "/failed_push/element");
@@ -294,20 +298,19 @@ public:
         xt::noalias(Sig_bar) = xt::average(m_Sig, dV, {0, 1});
 
         std::string hash = GIT_COMMIT_HASH;
-        dump_check(m_file, "/git/run", hash);
-        dump_check(m_file, "/version/run", FQF::versionInfo());
+        dump_check(m_file, "/git/PushBarrier", hash);
+        dump_check(m_file, "/version/PushBarrier", FQF::versionInfo());
 
         H5Easy::dump(m_file, "/stored", m_inc, {m_inc});
         H5Easy::dump(m_file, "/t", m_t, {m_inc});
         H5Easy::dump(m_file, "/sigd", GM::Sigd(Sig_bar)(), {m_inc});
         H5Easy::dump(m_file, fmt::format("/disp/{0:d}", m_inc), m_u);
 
-        dump_check(data, "/git/run", hash);
-        dump_check(data, "/version/run", FQF::versionInfo());
+        dump_check(data, "/git/PushBarrier", hash);
+        dump_check(data, "/version/PushBarrier", FQF::versionInfo());
 
         H5Easy::dump(data, "/meta/completed", 1);
         H5Easy::dump(data, "/meta/uuid", H5Easy::load<std::string>(m_file, "/uuid"));
-        H5Easy::dump(data, "/meta/push/inc", H5Easy::load<size_t>(m_file, "/push/inc"));
         H5Easy::dump(data, "/meta/push/element", e);
         H5Easy::dump(data, "/meta/inc", m_inc);
         H5Easy::dump(data, "/meta/dt", m_dt);
@@ -353,20 +356,20 @@ int main(int argc, const char** argv)
         sim.restore_last_stored();
         std::string outname = fmt::format("{0:s}_push={1:d}.hdf5", output, sim.inc() + 1);
         fmt::print("Writing  : {0:s}\n", outname);
-        int A = sim.run_push(outname);
+        int ret = sim.run_push(outname);
         // retry if nothing was triggered
-        if (A == -2) {
+        if (ret == -2) {
             fmt::print("Retrying : {0:s}\n", outname);
             std::remove(outname.c_str());
         }
         // remove event output if the potential energy landscape went out-of-bounds somewhere
-        if (A == -1) {
+        if (ret == -1) {
             fmt::print("Aborting : {0:s}\n", outname);
             std::remove(outname.c_str());
             break;
         }
         // stop
-        if (A == 1) {
+        if (ret == 0) {
             break;
         }
     }
