@@ -6,6 +6,9 @@ files = sorted(list(filter(None, subprocess.check_output(
     "find . -iname '*push*hdf5'", shell=True).decode('utf-8').split('\n'))))
 
 for push in files:
+
+    print(push)
+
     base = push.split('_push')[0] + '.hdf5'
 
     with h5py.File(base, 'r') as data:
