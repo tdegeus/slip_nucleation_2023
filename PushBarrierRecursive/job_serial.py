@@ -33,7 +33,7 @@ for file in files:
 
     basename = os.path.splitext(file)[0]
 
-    command = 'PushBarrier "{0:s}" "{1:s}"'.format(file, basename)
+    command = 'PushBarrierRecursive "{0:s}" "{1:s}"'.format(file, basename)
     command = slurm.format(command)
 
     sbatch = {
@@ -42,7 +42,7 @@ for file in files:
         'nodes': 1,
         'ntasks': 1,
         'cpus-per-task': 1,
-        'time': '12h',
+        'time': '24h',
         'account': 'pcsl',
         'partition': 'serial',
         'mem' : '8G',
