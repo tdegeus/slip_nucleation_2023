@@ -1,7 +1,7 @@
-
 import subprocess
 import h5py
 import os
+import tqdm
 from shelephant import YamlDump
 
 def is_completed(file):
@@ -18,13 +18,13 @@ def is_completed_push(file):
     return False
 
 files = sorted(list(filter(None, subprocess.check_output(
-    "find . -iname 'id*.hdf5'", shell=True).decode('utf-8').split('\n'))))
+    "find . -maxdepth 1 -iname 'id*.hdf5'", shell=True).decode('utf-8').split('\n'))))
 
 sims = [file for file in files if len(file.split('push')) == 1]
 pushes = [file for file in files if len(file.split('push')) > 1]
 
-sims = [os.path.relpath(file) for file in sims if is_completed(file)]
-pushes = [os.path.relpath(file) for file in pushes if is_completed_push(file)]
+sims = [os.path.relpath(file) for file in tqdm.tqdm(sims) if is_completed(file)]
+pushes = [os.path.relpath(file) for file in tqdm.tqdm(pushes) if is_completed_push(file)]
 
 ret = {
     'sims': sims,
