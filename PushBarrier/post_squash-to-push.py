@@ -1,13 +1,22 @@
+import os
 import sys
 import subprocess
 import h5py
+import tqdm
 
 files = sorted(list(filter(None, subprocess.check_output(
     "find . -iname '*push*hdf5'", shell=True).decode('utf-8').split('\n'))))
 
 for push in files:
+    base = push.split('_push')[0] + '.hdf5'
+    if not os.path.isfile(base):
+        raise IOError('No file "{0:s}"'.format(base))
 
-    print(push)
+pbar = tqdm.tqdm(files)
+
+for push in pbar:
+
+    pbar.set_description(push)
 
     base = push.split('_push')[0] + '.hdf5'
 
