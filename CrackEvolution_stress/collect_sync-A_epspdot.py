@@ -158,9 +158,7 @@ with h5py.File(output, 'w') as data:
 
     ret = ret / eps0 / (dt / t0)
 
-    data['/raw/epspdot'] = ret
-    data['/raw/norm'] = norm
-
+    data['/epspdot/norm'] = np.mean(norm, axis=0)
     data['/epspdot/r'] = np.average(ret, weights=norm, axis=0)
     data['/epspdot/center'] = np.average(ret[:, :, left: right], weights=norm[:, :, left: right], axis=(0, 2))
     data['/epspdot/plastic'] = np.average(ret, weights=norm, axis=(0, 2))
