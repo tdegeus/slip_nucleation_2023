@@ -11,8 +11,6 @@ import numpy as np
 
 files = sorted(list(filter(None, subprocess.check_output(
     "find . -iname 'id*.hdf5'", shell=True).decode('utf-8').split('\n'))))
-files = [str(i) + '.hdf5' for i in range(223)]
-
 
 # ----
 
@@ -34,8 +32,7 @@ fi
 {0:s}
 '''
 
-files_per_group = 10
-print(files)
+files_per_group = 50
 
 for group in range(int(np.ceil(len(files) / files_per_group))):
 
