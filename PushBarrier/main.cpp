@@ -35,6 +35,14 @@ inline void dump_check(H5Easy::File& file, const std::string& key, const T& data
 
 class Main : public FQF::HybridSystem {
 
+private:
+
+    FQF::LocalTriggerFineLayer m_trigger;
+    H5Easy::File m_file;
+    GooseFEM::Iterate::StopList m_stop = GF::Iterate::StopList(20);
+    size_t m_inc;
+    double m_deps_kick;
+
 public:
 
     Main(const std::string& fname) : m_file(fname, H5Easy::File::ReadWrite)
@@ -319,13 +327,6 @@ public:
 
         return 0;
     }
-
-private:
-    FQF::LocalTriggerFineLayer m_trigger;
-    H5Easy::File m_file;
-    GooseFEM::Iterate::StopList m_stop = GF::Iterate::StopList(20);
-    size_t m_inc;
-    double m_deps_kick;
 };
 
 static const char USAGE[] =
