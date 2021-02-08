@@ -48,7 +48,7 @@ for group in range(ngroup):
     command = '\n'.join(c)
     command = slurm.format(command)
 
-    jobname = 'PushBarrier-{0:0' + fmt + 'd}'.format(group)
+    jobname = ('PushBarrier-{0:0' + fmt + 'd}').format(group)
 
     sbatch = {
         'job-name': jobname,
