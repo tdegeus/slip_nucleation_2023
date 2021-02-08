@@ -28,7 +28,6 @@ class Main : public FQF::HybridSystem {
 
 private:
 
-    FQF::LocalTriggerFineLayer m_trigger;
     H5Easy::File m_file;
     GooseFEM::Iterate::StopList m_stop = GF::Iterate::StopList(20);
     size_t m_inc;
@@ -61,7 +60,6 @@ public:
         this->setDt(H5Easy::load<double>(m_file, "/run/dt"));
 
         m_deps_kick = H5Easy::load<double>(m_file, "/run/epsd/kick");
-        m_trigger = FQF::LocalTriggerFineLayer(*this);
     }
 
 public:
