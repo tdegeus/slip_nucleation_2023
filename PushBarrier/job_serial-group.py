@@ -33,8 +33,10 @@ fi
 '''
 
 files_per_group = 50
+ngroup = int(np.ceil(len(files) / files_per_group))
+fmt = str(int(np.ceil(np.log10(ngroup))))
 
-for group in range(int(np.ceil(len(files) / files_per_group))):
+for group in range(ngroup):
 
     f = files[group * files_per_group: (group + 1) * files_per_group]
     c = []
@@ -46,7 +48,7 @@ for group in range(int(np.ceil(len(files) / files_per_group))):
     command = '\n'.join(c)
     command = slurm.format(command)
 
-    jobname = 'PushBarrier-{0:d}'.format(group)
+    jobname = 'PushBarrier-{0:0' + fmt + 'd}'.format(group)
 
     sbatch = {
         'job-name': jobname,
