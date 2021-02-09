@@ -5,6 +5,7 @@
 #include <fmt/core.h>
 #include <highfive/H5Easy.hpp>
 #include <cpppath.h>
+#include <xtensor/xindex_view.hpp>
 
 
 #ifndef GIT_COMMIT_HASH
@@ -64,6 +65,145 @@ public:
 
 public:
 
+    std::tuple<xt::xtensor<size_t, 1>, xt::xtensor<size_t, 1>> getIncPush(double stress)
+    {
+        auto dV = m_quad.AsTensor<2>(m_quad.dV());
+        size_t N = m_N;
+
+        // basic information for each increment
+        auto stored = H5Easy::load<xt::xtensor<size_t, 1>>(m_file, "/stored");
+        auto kick = H5Easy::load<xt::xtensor<size_t, 1>>(m_file, "/kick");
+
+        // allocate result
+        xt::xtensor<size_t, 1> A = xt::zeros<size_t>({xt::amax(stored)() + 1});
+        xt::xtensor<double, 1> epsd = xt::zeros<double>({xt::amax(stored)() + 1});
+        xt::xtensor<double, 1> sigd = xt::zeros<double>({xt::amax(stored)() + 1});
+
+        // index of the current quadratic potential,
+        // for the first integration point per plastic element
+        auto idx_n = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
+
+        // loop over increments
+        for (size_t istored = 0; istored < stored.size(); ++istored) {
+            // - get increment number
+            size_t inc = stored(istored);
+
+            // - restore displacement
+            this->setU(H5Easy::load<decltype(m_u)>(m_file, fmt::format("/disp/{0:d}", inc)));
+
+            // - index of the current quadratic potential
+            auto idx = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
+
+            // - macroscopic strain/stress tensor
+            xt::xtensor_fixed<double, xt::xshape<2, 2>> Epsbar = xt::average(this->Eps(), dV, {0, 1});
+            xt::xtensor_fixed<double, xt::xshape<2, 2>> Sigbar = xt::average(this->Sig(), dV, {0, 1});
+
+            // - macroscopic equivalent strain/stress
+            epsd(inc) = GM::Epsd(Epsbar)();
+            sigd(inc) = GM::Sigd(Sigbar)();
+
+            // - avalanche area
+            A(inc) = xt::sum(xt::not_equal(idx, idx_n))();
+
+            // - update history
+            idx_n = idx;
+        }
+
+        // determine increment at which the steady-state starts, by considering the elasto-plastic
+        // tangent (stress/strain), w.r.t. the elastic tangent (shear modulus) some 'engineering
+        // quantity' is use, which was checked visually
+        // - initialise elasto-plastic tangent of each increment
+        xt::xtensor<double, 1> K = xt::zeros<size_t>(sigd.shape());
+        size_t steadystate = 0;
+        // - compute
+        for (size_t i = 1; i < K.size(); ++i) {
+            K(i) = (sigd(i) - sigd(0)) / (epsd(i) - epsd(0));
+        }
+        // - set dummy (to take the minimum below)
+        K(0) = K(1);
+        // - get steady-state increment
+        if (xt::any(K <= 0.95 * K(1))) {
+            //  - select increment
+            steadystate = xt::amin(xt::from_indices(xt::argwhere(K <= 0.95 * K(1))))[0];
+            // - make sure to skip at least two increments (artificial: to avoid checks below)
+            steadystate = std::max(steadystate, std::size_t(2));
+            // - always start the steady-state by elastic loading
+            if (kick(steadystate)) {
+                steadystate += 1;
+            }
+        }
+
+        // remove all non-steady-state increments from further consideration
+        xt::view(A, xt::range(0, steadystate)) = 0;
+
+        // list with increment of system-spanning avalanches
+        xt::xtensor<size_t, 1> inc_system = xt::flatten_indices(xt::argwhere(xt::equal(A, N)));
+
+        // too few system spanning avalanches -> quit
+        if (inc_system.size() < 2) {
+            xt::xtensor<size_t, 1> inc_push = xt::zeros<size_t>({0});
+            return std::make_tuple(inc_system, inc_push);
+        }
+
+        // allocate list with increment numbers at which to push
+        xt::xtensor<size_t, 1> inc_push = xt::zeros<size_t>({inc_system.size() - 1});
+
+        // allocate list with all increment numbers
+        xt::xtensor<size_t, 1> iinc = xt::arange<size_t>(A.size());
+
+        // consider all system spanning avalanches,
+        // that are followed by at least one system spanning avalanche
+        for (size_t i = 0; i < inc_system.size() - 1; ++i) {
+            // - stress after elastic load, kick/area of these increments for checking, increment
+            // numbers
+            auto s = xt::view(sigd, xt::range(inc_system(i) + 1, inc_system(i + 1), 2));
+            auto k = xt::view(kick, xt::range(inc_system(i) + 1, inc_system(i + 1), 2));
+            auto a = xt::view(A, xt::range(inc_system(i) + 1, inc_system(i + 1), 2));
+            auto n = xt::view(iinc, xt::range(inc_system(i) + 1, inc_system(i + 1), 2));
+
+            // - skip if the loading pattern was not load-kick-load-kick-... (sanity check)
+            if (xt::any(xt::not_equal(k, 0ul))) {
+                continue;
+            }
+            if (xt::any(xt::not_equal(a, 0ul))) {
+                continue;
+            }
+
+            // - find where the strain(stress) is higher than the target strain(stress)
+            //   during that increment the strain(stress) elastically moved from below to above the
+            //   target strain(stress); the size of this step can be reduced by an arbitrary size,
+            //   without violating equilibrium
+            auto idx = xt::flatten_indices(xt::argwhere(s > stress));
+
+            // - no increment found -> skip (sanity check)
+            if (idx.size() == 0) {
+                continue;
+            }
+
+            // - start from the increment before it (the beginning of the elastic loading)
+            size_t ipush = n(xt::amin(idx)()) - 1;
+
+            // - sanity check
+            if (sigd(ipush) > stress) {
+                continue;
+            }
+            if (kick(ipush + 1) != 0) {
+                continue;
+            }
+
+            // - store
+            inc_push(i) = ipush;
+        }
+
+        // filter list with increments
+        // (zero can never be a valid increment, because of the restriction set above)
+        inc_push = xt::filter(inc_push, inc_push > 0ul);
+
+        return std::make_tuple(inc_system, inc_push);
+    }
+
+public:
+
     void run(
         double stress,
         size_t element,
@@ -73,10 +213,24 @@ public:
         size_t t_step,
         size_t t_max_fac)
     {
-        m_inc = inc_c;
+        // extract a list with increments at which to start elastic loading
+        xt::xtensor<size_t, 1> inc_system, inc_push;
+        std::tie(inc_system, inc_push) = getIncPush(stress);
+        MYASSERT(inc_system.size() > 0);
+        MYASSERT(inc_push.size() > 0);
+        MYASSERT(xt::any(xt::equal(inc_system, inc_c)));
+
+        // get push increment
+        size_t ipush = xt::flatten_indices(xt::argwhere(xt::equal(inc_system, inc_c)))(0);
+        m_inc = inc_push(ipush);
+        MYASSERT(ipush < inc_push.size());
+        MYASSERT(inc_push(ipush) >= inc_c);
+
+        // restore
         m_t = H5Easy::load<decltype(m_t)>(m_file, "/t", {m_inc});
         this->setU(H5Easy::load<decltype(m_u)>(m_file, fmt::format("/disp/{0:d}", m_inc)));
-        this->computeStress();
+
+        // increase displacement to set "stress"
         this->addSimpleShearToFixedStress(stress);
 
         // extract "id" from filename (stored to data)

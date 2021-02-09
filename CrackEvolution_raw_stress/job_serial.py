@@ -40,6 +40,9 @@ commands = []
 
 for stress_name, stress in zip(stress_names, stresses):
 
+  if not os.path.isdir(stress_name):
+    os.mkdir(stress_name)
+
   data = h5py.File(os.path.join(dbase, nx, 'AvalancheAfterPush_%s.hdf5' % stress_name), 'r')
 
   p_files = data['files'  ].asstr()[...]
@@ -79,7 +82,7 @@ for stress_name, stress in zip(stress_names, stresses):
       'file'   : os.path.join(dbase, nx, p_files[p_file[i]]),
       'element': p_elem[i],
       'incc'   : p_incc[i],
-      'output' : stress_name + '_' + fname,
+      'output' : os.path.join(stress_name, fname),
       'stress' : stress,
     }]
 
@@ -119,6 +122,7 @@ for i, line in enumerate(lines):
     'time'          : '6h',
     'account'       : 'pcsl',
     'partition'     : 'serial',
+    'mem'           : '8G',
   }
 
   # write SLURM file
