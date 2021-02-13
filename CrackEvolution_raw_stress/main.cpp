@@ -73,11 +73,15 @@ public:
         // basic information for each increment
         auto stored = H5Easy::load<xt::xtensor<size_t, 1>>(m_file, "/stored");
         auto kick = H5Easy::load<xt::xtensor<size_t, 1>>(m_file, "/kick");
+        MYASSERT(stored.size() > 0);
 
         // allocate result
         xt::xtensor<size_t, 1> A = xt::zeros<size_t>({xt::amax(stored)() + 1});
         xt::xtensor<double, 1> epsd = xt::zeros<double>({xt::amax(stored)() + 1});
         xt::xtensor<double, 1> sigd = xt::zeros<double>({xt::amax(stored)() + 1});
+
+        // restore displacement
+        this->setU(H5Easy::load<decltype(m_u)>(m_file, fmt::format("/disp/{0:d}", stored(0))));
 
         // index of the current quadratic potential,
         // for the first integration point per plastic element
@@ -221,10 +225,9 @@ public:
         MYASSERT(xt::any(xt::equal(inc_system, inc_c)));
 
         // get push increment
-        size_t ipush = xt::flatten_indices(xt::argwhere(xt::equal(inc_system, inc_c)))(0);
-        m_inc = inc_push(ipush);
+        size_t ipush = xt::flatten_indices(xt::argwhere(xt::greater_equal(inc_push, inc_c)))(0);
         MYASSERT(ipush < inc_push.size());
-        MYASSERT(inc_push(ipush) >= inc_c);
+        m_inc = inc_push(ipush);
 
         // restore
         m_t = H5Easy::load<decltype(m_t)>(m_file, "/t", {m_inc});
