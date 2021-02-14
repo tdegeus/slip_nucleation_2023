@@ -85,7 +85,7 @@ public:
 
         // index of the current quadratic potential,
         // for the first integration point per plastic element
-        auto idx_n = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
+        auto idx_n = xt::view(this->plastic_CurrentIndex(), xt::all(), 0);
 
         // loop over increments
         for (size_t istored = 0; istored < stored.size(); ++istored) {
@@ -96,7 +96,7 @@ public:
             this->setU(H5Easy::load<decltype(m_u)>(m_file, fmt::format("/disp/{0:d}", inc)));
 
             // - index of the current quadratic potential
-            auto idx = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
+            auto idx = xt::view(this->plastic_CurrentIndex(), xt::all(), 0);
 
             // - macroscopic strain/stress tensor
             xt::xtensor_fixed<double, xt::xshape<2, 2>> Epsbar = xt::average(this->Eps(), dV, {0, 1});
@@ -165,35 +165,25 @@ public:
             auto a = xt::view(A, xt::range(inc_system(i) + 1, inc_system(i + 1), 2));
             auto n = xt::view(iinc, xt::range(inc_system(i) + 1, inc_system(i + 1), 2));
 
-            // - skip if the loading pattern was not load-kick-load-kick-... (sanity check)
-            if (xt::any(xt::not_equal(k, 0ul))) {
-                continue;
-            }
-            if (xt::any(xt::not_equal(a, 0ul))) {
-                continue;
-            }
+            // - check that the loading pattern was load-kick-load-kick-... (sanity check)
+            MYASSERT(xt::all(xt::equal(k, 0)));
+            MYASSERT(xt::all(xt::equal(a, 0)));
 
             // - find where the strain(stress) is higher than the target strain(stress)
             //   during that increment the strain(stress) elastically moved from below to above the
             //   target strain(stress); the size of this step can be reduced by an arbitrary size,
             //   without violating equilibrium
-            auto idx = xt::flatten_indices(xt::argwhere(s > stress));
-
-            // - no increment found -> skip (sanity check)
-            if (idx.size() == 0) {
+            if (xt::all(s < stress)) {
                 continue;
             }
+            size_t j = xt::argmax(s >= stress)();
 
             // - start from the increment before it (the beginning of the elastic loading)
-            size_t ipush = n(xt::amin(idx)()) - 1;
+            size_t ipush = n(j) - 1;
 
             // - sanity check
-            if (sigd(ipush) > stress) {
-                continue;
-            }
-            if (kick(ipush + 1) != 0) {
-                continue;
-            }
+            MYASSERT(sigd(ipush) <= stress);
+            MYASSERT(kick(ipush + 1) == 0);
 
             // - store
             inc_push(i) = ipush;
@@ -225,9 +215,10 @@ public:
         MYASSERT(xt::any(xt::equal(inc_system, inc_c)));
 
         // get push increment
-        size_t ipush = xt::flatten_indices(xt::argwhere(xt::greater_equal(inc_push, inc_c)))(0);
+        size_t ipush = xt::argmax(xt::greater_equal(inc_push, inc_c))();
         MYASSERT(ipush < inc_push.size());
         m_inc = inc_push(ipush);
+        fmt::print("{0:s}: Saving, restoring inc = {1:d}\n", m_file.getName(), m_inc);
 
         // restore
         m_t = H5Easy::load<decltype(m_t)>(m_file, "/t", {m_inc});
@@ -242,8 +233,8 @@ public:
 
         // extract information needed for storage
         size_t N = m_N;
-        xt::xtensor<int, 1> idx_n = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
-        xt::xtensor<int, 1> idx = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
+        xt::xtensor<int, 1> idx_n = xt::view(this->plastic_CurrentIndex(), xt::all(), 0);
+        xt::xtensor<int, 1> idx = xt::view(this->plastic_CurrentIndex(), xt::all(), 0);
 
         // perturb the displacement of the set element, to (try to) trigger an avalanche
         this->triggerElementWithLocalSimpleShear(m_deps_kick, element);
@@ -267,7 +258,7 @@ public:
             if (A_store) {
 
                 if (iiter > 0) {
-                    idx = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
+                    idx = xt::view(this->plastic_CurrentIndex(), xt::all(), 0);
                 }
 
                 size_t a = xt::sum(xt::not_equal(idx, idx_n))[0];
@@ -292,7 +283,7 @@ public:
                 }
             }
 
-            if ((A_store = false) && (!t_store)) {
+            if ((A_store == false) && (!t_store)) {
                 t_store = true;
                 t_next = iiter;
                 t_first = iiter;

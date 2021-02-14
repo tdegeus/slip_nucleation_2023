@@ -1,6 +1,7 @@
-
-import os, subprocess, h5py
-import numpy      as np
+import os
+import subprocess
+import h5py
+import numpy as np
 import GooseSLURM as gs
 import GooseHDF5 as g5
 
@@ -8,101 +9,69 @@ dbase = '../../../data'
 nx = 'nx=3^6x2'
 N = (3**6) * 2
 
+with h5py.File(os.path.join(dbase, nx, 'EnsembleInfo.hdf5'), 'r') as data:
 
-data = h5py.File(os.path.join(dbase, nx, 'EnsembleInfo.hdf5'), 'r')
+    sig0 = data['/normalisation/sig0'  ][...]
+    sigc = data['/averages/sigd_bottom'][...] * sig0
+    sign = data['/averages/sigd_top'   ][...] * sig0
 
-sig0 = data['/normalisation/sig0'  ][...]
-sigc = data['/averages/sigd_bottom'][...] * sig0
-sign = data['/averages/sigd_top'   ][...] * sig0
+Stress_names = [
+    'stress=0d6',
+    'stress=1d6',
+    'stress=2d6',
+    'stress=3d6',
+    'stress=4d6',
+    'stress=5d6',
+    'stress=6d6']
 
-data.close()
-
-stress_names = [
-  'stress=0d6',
-  'stress=1d6',
-  'stress=2d6',
-  'stress=3d6',
-  'stress=4d6',
-  'stress=5d6',
-  'stress=6d6',
-]
-
-stresses = [
-  0. * (sign - sigc) / 6. + sigc,
-  1. * (sign - sigc) / 6. + sigc,
-  2. * (sign - sigc) / 6. + sigc,
-  3. * (sign - sigc) / 6. + sigc,
-  4. * (sign - sigc) / 6. + sigc,
-  5. * (sign - sigc) / 6. + sigc,
-  6. * (sign - sigc) / 6. + sigc,
+Stress_values = [
+    0.0 * (sign - sigc) / 6.0 + sigc,
+    1.0 * (sign - sigc) / 6.0 + sigc,
+    2.0 * (sign - sigc) / 6.0 + sigc,
+    3.0 * (sign - sigc) / 6.0 + sigc,
+    4.0 * (sign - sigc) / 6.0 + sigc,
+    5.0 * (sign - sigc) / 6.0 + sigc,
+    6.0 * (sign - sigc) / 6.0 + sigc,
 ]
 
 commands = []
 
-for stress_name, stress in zip(stress_names, stresses):
+for stress_name, stress_value in zip(Stress_names, Stress_values):
 
-  if not os.path.isdir(stress_name):
-    os.mkdir(stress_name)
+    if not os.path.isdir(stress_name):
+        os.mkdir(stress_name)
 
-  data = h5py.File(os.path.join(dbase, nx, 'AvalancheAfterPush_%s.hdf5' % stress_name), 'r')
+    fol = os.path.join(dbase, nx, 'CrackEvolution_' + stress_name)
 
-  p_files = data['files'  ].asstr()[...]
-  p_file  = data['file'   ][...]
-  p_elem  = data['element'][...]
-  p_A     = data['A'      ][...]
-  p_sig   = data['sigd0'  ][...]
-  p_sigc  = data['sig_c'  ][...]
-  p_incc  = data['inc_c'  ][...]
+    files = sorted(list(filter(None, subprocess.check_output(
+        "find {0:s} -maxdepth 1 -iname 'id*.hdf5'".format(fol), shell=True).decode('utf-8').split('\n'))))
 
-  data.close()
+    files = [f.split("/")[-1] for f in files]
 
-  idx = np.where(p_A == N)[0]
+    for file in files:
 
-  p_file = p_file[idx]
-  p_elem = p_elem[idx]
-  p_A    = p_A   [idx]
-  p_sig  = p_sig [idx]
-  p_sigc = p_sigc[idx]
-  p_incc = p_incc[idx]
+        dest = file.split("_")[0] + '.hdf5'
+        source = os.path.join(dbase, nx, dest)
 
-  idx = np.argsort(np.abs(p_sigc - sigc))
+        with h5py.File(source, 'r') as data:
 
-  for n, i in enumerate(idx):
+            paths = list(g5.getdatasets(data))
+            paths.remove('/damping/alpha')
 
-    # file-name
-    fname = '{id:s}_elem={element:04d}_incc={incc:03d}.hdf5'.format(
-      element = p_elem[i],
-      incc    = p_incc[i],
-      id      = p_files[p_file[i]].replace('.hdf5', ''))
+            with h5py.File(dest, 'w') as ret:
+                g5.copydatasets(data, ret, paths)
+                ret['/damping/alpha'] = data['/damping/alpha'][...] * 0
 
-    # stop at 75 drawn files
-    if n > 75:
-      break
-
-    source = os.path.join(dbase, nx, p_files[p_file[i]])
-    dest = p_files[p_file[i]]
-
-    with h5py.File(source, 'r') as data:
-
-        paths = list(g5.getdatasets(data))
-        paths.remove('/damping/alpha')
-
-        with h5py.File(dest, 'w') as ret:
-            g5.copydatasets(data, ret, paths)
-            ret['/damping/alpha'] = data['/damping/alpha'][...] * 0
-
-
-    commands += [{
-      'file'   : dest,
-      'element': p_elem[i],
-      'incc'   : p_incc[i],
-      'output' : os.path.join(stress_name, fname),
-      'stress' : stress,
-    }]
+        commands += [{
+          'file'   : dest,
+          'element': int(file.split("elem=")[1].split("_")[0]),
+          'incc'   : int(file.split("incc=")[1].split(".")[0]),
+          'output' : os.path.join(stress_name, file),
+          'stress' : stress_value,
+        }]
 
 lines = ['CrackEvolution_raw_stress --tfac 2 --file {file:s} --element {element:d} --incc {incc:d} --stress {stress:.8e} --output {output:s}'.format(**c) for c in commands]
 
-# --------------------------------------------------------------------------------------------------
 
 slurm = '''
 # for safety set the number of cores
@@ -120,24 +89,19 @@ fi
 {command:s}
 '''
 
-# --------------------------------------------------------------------------------------------------
-
 for i, line in enumerate(lines):
 
-  fbase = 'job_{0:03d}'.format(i)
+    fbase = 'job_{0:03d}'.format(i)
 
-  # job-options
-  sbatch = {
-    'job-name'      : fbase,
-    'out'           : fbase+'.out',
-    'nodes'         : 1,
-    'ntasks'        : 1,
-    'cpus-per-task' : 1,
-    'time'          : '6h',
-    'account'       : 'pcsl',
-    'partition'     : 'serial',
-    'mem'           : '8G',
-  }
+    sbatch = {
+        'job-name': fbase,
+        'out': fbase+'.out',
+        'nodes': 1,
+        'ntasks': 1,
+        'cpus-per-task': 1,
+        'time': '6h',
+        'account': 'pcsl',
+        'partition': 'serial',
+        'mem': '8G'}
 
-  # write SLURM file
-  open(fbase+'.slurm','w').write(gs.scripts.plain(command=slurm.format(command=line),**sbatch))
+    open(fbase+'.slurm','w').write(gs.scripts.plain(command=slurm.format(command=line),**sbatch))
