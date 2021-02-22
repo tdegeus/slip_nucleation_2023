@@ -1,16 +1,12 @@
 
 #include <FrictionQPotFEM/UniformSingleLayer2d.h>
 #include <GooseFEM/GooseFEM.h>
+#include <GMatElastoPlasticQPot/Cartesian2d.h>
 #include <docopt/docopt.h>
 #include <fmt/core.h>
 #include <highfive/H5Easy.hpp>
 #include <cpppath.h>
 #include <xtensor/xindex_view.hpp>
-
-
-#ifndef GIT_COMMIT_HASH
-#define GIT_COMMIT_HASH "?"
-#endif
 
 
 #define MYASSERT(expr) MYASSERT_IMPL(expr, __FILE__, __LINE__)
@@ -23,14 +19,14 @@
 
 
 namespace FQF = FrictionQPotFEM::UniformSingleLayer2d;
-
+namespace GM = GMatElastoPlasticQPot::Cartesian2d;
 
 class Main : public FQF::HybridSystem {
 
 private:
 
     H5Easy::File m_file;
-    GooseFEM::Iterate::StopList m_stop = GF::Iterate::StopList(20);
+    GooseFEM::Iterate::StopList m_stop = GooseFEM::Iterate::StopList(20);
     size_t m_inc;
     double m_deps_kick;
 
@@ -314,8 +310,8 @@ public:
             }
         }
 
-        std::string hash = GIT_COMMIT_HASH;
-        H5Easy::dump(data, "/git/run", hash);
+        H5Easy::dump(data, "/meta/versions/this", std::string(MYVERSION));
+        H5Easy::dump(data, "/meta/versions/FrictionQPotFEM", FQF::version_dependencies());
         H5Easy::dump(data, "/meta/completed", 1);
         H5Easy::dump(data, "/meta/uuid", H5Easy::load<std::string>(m_file, "/uuid"));
         H5Easy::dump(data, "/meta/id", id_num);
@@ -355,10 +351,8 @@ Options:
 
 int main(int argc, const char** argv)
 {
-    std::string hash = GIT_COMMIT_HASH;
-
     std::map<std::string, docopt::value> args =
-        docopt::docopt(USAGE, {argv + 1, argv + argc}, true, hash);
+        docopt::docopt(USAGE, {argv + 1, argv + argc}, true, std::string(MYVERSION));
 
     std::string output = args["--output"].asString();
     std::string file = args["--file"].asString();

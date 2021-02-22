@@ -70,7 +70,7 @@ for stress_name, stress_value in zip(Stress_names, Stress_values):
           'stress' : stress_value,
         }]
 
-lines = ['CrackEvolution_raw_stress --tfac 2 --file {file:s} --element {element:d} --incc {incc:d} --stress {stress:.8e} --output {output:s}'.format(**c) for c in commands]
+lines = ['CrackEvolution_raw_stress --tfac 10 --file {file:s} --element {element:d} --incc {incc:d} --stress {stress:.8e} --output {output:s}'.format(**c) for c in commands]
 
 
 slurm = '''

@@ -1,5 +1,5 @@
 r'''
-Collected data at synchronised avalanche area `A`,
+Collect data at synchronised avalanche area `A`,
 for the local response (at the individual "element" level).
 
 Usage:
@@ -94,8 +94,7 @@ mesh = gf.Mesh.Quad4.FineLayer(nx, nx, h)
 
 assert np.all(np.equal(plastic, mesh.elementsMiddleLayer()))
 
-if nx % 2 == 0: mid =  nx      / 2
-else          : mid = (nx - 1) / 2
+mid = (nx - nx % 2) / 2
 
 mapping = gf.Mesh.Quad4.Map.FineLayer2Regular(mesh)
 
@@ -103,7 +102,7 @@ regular = mapping.getRegularMesh()
 
 coor  = regular.coor()
 conn  = regular.conn()
-elmat = regular.elementMatrix()
+elmat = regular.elementgrid()
 
 # ==================================================================================================
 # ensemble average
