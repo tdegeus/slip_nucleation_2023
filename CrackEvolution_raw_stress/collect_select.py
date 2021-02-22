@@ -1,6 +1,6 @@
 r'''
     Select part of the data for future processing.
-    Suggested usage::
+    Common practice::
 
         shelephant_dump *.hdf5
         python collect_forces shelephant_dump.yaml reduced
