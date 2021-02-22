@@ -1,14 +1,19 @@
 r'''
     Select part of the data for future processing.
+    Suggested usage::
+
+        shelephant_dump *.hdf5
+        python collect_forces shelephant_dump.yaml reduced
 
 Usage:
-    collect_forces.py [options] <source> <output-dir>
+    collect_forces.py [options] <files.yaml> <output-root>
 
 Arguments:
-    <source>        Files from which to collect data.
-    <output-dir>    Directory to store selected data.
+    <files.yaml>    Files from which to collect data.
+    <output-root>   Directory to store selected data (file-structure preserved).
 
 Options:
+    -k, --key=N     Path in the YAML-file, separated by "/". [default: /]
     -f, --force     Overwrite existing output-file.
     -h, --help      Print help.
 '''
@@ -20,54 +25,48 @@ import click
 import h5py
 import numpy as np
 import GooseHDF5 as g5
+import shelephant
+import tqdm
 
 args = docopt.docopt(__doc__)
 
-source = args['<source>']
-outdir = args['<output-dir>']
-output = os.path.join(outdir, source)
+source = args['<files.yaml>']
+key = list(filter(None, args['--key'].split('/')))
+sources = shelephant.YamlGetItem(source, key)
+root = args['<output-root>']
+destinations = shelephant.PrefixPaths(root, sources)
 
-if not os.path.isfile(source):
-    raise IOError('"{0:s}" does not exist'.format(source))
+shelephant.CheckAllIsFile(sources)
+shelephant.OverWrite(destinations)
+shelephant.MakeDirs(shelephant.DirNames(destinations))
 
-if not args['--force']:
-    if not os.path.isdir(outdir):
-        print('mkdir -p "{0:s}"'.format(outdir))
-        if not click.confirm('Proceed?'):
-            sys.exit(1)
-        os.makedirs(outdir)
+for source, destination in zip(tqdm.tqdm(sources), destinations):
 
-if not args['--force']:
-    if os.path.isfile(output):
-        print('"{0:s}" exists'.format(output))
-        if not click.confirm('Proceed?'):
-            sys.exit(1)
+    with h5py.File(destination, 'w') as out:
 
-with h5py.File(output, 'w') as out:
+        with h5py.File(source, 'r') as data:
 
-    with h5py.File(source, 'r') as data:
+            plastic = data["/meta/plastic"][...]
+            N = len(plastic)
 
-        plastic = data["/meta/plastic"][...]
-        N = len(plastic)
+            A = np.sort((N - np.arange((N - N % 100) / 100 + 1) * 100).astype(np.int64))
+            A = A[np.in1d(A, np.sort(data["/sync-A/stored"][...]))]
 
-        A = np.sort((N - np.arange((N - N % 100) / 100 + 1) * 100).astype(np.int64))
-        A = A[np.in1d(A, np.sort(data["/sync-A/stored"][...]))]
+            out["/sync-A/stored"] = A
+            out["/sync-A/global/iiter"] = data["/sync-A/global/iiter"][...][A]
 
-        out["/sync-A/stored"] = A
-        out["/sync-A/global/iiter"] = data["/sync-A/global/iiter"][...][A]
+            for a in A:
+                out["/sync-A/{0:d}/u".format(a)] = data["/sync-A/{0:d}/u".format(a)][...]
+                out["/sync-A/{0:d}/v".format(a)] = data["/sync-A/{0:d}/v".format(a)][...]
 
-        for a in A:
-            out["/sync-A/{0:d}/u".format(a)] = data["/sync-A/{0:d}/u".format(a)][...]
-            out["/sync-A/{0:d}/v".format(a)] = data["/sync-A/{0:d}/v".format(a)][...]
+            T = np.sort(data["/sync-t/stored"][...])[::100]
 
-        T = np.sort(data["/sync-t/stored"][...])[::100]
+            out["/sync-t/stored"] = T
+            out["/sync-t/global/iiter"] = data["/sync-t/global/iiter"][...][T]
 
-        out["/sync-t/stored"] = T
-        out["/sync-t/global/iiter"] = data["/sync-t/global/iiter"][...][T]
+            for t in T:
+                out["/sync-t/{0:d}/u".format(t)] = data["/sync-t/{0:d}/u".format(t)][...]
+                out["/sync-t/{0:d}/v".format(t)] = data["/sync-t/{0:d}/v".format(t)][...]
 
-        for t in T:
-            out["/sync-t/{0:d}/u".format(t)] = data["/sync-t/{0:d}/u".format(t)][...]
-            out["/sync-t/{0:d}/v".format(t)] = data["/sync-t/{0:d}/v".format(t)][...]
-
-        g5.copydatasets(data, out, list(g5.getdatasets(data, "/git")))
-        g5.copydatasets(data, out, list(g5.getdatasets(data, "/meta")))
+            g5.copydatasets(data, out, list(g5.getdatasets(data, "/git")))
+            g5.copydatasets(data, out, list(g5.getdatasets(data, "/meta")))
