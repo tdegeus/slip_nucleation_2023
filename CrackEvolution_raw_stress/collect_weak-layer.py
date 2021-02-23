@@ -135,11 +135,15 @@ if __name__ == '__main__':
                     sig_yy[i] = Sig[1, 1]
 
                     Sig = np.average(system.plastic_Sig(), weights=dV_plastic, axis=1)
-                    out["/sync-A/plastic/{0:d}/sig_xx".format(t)] = Sig[:, 0, 0]
-                    out["/sync-A/plastic/{0:d}/sig_xy".format(t)] = Sig[:, 0, 1]
-                    out["/sync-A/plastic/{0:d}/sig_yy".format(t)] = Sig[:, 1, 1]
-                    out["/sync-A/plastic/{0:d}/idx".format(t)] = system.plastic_CurrentIndex()[:, 0]
+                    out["/sync-t/plastic/{0:d}/sig_xx".format(t)] = Sig[:, 0, 0]
+                    out["/sync-t/plastic/{0:d}/sig_xy".format(t)] = Sig[:, 0, 1]
+                    out["/sync-t/plastic/{0:d}/sig_yy".format(t)] = Sig[:, 1, 1]
+                    out["/sync-t/plastic/{0:d}/idx".format(t)] = system.plastic_CurrentIndex()[:, 0]
 
+
+                out["/sync-t/global/sig_xx"] = sig_xx
+                out["/sync-t/global/sig_xy"] = sig_xy
+                out["/sync-t/global/sig_yy"] = sig_yy
 
                 g5.copydatasets(data, out, list(g5.getdatasets(data, "/meta")))
                 if "/meta/versions/CrackEvolution_raw_stress" not in data:
