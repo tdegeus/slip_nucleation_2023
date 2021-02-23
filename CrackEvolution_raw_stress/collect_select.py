@@ -69,6 +69,6 @@ for source, destination in zip(tqdm.tqdm(sources), destinations):
                 out["/sync-t/{0:d}/u".format(t)] = data["/sync-t/{0:d}/u".format(t)][...]
                 out["/sync-t/{0:d}/v".format(t)] = data["/sync-t/{0:d}/v".format(t)][...]
 
-            g5.copydatasets(data, out, list(g5.getdatasets(data, "/git")))
             g5.copydatasets(data, out, list(g5.getdatasets(data, "/meta")))
+            out["/meta/versions/CrackEvolution_raw_stress"] = data["/git/run"][...]
             out["/meta/versions/collect_select.py"] = get_version(root='..', relative_to=__file__)

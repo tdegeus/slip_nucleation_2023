@@ -310,7 +310,7 @@ public:
             }
         }
 
-        H5Easy::dump(data, "/meta/versions/this", std::string(MYVERSION));
+        H5Easy::dump(data, "/meta/versions/CrackEvolution_raw_stress", std::string(MYVERSION));
         H5Easy::dump(data, "/meta/versions/FrictionQPotFEM", FQF::version_dependencies());
         H5Easy::dump(data, "/meta/completed", 1);
         H5Easy::dump(data, "/meta/uuid", H5Easy::load<std::string>(m_file, "/uuid"));
