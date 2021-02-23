@@ -69,8 +69,8 @@ if __name__ == '__main__':
     source_dir = os.path.dirname(info)
 
     shelephant.CheckAllIsFile(sources)
-    shelephant.OverWrite(destinations)
-    shelephant.MakeDirs(shelephant.DirNames(destinations))
+    shelephant.OverWrite(destinations, force=args['--force'])
+    shelephant.MakeDirs(shelephant.DirNames(destinations), force=args['--force'])
 
     for ifile, (source, destination) in enumerate(zip(tqdm.tqdm(sources), destinations)):
 
