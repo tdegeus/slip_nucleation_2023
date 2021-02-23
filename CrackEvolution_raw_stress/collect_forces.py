@@ -167,7 +167,7 @@ def main():
 
                 if ifile == 0:
 
-                    m_A = [A for A in stored]
+                    m_A = [700, 800, 900, 1000]
                     m_fmaterial = [enstat.mean.Static() for A in stored]
                     m_fdamp = [enstat.mean.Static() for A in stored]
                     m_fres = [enstat.mean.Static() for A in stored]
