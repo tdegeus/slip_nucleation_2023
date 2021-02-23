@@ -27,6 +27,7 @@ import numpy as np
 import GooseHDF5 as g5
 import shelephant
 import tqdm
+from setuptools_scm import get_version
 
 args = docopt.docopt(__doc__)
 
@@ -53,7 +54,7 @@ for source, destination in zip(tqdm.tqdm(sources), destinations):
             A = A[np.in1d(A, np.sort(data["/sync-A/stored"][...]))]
 
             out["/sync-A/stored"] = A
-            out["/sync-A/global/iiter"] = data["/sync-A/global/iiter"][...][A]
+            out["/sync-A/global/iiter"] = data["/sync-A/global/iiter"][...]
 
             for a in A:
                 out["/sync-A/{0:d}/u".format(a)] = data["/sync-A/{0:d}/u".format(a)][...]
@@ -70,3 +71,4 @@ for source, destination in zip(tqdm.tqdm(sources), destinations):
 
             g5.copydatasets(data, out, list(g5.getdatasets(data, "/git")))
             g5.copydatasets(data, out, list(g5.getdatasets(data, "/meta")))
+            out["/meta/versions/collect_select.py"] = get_version(root='..', relative_to=__file__)

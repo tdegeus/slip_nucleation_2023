@@ -326,24 +326,24 @@ public:
 
 static const char USAGE[] =
     R"(CrackEvolution_raw_stress
-  Extract time evolution of a specific push.
+    Extract time evolution of a specific push.
 
 Usage:
-  CrackEvolution_raw_stress [options] --incc=N --element=N --stress=N --file=N --output=N
+    CrackEvolution_raw_stress [options] --incc=N --element=N --stress=N --file=N --output=N
 
 Arguments:
-      --file=N        The path to the simulation file.
-      --output=N      Path of the output file.
-      --incc=N        Increment number of the system-spanning avalanche.
-      --element=N     Element to push.
-      --stress=N      Relative stress distance to "sigma_down" at which to measure.
+        --file=N        The path to the simulation file.
+        --output=N      Path of the output file.
+        --incc=N        Increment number of the last system-spanning avalanche.
+        --element=N     Element to push.
+        --stress=N      Stress at which to push.
 
 Options:
-      --Astep=N       Save states at crack sizes A = (0: N: Astep). [default: 1]
-      --tstep=N       Save states at times t = (t0: : tstep). [default: 500]
-      --tfac=N        Stop simulation after "tfac * iiter" iterations (iiter when A = N). [default: 100]
-  -h, --help          Show help.
-      --version       Show version.
+        --Astep=N       Save states at crack sizes A = (0: N: Astep). [default: 1]
+        --tstep=N       Save states at times t = (t0: : tstep). [default: 500]
+        --tfac=N        Stop simulation after "tfac * iiter" iterations (iiter when A = N). [default: 100]
+    -h, --help          Show help.
+        --version       Show version.
 
 (c) Tom de Geus
 )";
