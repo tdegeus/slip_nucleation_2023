@@ -25,7 +25,6 @@ import enstat.mean
 import GooseFEM as gf
 import shelephant
 import tqdm
-import GMatElastoPlasticQPot.Cartesian2d as gmat
 from FrictionQPotFEM.UniformSingleLayer2d import HybridSystem
 
 
