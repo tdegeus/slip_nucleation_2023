@@ -29,7 +29,6 @@ from FrictionQPotFEM.UniformSingleLayer2d import HybridSystem
 
 # https://en.wikipedia.org/wiki/Center_of_mass#Systems_with_periodic_boundary_conditions
 
-
 def center_of_mass(x, L):
 
     if np.allclose(x, 0):
@@ -91,17 +90,6 @@ def main():
     shelephant.CheckAllIsFile(files + [info])
     shelephant.OverWrite(output, args['--force'])
 
-    # Get constants
-
-    with h5py.File(files[0], 'r') as data:
-        plastic = data['/meta/plastic'][...]
-        N = len(plastic)
-        mid = (N - N % 2) / 2
-
-    with h5py.File(info, 'r') as data:
-        sig0 = data['/normalisation/sig0'][...]
-        h = data['/normalisation/l0'][...]
-
     # Define mapping (same for all input)
 
     for file in files:
@@ -113,6 +101,9 @@ def main():
             idname = "id={0:03d}.hdf5".format(idnum)
 
             system = LoadSystem(os.path.join(source_dir, idname), uuid)
+            plastic = system.plastic()
+            N = plastic.size
+            assert np.all(np.equal(plastic, data['/meta/plastic'][...]))
 
             coor = system.coor()
             conn = system.conn()
