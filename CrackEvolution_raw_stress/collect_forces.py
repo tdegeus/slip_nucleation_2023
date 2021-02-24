@@ -89,7 +89,7 @@ def main():
     source_dir = os.path.dirname(info)
 
     shelephant.CheckAllIsFile(files + [info])
-    shelephant.OverWrite(output)
+    shelephant.OverWrite(output, args['--force'])
 
     # Get constants
 
@@ -101,7 +101,6 @@ def main():
     with h5py.File(info, 'r') as data:
         sig0 = data['/normalisation/sig0'][...]
         h = data['/normalisation/l0'][...]
-
 
     # Define mapping (same for all input)
 
@@ -152,8 +151,8 @@ def main():
 
         out['/nelx'] = coarse.nelx()
         out['/nely'] = coarse.nely()
-        out['/hx'] = coarse.nelx() * 6 * coarse.h()
-        out['/hy'] = coarse.nely() * 3 * coarse.h()
+        out['/Lx'] = coarse.nelx() * 6 * coarse.h()
+        out['/Ly'] = coarse.nely() * 3 * coarse.h()
 
         for ifile, file in enumerate(tqdm.tqdm(files)):
 
@@ -167,23 +166,23 @@ def main():
 
                 if ifile == 0:
 
-                    m_A = [700, 800, 900, 1000]
-                    m_fmaterial = [enstat.mean.Static() for A in stored]
-                    m_fdamp = [enstat.mean.Static() for A in stored]
-                    m_fres = [enstat.mean.Static() for A in stored]
-                    m_v = [enstat.mean.Static() for A in stored]
+                    m_A = np.linspace(300, 1400, 12).astype(np.int64) + 58
+                    m_fmaterial = [enstat.mean.Static() for A in m_A]
+                    m_fdamp = [enstat.mean.Static() for A in m_A]
+                    m_fres = [enstat.mean.Static() for A in m_A]
+                    m_v = [enstat.mean.Static() for A in m_A]
+                    m_S = [enstat.mean.Static() for A in m_A]
 
-                for i, A in enumerate(tqdm.tqdm(stored)):
+                system.setU(data["/sync-A/{0:d}/u".format(np.min(stored))][...])
+                idx0 = system.plastic_CurrentIndex()[:, 0]
 
-                    if A not in m_A:
+                for i, A in enumerate(tqdm.tqdm(m_A)):
+
+                    if A not in stored:
                         continue
 
                     system.setU(data["/sync-A/{0:d}/u".format(A)][...])
                     system.setV(data["/sync-A/{0:d}/v".format(A)][...])
-
-                    if i == 0:
-                        idx0 = system.plastic_CurrentIndex()[:, 0]
-
                     idx = system.plastic_CurrentIndex()[:, 0]
 
                     # nodal forces (apply reaction for to "fmaterial")
@@ -211,6 +210,7 @@ def main():
                     fdamp = fdamp[get]
                     fres = fres[get]
                     v = v[get]
+                    S = (idx.astype(np.int64) - idx0.astype(np.int64))[renum]
 
                     def coarsen(refine, vec):
                         x = np.mean(refine.mapToCoarse(vec[:, 0]), axis=1)
@@ -225,11 +225,13 @@ def main():
                     fdamp = np.linalg.norm(coarsen(refine, fdamp), axis=1).reshape(coarse.nely(), -1)
                     fres = np.linalg.norm(coarsen(refine, fres), axis=1).reshape(coarse.nely(), -1)
                     v = np.linalg.norm(coarsen(refine, v), axis=1).reshape(coarse.nely(), -1)
+                    S = np.mean(S.reshape(-1, 6), axis=1)
 
                     m_fmaterial[i].add_sample(fmaterial)
                     m_fdamp[i].add_sample(fdamp)
                     m_fres[i].add_sample(fres)
                     m_v[i].add_sample(v)
+                    m_S[i].add_sample(S)
 
         out['/stored'] = m_A
 
@@ -239,6 +241,7 @@ def main():
             out['/{0:d}/fdamp'.format(A)] = m_fdamp[i].mean()
             out['/{0:d}/fres'.format(A)] = m_fres[i].mean()
             out['/{0:d}/v'.format(A)] = m_v[i].mean()
+            out['/{0:d}/S'.format(A)] = m_S[i].mean()
 
 
 if __name__ == "__main__":
