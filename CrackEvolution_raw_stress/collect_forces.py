@@ -26,6 +26,7 @@ import GooseFEM as gf
 import shelephant
 import tqdm
 from FrictionQPotFEM.UniformSingleLayer2d import HybridSystem
+from setuptools_scm import get_version
 
 # https://en.wikipedia.org/wiki/Center_of_mass#Systems_with_periodic_boundary_conditions
 
@@ -234,6 +235,9 @@ def main():
             out['/{0:d}/v'.format(A)] = m_v[i].mean()
             out['/{0:d}/S'.format(A)] = m_S[i].mean()
 
+        if "/meta/versions/CrackEvolution_raw_stress" not in data:
+            out["/meta/versions/CrackEvolution_raw_stress"] = data["/git/run"][...]
+        out["/meta/versions/collect_forces.py"] = get_version(root='..', relative_to=__file__)
 
 if __name__ == "__main__":
 

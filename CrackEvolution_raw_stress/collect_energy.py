@@ -25,6 +25,7 @@ import GooseFEM as gf
 import shelephant
 import tqdm
 from FrictionQPotFEM.UniformSingleLayer2d import HybridSystem
+from setuptools_scm import get_version
 
 
 def LoadSystem(filename, uuid):
@@ -131,6 +132,12 @@ def main():
                     V = vector.AsDofs(system.v())
                     m_K[i].add_sample(0.5 * np.sum(M * V ** 2))
 
+                if ifile == 0:
+                    if "/meta/versions/CrackEvolution_raw_stress" not in data:
+                        out["/meta/versions/CrackEvolution_raw_stress"] = data["/git/run"][...]
+                    else:
+                        out["/meta/versions/CrackEvolution_raw_stress"] = data["/meta/versions/CrackEvolution_raw_stress"][...]
+
         out['/stored'] = m_A
 
         for i, A in enumerate(m_A):
@@ -142,6 +149,10 @@ def main():
             out['/{0:d}/E_moved'.format(A)] = m_E_moved[i].mean()
             out['/{0:d}/K'.format(A)] = m_K[i].mean()
 
+        try:
+            out["/meta/versions/collect_energy.py"] = get_version(root='..', relative_to=__file__)
+        except:
+            pass
 
 if __name__ == "__main__":
 
