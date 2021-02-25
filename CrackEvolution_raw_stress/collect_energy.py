@@ -1,8 +1,8 @@
 r'''
-    ???
+    Collect different energy contributions.
 
 Usage:
-    collect_forces.py [options] <files.yaml>
+    collect_energy.py [options] <files.yaml>
 
 Arguments:
     <files.yaml>    Files from which to collect data.
@@ -86,30 +86,37 @@ def main():
                 system = LoadSystem(os.path.join(source_dir, idname), uuid)
                 plastic = system.plastic()
                 N = plastic.size
-                stored = data["/sync-A/stored"][...]
 
                 if ifile == 0:
-
-                    m_A = np.arange(N + 1)
-                    m_E_all = [enstat.mean.Scalar() for A in m_A]
-                    m_E_elastic = [enstat.mean.Scalar() for A in m_A]
-                    m_E_plastic = [enstat.mean.Scalar() for A in m_A]
-                    m_E_unmoved = [enstat.mean.Scalar() for A in m_A]
-                    m_E_moved = [enstat.mean.Scalar() for A in m_A]
-                    m_K = [enstat.mean.Scalar() for A in m_A]
-
-                system.setU(data["/sync-A/{0:d}/u".format(np.min(stored))][...])
-                idx0 = system.plastic_CurrentIndex()[:, 0]
-
-                if ifile == 0:
-
                     dV = system.quad().dV()
                     elastic = system.elastic()
                     plastic = system.plastic()
                     vector = system.vector()
                     M = system.mass().Todiagonal()
 
-                for i, A in enumerate(tqdm.tqdm(m_A)):
+                    if "/meta/versions/CrackEvolution_raw_stress" not in data:
+                        out["/meta/versions/CrackEvolution_raw_stress"] = data["/git/run"][...]
+                    else:
+                        out["/meta/versions/CrackEvolution_raw_stress"] = data["/meta/versions/CrackEvolution_raw_stress"][...]
+
+                # ensemble average different "A"
+
+                if ifile == 0:
+                    A_A = np.arange(N + 1)
+                    A_val = {
+                        'E_all' : [enstat.mean.Scalar() for A in A_A],
+                        'E_elastic' : [enstat.mean.Scalar() for A in A_A],
+                        'E_plastic' : [enstat.mean.Scalar() for A in A_A],
+                        'E_unmoved' : [enstat.mean.Scalar() for A in A_A],
+                        'E_moved' : [enstat.mean.Scalar() for A in A_A],
+                        'K' : [enstat.mean.Scalar() for A in A_A],
+                    }
+
+                stored = data["/sync-A/stored"][...]
+                system.setU(data["/sync-A/{0:d}/u".format(np.min(stored))][...])
+                idx0 = system.plastic_CurrentIndex()[:, 0]
+
+                for i, A in enumerate(tqdm.tqdm(A_A)):
 
                     if A not in stored:
                         continue
@@ -121,38 +128,77 @@ def main():
                     unmoved = plastic[idx == idx0]
                     moved = plastic[idx != idx0]
 
-                    m_E_all[i].add_sample(np.average(E, weights=dV))
-                    m_E_elastic[i].add_sample(np.average(E[elastic, :], weights=dV[elastic, :]))
-                    m_E_plastic[i].add_sample(np.average(E[plastic, :], weights=dV[plastic, :]))
+                    A_val['E_all'][i].add_sample(np.sum(E * dV))
+                    A_val['E_elastic'][i].add_sample(np.sum(E[elastic, :] * dV[elastic, :]))
+                    A_val['E_plastic'][i].add_sample(np.sum(E[plastic, :] * dV[plastic, :]))
                     if unmoved.size > 0:
-                        m_E_unmoved[i].add_sample(np.average(E[unmoved, :], weights=dV[unmoved, :]))
+                        A_val['E_unmoved'][i].add_sample(np.sum(E[unmoved, :] * dV[unmoved, :]))
                     if moved.size > 0:
-                        m_E_moved[i].add_sample(np.average(E[moved, :], weights=dV[moved, :]))
+                        A_val['E_moved'][i].add_sample(np.sum(E[moved, :] * dV[moved, :]))
 
                     V = vector.AsDofs(system.v())
-                    m_K[i].add_sample(0.5 * np.sum(M * V ** 2))
+                    A_val['K'][i].add_sample(0.5 * np.sum(M * V ** 2))
+
+                # ensemble average for different "t"
+
+                stored = data["/sync-t/stored"][...]
 
                 if ifile == 0:
-                    if "/meta/versions/CrackEvolution_raw_stress" not in data:
-                        out["/meta/versions/CrackEvolution_raw_stress"] = data["/git/run"][...]
-                    else:
-                        out["/meta/versions/CrackEvolution_raw_stress"] = data["/meta/versions/CrackEvolution_raw_stress"][...]
+                    t_t = [i for i in stored]
+                    t_val = {
+                        'E_all' : [enstat.mean.Scalar() for t in t_t],
+                        'E_elastic' : [enstat.mean.Scalar() for t in t_t],
+                        'E_plastic' : [enstat.mean.Scalar() for t in t_t],
+                        'K' : [enstat.mean.Scalar() for t in t_t],
+                    }
+                elif np.max(stored) > np.max(t_t):
+                    col = np.argmax(stored > np.max(t_t))
+                    extra = [i for i in stored[col:]]
+                    t_t += extra
+                    for key in t_val:
+                        t_val[key] += [enstat.mean.Scalar() for t in extra]
 
-        out['/stored'] = m_A
+                for i, t in enumerate(tqdm.tqdm(t_t)):
 
-        for i, A in enumerate(m_A):
+                    if t not in stored:
+                        continue
 
-            out['/{0:d}/E_all'.format(A)] = m_E_all[i].mean()
-            out['/{0:d}/E_elastic'.format(A)] = m_E_elastic[i].mean()
-            out['/{0:d}/E_plastic'.format(A)] = m_E_plastic[i].mean()
-            out['/{0:d}/E_unmoved'.format(A)] = m_E_unmoved[i].mean()
-            out['/{0:d}/E_moved'.format(A)] = m_E_moved[i].mean()
-            out['/{0:d}/K'.format(A)] = m_K[i].mean()
+                    system.setU(data["/sync-t/{0:d}/u".format(t)][...])
+                    system.setV(data["/sync-t/{0:d}/v".format(t)][...])
+                    E = system.Energy()
+
+                    t_val['E_all'][i].add_sample(np.sum(E * dV))
+                    t_val['E_elastic'][i].add_sample(np.sum(E[elastic, :] * dV[elastic, :]))
+                    t_val['E_plastic'][i].add_sample(np.sum(E[plastic, :] * dV[plastic, :]))
+
+                    V = vector.AsDofs(system.v())
+                    t_val['K'][i].add_sample(0.5 * np.sum(M * V ** 2))
+
+        # store
+
+        out['/A/A'] = A_A
+
+        for key in A_val:
+            out['/A/{0:s}'.format(key)] = np.array([i.mean() for i in A_val[key]])
+            out['/A/{0:s}'.format(key)].attrs['norm'] = np.array([i.norm() for i in A_val[key]])
+            out['/A/{0:s}'.format(key)].attrs['first'] = np.array([i.first() for i in A_val[key]])
+            out['/A/{0:s}'.format(key)].attrs['second'] = np.array([i.second() for i in A_val[key]])
+
+        out['/t/t'] = t_t
+
+        for key in t_val:
+            out['/t/{0:s}'.format(key)] = np.array([i.mean() for i in t_val[key]])
+            out['/t/{0:s}'.format(key)].attrs['norm'] = np.array([i.norm() for i in t_val[key]])
+            out['/t/{0:s}'.format(key)].attrs['first'] = np.array([i.first() for i in t_val[key]])
+            out['/t/{0:s}'.format(key)].attrs['second'] = np.array([i.second() for i in t_val[key]])
 
         try:
-            out["/meta/versions/collect_energy.py"] = get_version(root='..', relative_to=__file__)
+            version = get_version(root='..', relative_to=__file__)
         except:
-            pass
+            version = None
+
+        if version:
+            out["/meta/versions/collect_energy.py"] = version
 
 if __name__ == "__main__":
 
