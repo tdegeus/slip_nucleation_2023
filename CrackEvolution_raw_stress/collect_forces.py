@@ -1,5 +1,8 @@
 r'''
-    ???
+    Extract average force distribution. This involves:
+    -   remapping to a regular mesh
+    -   coarsening
+        (reduces output size and speeds-up computation as the average on all A can be done at once).
 
 Usage:
     collect_forces.py [options] <files.yaml>
@@ -155,15 +158,17 @@ def main():
                 idname = "id={0:03d}.hdf5".format(idnum)
                 system = LoadSystem(os.path.join(source_dir, idname), uuid)
                 stored = data["/sync-A/stored"][...]
+                iiter = data["/sync-A/global/iiter"][...]
 
                 if ifile == 0:
 
                     m_A = np.linspace(300, 1400, 12).astype(np.int64) + 58
-                    m_fmaterial = [enstat.mean.Static() for A in m_A]
-                    m_fdamp = [enstat.mean.Static() for A in m_A]
-                    m_fres = [enstat.mean.Static() for A in m_A]
-                    m_v = [enstat.mean.Static() for A in m_A]
-                    m_S = [enstat.mean.Static() for A in m_A]
+                    m_t = [enstat.mean.Scalar() for A in m_A]
+                    m_fmaterial = [enstat.mean.StaticNd() for A in m_A]
+                    m_fdamp = [enstat.mean.StaticNd() for A in m_A]
+                    m_fres = [enstat.mean.StaticNd() for A in m_A]
+                    m_v = [enstat.mean.StaticNd() for A in m_A]
+                    m_S = [enstat.mean.StaticNd() for A in m_A]
 
                 system.setU(data["/sync-A/{0:d}/u".format(np.min(stored))][...])
                 idx0 = system.plastic_CurrentIndex()[:, 0]
@@ -224,6 +229,7 @@ def main():
                     m_fres[i].add_sample(fres)
                     m_v[i].add_sample(v)
                     m_S[i].add_sample(S)
+                    m_t[i].add_sample(iiter[A])
 
         out['/stored'] = m_A
 
@@ -234,8 +240,9 @@ def main():
             out['/{0:d}/fres'.format(A)] = m_fres[i].mean()
             out['/{0:d}/v'.format(A)] = m_v[i].mean()
             out['/{0:d}/S'.format(A)] = m_S[i].mean()
+            out['/{0:d}/iiter'.format(A)] = m_t[i].mean()
 
-        if "/meta/versions/CrackEvolution_raw_stress" not in data:
+        if "/meta/versions/CrackEvolution_raw_stress" not in data and "/git/run" in data:
             out["/meta/versions/CrackEvolution_raw_stress"] = data["/git/run"][...]
         out["/meta/versions/collect_forces.py"] = get_version(root='..', relative_to=__file__)
 
