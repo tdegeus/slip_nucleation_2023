@@ -109,9 +109,11 @@ def main():
             N = plastic.size
             assert np.all(np.equal(plastic, data['/meta/plastic'][...]))
 
+            M = system.mass().Todiagonal()
             coor = system.coor()
             conn = system.conn()
             vector = system.vector()
+            dV = system.dV()
             is_p = vector.dofs_is_p()
 
             mesh = gf.Mesh.Quad4.FineLayer(coor, conn)
@@ -119,17 +121,24 @@ def main():
             regular = mapping.getRegularMesh()
             assert np.all(np.equal(plastic, mesh.elementsMiddleLayer()))
 
+            # midpoint integration
+            mid_quad = gf.Element.Quad4.Quadrature(
+                vector.AsElement(coor),
+                gf.Element.Quad4.MidPoint.xi(),
+                gf.Element.Quad4.MidPoint.w())
+
+            # nodal quadrature
             nodal_quad = gf.Element.Quad4.Quadrature(
                 vector.AsElement(coor),
                 gf.Element.Quad4.Nodal.xi(),
                 gf.Element.Quad4.Nodal.w())
-            dV = nodal_quad.dV()
+            dVs = nodal_quad.dV()
 
             # get nodal volume: per dimension, with periodicity applied
             dV_node = np.zeros(vector.ShapeNodevec())
             for j in range(conn.shape[1]):
-                dV_node[conn[:, j], 0] += dV[:, j]
-                dV_node[conn[:, j], 1] += dV[:, j]
+                dV_node[conn[:, j], 0] += dVs[:, j]
+                dV_node[conn[:, j], 1] += dVs[:, j]
             dV_node = vector.AsNode(vector.AssembleDofs(dV_node))
 
         break
@@ -144,10 +153,14 @@ def main():
 
     with h5py.File(output, 'w') as out:
 
-        out['/nelx'] = coarse.nelx()
-        out['/nely'] = coarse.nely()
-        out['/Lx'] = coarse.nelx() * 6 * coarse.h()
-        out['/Ly'] = coarse.nely() * 3 * coarse.h()
+        out['/coarse/nelx'] = coarse.nelx()
+        out['/coarse/nely'] = coarse.nely()
+        out['/coarse/Lx'] = coarse.nelx() * 6 * coarse.h()
+        out['/coarse/Ly'] = coarse.nely() * 3 * coarse.h()
+        out['/mesh/h'] = mesh.h()
+        out['/mesh/nelx'] = mesh.nelx()
+        out['/mesh/nely'] = mesh.nely()
+        out['/mesh/N'] = N
 
         for ifile, file in enumerate(tqdm.tqdm(files)):
 
@@ -167,6 +180,8 @@ def main():
                     m_fmaterial = [enstat.mean.StaticNd() for A in m_A]
                     m_fdamp = [enstat.mean.StaticNd() for A in m_A]
                     m_fres = [enstat.mean.StaticNd() for A in m_A]
+                    m_Ekin = [enstat.mean.StaticNd() for A in m_A]
+                    m_Epot = [enstat.mean.StaticNd() for A in m_A]
                     m_v = [enstat.mean.StaticNd() for A in m_A]
                     m_S = [enstat.mean.StaticNd() for A in m_A]
 
@@ -187,46 +202,54 @@ def main():
                     fmaterial = np.where(is_p, 0, fmaterial)
                     fdamp = system.fdamp()
                     fres = -(fmaterial + fdamp)
+                    V = vector.AsDofs(system.v())
+                    K = M * V ** 2
+                    Ekin = vector.AsNode(K)
 
                     # nodal force density
                     fmaterial /= dV_node
                     fdamp /= dV_node
                     fres /= dV_node
+                    Ekin /= dV_node
 
-                    # convert to element-vector, extrapolate on regular mesh, and take element average
-                    fmaterial = np.mean(mapping.mapToRegular(vector.AsElement(fmaterial)), axis=1)
-                    fdamp = np.mean(mapping.mapToRegular(vector.AsElement(fdamp)), axis=1)
-                    fres = np.mean(mapping.mapToRegular(vector.AsElement(fres)), axis=1)
-                    v = np.mean(mapping.mapToRegular(vector.AsElement(system.v())), axis=1)
+                    # potential energy
+                    Epot = np.average(system.Energy(), weights=dV, axis=1)
+
+                    # convert to element-vector, interpolate to the element's midpoint, extrapolate on regular mesh
+                    fmaterial = mapping.mapToRegular(mid_quad.Interp_N_vector(vector.AsElement(fmaterial)).reshape(-1, 2))
+                    fdamp = mapping.mapToRegular(mid_quad.Interp_N_vector(vector.AsElement(fdamp)).reshape(-1, 2))
+                    fres = mapping.mapToRegular(mid_quad.Interp_N_vector(vector.AsElement(fres)).reshape(-1, 2))
+                    Ekin = mapping.mapToRegular(mid_quad.Interp_N_vector(vector.AsElement(Ekin)).reshape(-1, 2))
+                    Epot = mapping.mapToRegular(Epot)
+                    v = mapping.mapToRegular(mid_quad.Interp_N_vector(vector.AsElement(system.v())).reshape(-1, 2))
 
                     # element numbers such that the crack is aligned
                     renum = renumber(np.argwhere(idx0 != idx).ravel(), N)
                     get = elmat[:, renum].ravel()
 
+                    # align crack
                     fmaterial = fmaterial[get]
                     fdamp = fdamp[get]
                     fres = fres[get]
+                    Ekin = Ekin[get]
+                    Epot = Epot[get]
                     v = v[get]
                     S = (idx.astype(np.int64) - idx0.astype(np.int64))[renum]
 
-                    def coarsen(refine, vec):
-                        x = np.mean(refine.mapToCoarse(vec[:, 0]), axis=1)
-                        y = np.mean(refine.mapToCoarse(vec[:, 1]), axis=1)
-                        ret = np.empty((x.size, 2), dtype=np.float64)
-                        ret[:, 0] = x
-                        ret[:, 1] = y
-                        return ret
-
-                    # coarsen and take element average
-                    fmaterial = np.linalg.norm(coarsen(refine, fmaterial), axis=1).reshape(coarse.nely(), -1)
-                    fdamp = np.linalg.norm(coarsen(refine, fdamp), axis=1).reshape(coarse.nely(), -1)
-                    fres = np.linalg.norm(coarsen(refine, fres), axis=1).reshape(coarse.nely(), -1)
-                    v = np.linalg.norm(coarsen(refine, v), axis=1).reshape(coarse.nely(), -1)
+                    # coarsen by taking element average, take vector norm, reshape to grid
+                    fmaterial = np.linalg.norm(refine.meanToCoarse(fmaterial), axis=1).reshape(coarse.nely(), -1)
+                    fdamp = np.linalg.norm(refine.meanToCoarse(fdamp), axis=1).reshape(coarse.nely(), -1)
+                    fres = np.linalg.norm(refine.meanToCoarse(fres), axis=1).reshape(coarse.nely(), -1)
+                    Ekin = np.linalg.norm(refine.meanToCoarse(Ekin), axis=1).reshape(coarse.nely(), -1)
+                    Epot = refine.meanToCoarse(Epot).reshape(coarse.nely(), -1)
+                    v = np.linalg.norm(refine.meanToCoarse(v), axis=1).reshape(coarse.nely(), -1)
                     S = np.mean(S.reshape(-1, 6), axis=1)
 
                     m_fmaterial[i].add_sample(fmaterial)
                     m_fdamp[i].add_sample(fdamp)
                     m_fres[i].add_sample(fres)
+                    m_Ekin[i].add_sample(Ekin)
+                    m_Epot[i].add_sample(Epot)
                     m_v[i].add_sample(v)
                     m_S[i].add_sample(S)
                     m_t[i].add_sample(iiter[A])
@@ -238,6 +261,8 @@ def main():
             out['/{0:d}/fmaterial'.format(A)] = m_fmaterial[i].mean()
             out['/{0:d}/fdamp'.format(A)] = m_fdamp[i].mean()
             out['/{0:d}/fres'.format(A)] = m_fres[i].mean()
+            out['/{0:d}/Ekin'.format(A)] = m_Ekin[i].mean()
+            out['/{0:d}/Epot'.format(A)] = m_Epot[i].mean()
             out['/{0:d}/v'.format(A)] = m_v[i].mean()
             out['/{0:d}/S'.format(A)] = m_S[i].mean()
             out['/{0:d}/iiter'.format(A)] = m_t[i].mean()
