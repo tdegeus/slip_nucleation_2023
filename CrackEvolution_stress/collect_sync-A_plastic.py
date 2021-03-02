@@ -22,6 +22,7 @@ import click
 import h5py
 import numpy as np
 import GooseFEM as gf
+import tqdm
 
 # ==================================================================================================
 # compute center of mass
@@ -54,6 +55,7 @@ args = docopt.docopt(__doc__)
 
 files = args['<files>']
 info = args['--info']
+source_dir = os.path.dirname(info)
 output = args['--output']
 
 for file in files + [info]:
@@ -100,7 +102,7 @@ else:
 
 mapping = gf.Mesh.Quad4.Map.FineLayer2Regular(mesh)
 regular = mapping.getRegularMesh()
-elmat = regular.elementMatrix()
+elmat = regular.elementgrid()
 
 # ==================================================================================================
 # ensemble average
@@ -120,34 +122,38 @@ out = {
 
 for key in out:
 
-    out[key]['sig_xx'] = np.zeros((nx + 1, nx), dtype='float') # (A, x)
-    out[key]['sig_xy'] = np.zeros((nx + 1, nx), dtype='float')
-    out[key]['sig_yy'] = np.zeros((nx + 1, nx), dtype='float')
-    out[key]['epsp'  ] = np.zeros((nx + 1, nx), dtype='float')
-    out[key]['depsp' ] = np.zeros((nx + 1, nx), dtype='float')
-    out[key]['x'     ] = np.zeros((nx + 1, nx), dtype='float')
-    out[key]['S'     ] = np.zeros((nx + 1, nx), dtype='int')
+    out[key]['sig_xx'] = np.zeros((nx + 1, nx), dtype=np.float64) # (A, x)
+    out[key]['sig_xy'] = np.zeros((nx + 1, nx), dtype=np.float64)
+    out[key]['sig_yy'] = np.zeros((nx + 1, nx), dtype=np.float64)
+    out[key]['epsp'  ] = np.zeros((nx + 1, nx), dtype=np.float64)
+    out[key]['S'     ] = np.zeros((nx + 1, nx), dtype=np.int64)
 
 # ---------------
 # loop over files
 # ---------------
 
-for ifile, file in enumerate(files):
+edx = np.empty((2, nx), dtype='int')
+edx[0, :] = np.arange(nx)
 
-    print('({0:3d}/{1:3d}) {2:s}'.format(ifile + 1, len(files), file))
+pbar = tqdm.tqdm(files)
+
+for ifile, file in enumerate(pbar):
+
+    pbar.set_description(file)
+
+    idnum = os.path.basename(file).split('_')[0]
+
+    with h5py.File(os.path.join(source_dir, '{0:s}.hdf5'.format(idnum)), 'r') as data:
+        epsy = data['/cusp/epsy'][...]
+        epsy = np.hstack(( - epsy[:, 0].reshape(-1, 1), epsy ))
+        uuid = data["/uuid"].asstr()[...]
 
     with h5py.File(file, 'r') as data:
 
+        assert uuid == data["/meta/uuid"].asstr()[...]
+
         A = data["/sync-A/stored"][...]
         idx0 = data['/sync-A/plastic/{0:d}/idx'.format(np.min(A))][...]
-
-        if '/sync-A/plastic/{0:d}/epsp'.format(np.min(A)) in data:
-            epsp0 = data['/sync-A/plastic/{0:d}/epsp'.format(np.min(A))][...]
-            norm_x[A] += 1
-            store_x = True
-        else:
-            store_x = False
-
         norm[A] += 1
 
         for a in A:
@@ -163,29 +169,25 @@ for ifile, file in enumerate(files):
 
             idx = data['/sync-A/plastic/{0:d}/idx'.format(a)][...]
 
-            if store_x:
-                epsp = data['/sync-A/plastic/{0:d}/epsp'.format(a)][...]
-                x = data['/sync-A/plastic/{0:d}/x'.format(a)][...]
+            edx[1, :] = idx
+            i = np.ravel_multi_index(edx, epsy.shape)
+            epsy_l = epsy.flat[i]
+            epsy_r = epsy.flat[i + 1]
+            epsp = 0.5 * (epsy_l + epsy_r)
 
             renum = renumber(np.argwhere(idx0 != idx).ravel(), nx)
 
             out['1st']['sig_xx'][a, :] += sig_xx[renum]
             out['1st']['sig_xy'][a, :] += sig_xy[renum]
             out['1st']['sig_yy'][a, :] += sig_yy[renum]
-            out['1st']['S'     ][a, :] += (idx - idx0)[renum].astype(np.int)
-            if store_x:
-                out['1st']['epsp' ][a, :] += epsp[renum]
-                out['1st']['depsp'][a, :] += (epsp - epsp0)[renum]
-                out['1st']['x'    ][a, :] += x[renum]
+            out['1st']['S'     ][a, :] += (idx - idx0)[renum].astype(np.int64)
+            out['1st']['epsp'  ][a, :] += epsp[renum]
 
             out['2nd']['sig_xx'][a, :] += (sig_xx[renum]) ** 2.0
             out['2nd']['sig_xy'][a, :] += (sig_xy[renum]) ** 2.0
             out['2nd']['sig_yy'][a, :] += (sig_yy[renum]) ** 2.0
-            out['2nd']['S'     ][a, :] += ((idx - idx0)[renum].astype(np.int)) ** 2
-            if store_x:
-                out['2nd']['epsp' ][a, :] += (epsp[renum]) ** 2.0
-                out['2nd']['depsp'][a, :] += ((epsp - epsp0)[renum]) ** 2.0
-                out['2nd']['x'    ][a, :] += (x[renum]) ** 2.0
+            out['2nd']['S'     ][a, :] += ((idx - idx0)[renum].astype(np.int64)) ** 2
+            out['2nd']['epsp'  ][a, :] += (epsp[renum]) ** 2.0
 
 # ---------------------------------------------
 # select only measurements with sufficient data
@@ -194,9 +196,9 @@ for ifile, file in enumerate(files):
 idx = np.argwhere(norm > 30).ravel()
 
 A = np.arange(nx + 1)
-norm = norm[idx].astype(np.float)
-norm_x = norm_x[idx].astype(np.float)
-A = A[idx].astype(np.float)
+norm = norm[idx].astype(np.float64)
+norm_x = norm_x[idx].astype(np.float64)
+A = A[idx].astype(np.float64)
 
 for key in out:
     for field in out[key]:
@@ -206,10 +208,9 @@ for key in out:
 # store support function
 # ----------------------
 
-
 def store(data, key,
-          m_sig_xx, m_sig_xy, m_sig_yy, m_epsp, m_depsp, m_x, m_S,
-          v_sig_xx, v_sig_xy, v_sig_yy, v_epsp, v_depsp, v_x, v_S):
+          m_sig_xx, m_sig_xy, m_sig_yy, m_epsp, m_S,
+          v_sig_xx, v_sig_xy, v_sig_yy, v_epsp, v_S):
 
     # hydrostatic stress
     m_sig_m = (m_sig_xx + m_sig_yy) / 2.
@@ -240,8 +241,6 @@ def store(data, key,
     data['/{0:s}/avr/sig_eq'.format(key)] = m_sig_eq / sig0
     data['/{0:s}/avr/sig_m'.format(key)] = m_sig_m / sig0
     data['/{0:s}/avr/epsp'.format(key)] = m_epsp / eps0
-    data['/{0:s}/avr/depsp'.format(key)] = m_depsp / eps0
-    data['/{0:s}/avr/x'.format(key)] = m_x / eps0
     data['/{0:s}/avr/S'.format(key)] = m_S
 
     # store variance
@@ -251,8 +250,6 @@ def store(data, key,
     data['/{0:s}/std/sig_eq'.format(key)] = np.sqrt(np.abs(v_sig_eq)) / sig0
     data['/{0:s}/std/sig_m'.format(key)] = np.sqrt(np.abs(v_sig_m)) / sig0
     data['/{0:s}/std/epsp'.format(key)] = np.sqrt(np.abs(v_epsp)) / eps0
-    data['/{0:s}/std/depsp'.format(key)] = np.sqrt(np.abs(v_depsp)) / eps0
-    data['/{0:s}/std/x'.format(key)] = np.sqrt(np.abs(v_x)) / eps0
     data['/{0:s}/std/S'.format(key)] = np.sqrt(np.abs(v_S))
 
 # -----
@@ -284,7 +281,6 @@ with h5py.File(output, 'w') as data:
 
     # allow broadcasting
     norm = norm.reshape((-1, 1))
-    norm_x = norm_x.reshape((-1, 1))
     A = A.reshape((-1, 1))
 
     # compute mean
@@ -292,29 +288,24 @@ with h5py.File(output, 'w') as data:
     m_sig_xy = compute_average(out['1st']['sig_xy'], norm)
     m_sig_yy = compute_average(out['1st']['sig_yy'], norm)
     m_S      = compute_average(out['1st']['S'     ], norm)
-    m_epsp   = compute_average(out['1st']['epsp'  ], norm_x)
-    m_depsp  = compute_average(out['1st']['depsp' ], norm_x)
-    m_x      = compute_average(out['1st']['x'     ], norm_x)
+    m_epsp   = compute_average(out['1st']['epsp'  ], norm)
 
     # compute variance
     v_sig_xx = compute_variance(out['1st']['sig_xx'], out['2nd']['sig_xx'], norm)
     v_sig_xy = compute_variance(out['1st']['sig_xy'], out['2nd']['sig_xy'], norm)
     v_sig_yy = compute_variance(out['1st']['sig_yy'], out['2nd']['sig_yy'], norm)
     v_S      = compute_variance(out['1st']['S'     ], out['2nd']['S'     ], norm)
-    v_epsp   = compute_variance(out['1st']['epsp'  ], out['2nd']['epsp'  ], norm_x)
-    v_depsp  = compute_variance(out['1st']['depsp' ], out['2nd']['depsp' ], norm_x)
-    v_x      = compute_variance(out['1st']['x'     ], out['2nd']['x'     ], norm_x)
+    v_epsp   = compute_variance(out['1st']['epsp'  ], out['2nd']['epsp'  ], norm)
 
     # store
     store(data, 'element',
-          m_sig_xx, m_sig_xy, m_sig_yy, m_epsp, m_depsp, m_x, m_S,
-          v_sig_xx, v_sig_xy, v_sig_yy, v_epsp, v_depsp, v_x, v_S)
+          m_sig_xx, m_sig_xy, m_sig_yy, m_epsp, m_S,
+          v_sig_xx, v_sig_xy, v_sig_yy, v_epsp, v_S)
 
     # ---------
 
     # disable broadcasting
     norm = norm.ravel()
-    norm_x = norm_x.ravel()
     A = A.ravel()
 
     # compute mean
@@ -322,23 +313,19 @@ with h5py.File(output, 'w') as data:
     m_sig_xy = compute_average(np.sum(out['1st']['sig_xy'], axis=1), norm * nx)
     m_sig_yy = compute_average(np.sum(out['1st']['sig_yy'], axis=1), norm * nx)
     m_S      = compute_average(np.sum(out['1st']['S'     ], axis=1), norm * nx)
-    m_epsp   = compute_average(np.sum(out['1st']['epsp'  ], axis=1), norm_x * nx)
-    m_depsp  = compute_average(np.sum(out['1st']['depsp' ], axis=1), norm_x * nx)
-    m_x      = compute_average(np.sum(out['1st']['x'     ], axis=1), norm_x * nx)
+    m_epsp   = compute_average(np.sum(out['1st']['epsp'  ], axis=1), norm * nx)
 
     # compute variance
     v_sig_xx = compute_variance(np.sum(out['1st']['sig_xx'], axis=1), np.sum(out['2nd']['sig_xx'], axis=1), norm * nx)
     v_sig_xy = compute_variance(np.sum(out['1st']['sig_xy'], axis=1), np.sum(out['2nd']['sig_xy'], axis=1), norm * nx)
     v_sig_yy = compute_variance(np.sum(out['1st']['sig_yy'], axis=1), np.sum(out['2nd']['sig_yy'], axis=1), norm * nx)
     v_S      = compute_variance(np.sum(out['1st']['S'     ], axis=1), np.sum(out['2nd']['S'     ], axis=1), norm * nx)
-    v_epsp   = compute_variance(np.sum(out['1st']['epsp'  ], axis=1), np.sum(out['2nd']['epsp'  ], axis=1), norm_x * nx)
-    v_depsp  = compute_variance(np.sum(out['1st']['depsp' ], axis=1), np.sum(out['2nd']['depsp' ], axis=1), norm_x * nx)
-    v_x      = compute_variance(np.sum(out['1st']['x'     ], axis=1), np.sum(out['2nd']['x'     ], axis=1), norm_x * nx)
+    v_epsp   = compute_variance(np.sum(out['1st']['epsp'  ], axis=1), np.sum(out['2nd']['epsp'  ], axis=1), norm * nx)
 
     # store
     store(data, 'layer',
-          m_sig_xx, m_sig_xy, m_sig_yy, m_epsp, m_depsp, m_x, m_S,
-          v_sig_xx, v_sig_xy, v_sig_yy, v_epsp, v_depsp, v_x, v_S)
+          m_sig_xx, m_sig_xy, m_sig_yy, m_epsp, m_S,
+          v_sig_xx, v_sig_xy, v_sig_yy, v_epsp, v_S)
 
     # ---------
 
@@ -350,7 +337,7 @@ with h5py.File(output, 'w') as data:
         iu = int(mid + a / 2)
         for key in out:
             for field in out[key]:
-                out[key][field] = out[key][field].astype(np.float)
+                out[key][field] = out[key][field].astype(np.float64)
                 out[key][field][i, :il] = 0.
                 out[key][field][i, iu:] = 0.
 
@@ -361,20 +348,16 @@ with h5py.File(output, 'w') as data:
     m_sig_xy = compute_average(np.sum(out['1st']['sig_xy'], axis=1), norm * A)
     m_sig_yy = compute_average(np.sum(out['1st']['sig_yy'], axis=1), norm * A)
     m_S      = compute_average(np.sum(out['1st']['S'     ], axis=1), norm * A)
-    m_epsp   = compute_average(np.sum(out['1st']['epsp'  ], axis=1), norm_x * A)
-    m_depsp  = compute_average(np.sum(out['1st']['depsp' ], axis=1), norm_x * A)
-    m_x      = compute_average(np.sum(out['1st']['x'     ], axis=1), norm_x * A)
+    m_epsp   = compute_average(np.sum(out['1st']['epsp'  ], axis=1), norm * A)
 
     # compute variance
     v_sig_xx = compute_variance(np.sum(out['1st']['sig_xx'], axis=1), np.sum(out['2nd']['sig_xx'], axis=1) , norm * A)
     v_sig_xy = compute_variance(np.sum(out['1st']['sig_xy'], axis=1), np.sum(out['2nd']['sig_xy'], axis=1) , norm * A)
     v_sig_yy = compute_variance(np.sum(out['1st']['sig_yy'], axis=1), np.sum(out['2nd']['sig_yy'], axis=1) , norm * A)
     v_S      = compute_variance(np.sum(out['1st']['S'     ], axis=1), np.sum(out['2nd']['S'     ], axis=1) , norm * A)
-    v_epsp   = compute_variance(np.sum(out['1st']['epsp'  ], axis=1), np.sum(out['2nd']['epsp'  ], axis=1) , norm_x * A)
-    v_depsp  = compute_variance(np.sum(out['1st']['depsp' ], axis=1), np.sum(out['2nd']['depsp' ], axis=1) , norm_x * A)
-    v_x      = compute_variance(np.sum(out['1st']['x'     ], axis=1), np.sum(out['2nd']['x'     ], axis=1) , norm_x * A)
+    v_epsp   = compute_variance(np.sum(out['1st']['epsp'  ], axis=1), np.sum(out['2nd']['epsp'  ], axis=1) , norm * A)
 
     # store
     store(data, 'crack',
-          m_sig_xx, m_sig_xy, m_sig_yy, m_epsp, m_depsp, m_x, m_S,
-          v_sig_xx, v_sig_xy, v_sig_yy, v_epsp, v_depsp, v_x, v_S)
+          m_sig_xx, m_sig_xy, m_sig_yy, m_epsp, m_S,
+          v_sig_xx, v_sig_xy, v_sig_yy, v_epsp, v_S)

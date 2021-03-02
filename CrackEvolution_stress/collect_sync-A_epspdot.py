@@ -54,6 +54,7 @@ args = docopt.docopt(__doc__)
 
 files = args['<files>']
 info = args['--info']
+source_dir = os.path.dirname(info)
 output = args['--output']
 
 for file in files + [info]:
@@ -102,13 +103,16 @@ for ifile, file in enumerate(pbar):
 
     pbar.set_description(file)
 
-    sim = os.path.basename(file).split('_')[0]
+    idnum = os.path.basename(file).split('_')[0]
 
-    with h5py.File('../{0:s}.hdf5'.format(sim), 'r') as data:
+    with h5py.File(os.path.join(source_dir, '{0:s}.hdf5'.format(idnum)), 'r') as data:
         epsy = data['/cusp/epsy'][...]
         epsy = np.hstack(( - epsy[:, 0].reshape(-1, 1), epsy ))
+        uuid = data["/uuid"].asstr()[...]
 
     with h5py.File(file, 'r') as data:
+
+        assert uuid == data["/meta/uuid"].asstr()[...]
 
         A = data["/sync-A/stored"][...]
         T = data["/sync-A/global/iiter"][...]
