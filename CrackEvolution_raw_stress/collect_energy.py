@@ -139,6 +139,8 @@ def main():
                     V = vector.AsDofs(system.v())
                     A_val['K'][i].add_sample(0.5 * np.sum(M * V ** 2))
 
+                    assert 0.5 * np.sum(M * V ** 2) <= np.sum(E * dV)
+
                 # ensemble average for different "t"
 
                 stored = data["/sync-t/stored"][...]
@@ -173,6 +175,8 @@ def main():
 
                     V = vector.AsDofs(system.v())
                     t_val['K'][i].add_sample(0.5 * np.sum(M * V ** 2))
+
+                    assert 0.5 * np.sum(M * V ** 2) <= np.sum(E * dV)
 
         # store
 
