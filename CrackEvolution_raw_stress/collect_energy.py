@@ -114,6 +114,9 @@ def main():
 
                 stored = data["/sync-A/stored"][...]
                 system.setU(data["/sync-A/{0:d}/u".format(np.min(stored))][...])
+                A0 = np.min(stored)
+                E0 = system.Energy()
+                e0 = np.sum(E0 * dV)
                 idx0 = system.plastic_CurrentIndex()[:, 0]
 
                 for i, A in enumerate(tqdm.tqdm(A_A)):
@@ -124,16 +127,20 @@ def main():
                     system.setU(data["/sync-A/{0:d}/u".format(A)][...])
                     system.setV(data["/sync-A/{0:d}/v".format(A)][...])
 
-                    E = system.Energy()
                     V = vector.AsDofs(system.v())
-                    assert 0.5 * np.sum(M * V ** 2) <= np.sum(E * dV)
+                    k = 0.5 * np.sum(M * V ** 2)
+
+                    E = system.Energy()
+                    e = np.sum(E * dV)
+
+                    assert (e + k <= 1.001 * e0) or (A <= A0)
 
                     idx = system.plastic_CurrentIndex()[:, 0]
                     unmoved = plastic[idx == idx0]
                     moved = plastic[idx != idx0]
 
-                    A_val['K'][i].add_sample(0.5 * np.sum(M * V ** 2))
-                    A_val['E_all'][i].add_sample(np.sum(E * dV))
+                    A_val['K'][i].add_sample(k)
+                    A_val['E_all'][i].add_sample(e)
                     A_val['E_elastic'][i].add_sample(np.sum(E[elastic, :] * dV[elastic, :]))
                     A_val['E_plastic'][i].add_sample(np.sum(E[plastic, :] * dV[plastic, :]))
                     if unmoved.size > 0:
@@ -168,12 +175,17 @@ def main():
                     system.setU(data["/sync-t/{0:d}/u".format(t)][...])
                     system.setV(data["/sync-t/{0:d}/v".format(t)][...])
 
-                    E = system.Energy()
                     V = vector.AsDofs(system.v())
-                    assert 0.5 * np.sum(M * V ** 2) <= np.sum(E * dV)
+                    k = 0.5 * np.sum(M * V ** 2)
 
-                    t_val['K'][i].add_sample(0.5 * np.sum(M * V ** 2))
-                    t_val['E_all'][i].add_sample(np.sum(E * dV))
+                    E = system.Energy()
+                    e = np.sum(E * dV)
+
+                    if e + k > 1.01 * e0:
+                        break
+
+                    t_val['K'][i].add_sample(k)
+                    t_val['E_all'][i].add_sample(e)
                     t_val['E_elastic'][i].add_sample(np.sum(E[elastic, :] * dV[elastic, :]))
                     t_val['E_plastic'][i].add_sample(np.sum(E[plastic, :] * dV[plastic, :]))
         # store
@@ -181,18 +193,28 @@ def main():
         out['/A/A'] = A_A
 
         for key in A_val:
-            out['/A/{0:s}'.format(key)] = np.array([i.mean() for i in A_val[key]])
-            out['/A/{0:s}'.format(key)].attrs['norm'] = np.array([i.norm() for i in A_val[key]])
-            out['/A/{0:s}'.format(key)].attrs['first'] = np.array([i.first() for i in A_val[key]])
-            out['/A/{0:s}'.format(key)].attrs['second'] = np.array([i.second() for i in A_val[key]])
+            mean = np.array([i.mean() for i in A_val[key]])
+            norm = np.array([i.norm() for i in A_val[key]])
+            first = np.array([i.first() for i in A_val[key]])
+            second = np.array([i.second() for i in A_val[key]])
+            keep = norm >= 0.9 * np.max(norm)
+            out['/A/{0:s}'.format(key)] = mean[keep]
+            out['/A/{0:s}'.format(key)].attrs['norm'] = norm[keep]
+            out['/A/{0:s}'.format(key)].attrs['first'] = first[keep]
+            out['/A/{0:s}'.format(key)].attrs['second'] = second[keep]
 
         out['/t/t'] = t_t
 
         for key in t_val:
-            out['/t/{0:s}'.format(key)] = np.array([i.mean() for i in t_val[key]])
-            out['/t/{0:s}'.format(key)].attrs['norm'] = np.array([i.norm() for i in t_val[key]])
-            out['/t/{0:s}'.format(key)].attrs['first'] = np.array([i.first() for i in t_val[key]])
-            out['/t/{0:s}'.format(key)].attrs['second'] = np.array([i.second() for i in t_val[key]])
+            mean = np.array([i.mean() for i in t_val[key]])
+            norm = np.array([i.norm() for i in t_val[key]])
+            first = np.array([i.first() for i in t_val[key]])
+            second = np.array([i.second() for i in t_val[key]])
+            keep = norm >= 0.9 * np.max(norm)
+            out['/t/{0:s}'.format(key)] = mean[keep]
+            out['/t/{0:s}'.format(key)].attrs['norm'] = norm[keep]
+            out['/t/{0:s}'.format(key)].attrs['first'] = first[keep]
+            out['/t/{0:s}'.format(key)].attrs['second'] = second[keep]
 
         try:
             version = get_version(root='..', relative_to=__file__)
