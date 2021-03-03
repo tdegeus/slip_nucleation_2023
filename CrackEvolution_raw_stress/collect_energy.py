@@ -104,12 +104,12 @@ def main():
                 if ifile == 0:
                     A_A = np.arange(N + 1)
                     A_val = {
+                        'K' : [enstat.mean.Scalar() for A in A_A],
                         'E_all' : [enstat.mean.Scalar() for A in A_A],
                         'E_elastic' : [enstat.mean.Scalar() for A in A_A],
                         'E_plastic' : [enstat.mean.Scalar() for A in A_A],
                         'E_unmoved' : [enstat.mean.Scalar() for A in A_A],
                         'E_moved' : [enstat.mean.Scalar() for A in A_A],
-                        'K' : [enstat.mean.Scalar() for A in A_A],
                     }
 
                 stored = data["/sync-A/stored"][...]
@@ -123,11 +123,16 @@ def main():
 
                     system.setU(data["/sync-A/{0:d}/u".format(A)][...])
                     system.setV(data["/sync-A/{0:d}/v".format(A)][...])
-                    idx = system.plastic_CurrentIndex()[:, 0]
+
                     E = system.Energy()
+                    V = vector.AsDofs(system.v())
+                    assert 0.5 * np.sum(M * V ** 2) <= np.sum(E * dV)
+
+                    idx = system.plastic_CurrentIndex()[:, 0]
                     unmoved = plastic[idx == idx0]
                     moved = plastic[idx != idx0]
 
+                    A_val['K'][i].add_sample(0.5 * np.sum(M * V ** 2))
                     A_val['E_all'][i].add_sample(np.sum(E * dV))
                     A_val['E_elastic'][i].add_sample(np.sum(E[elastic, :] * dV[elastic, :]))
                     A_val['E_plastic'][i].add_sample(np.sum(E[plastic, :] * dV[plastic, :]))
@@ -136,11 +141,6 @@ def main():
                     if moved.size > 0:
                         A_val['E_moved'][i].add_sample(np.sum(E[moved, :] * dV[moved, :]))
 
-                    V = vector.AsDofs(system.v())
-                    A_val['K'][i].add_sample(0.5 * np.sum(M * V ** 2))
-
-                    assert 0.5 * np.sum(M * V ** 2) <= np.sum(E * dV)
-
                 # ensemble average for different "t"
 
                 stored = data["/sync-t/stored"][...]
@@ -148,10 +148,10 @@ def main():
                 if ifile == 0:
                     t_t = [i for i in stored]
                     t_val = {
+                        'K' : [enstat.mean.Scalar() for t in t_t],
                         'E_all' : [enstat.mean.Scalar() for t in t_t],
                         'E_elastic' : [enstat.mean.Scalar() for t in t_t],
                         'E_plastic' : [enstat.mean.Scalar() for t in t_t],
-                        'K' : [enstat.mean.Scalar() for t in t_t],
                     }
                 elif np.max(stored) > np.max(t_t):
                     col = np.argmax(stored > np.max(t_t))
@@ -167,17 +167,15 @@ def main():
 
                     system.setU(data["/sync-t/{0:d}/u".format(t)][...])
                     system.setV(data["/sync-t/{0:d}/v".format(t)][...])
-                    E = system.Energy()
 
+                    E = system.Energy()
+                    V = vector.AsDofs(system.v())
+                    assert 0.5 * np.sum(M * V ** 2) <= np.sum(E * dV)
+
+                    t_val['K'][i].add_sample(0.5 * np.sum(M * V ** 2))
                     t_val['E_all'][i].add_sample(np.sum(E * dV))
                     t_val['E_elastic'][i].add_sample(np.sum(E[elastic, :] * dV[elastic, :]))
                     t_val['E_plastic'][i].add_sample(np.sum(E[plastic, :] * dV[plastic, :]))
-
-                    V = vector.AsDofs(system.v())
-                    t_val['K'][i].add_sample(0.5 * np.sum(M * V ** 2))
-
-                    assert 0.5 * np.sum(M * V ** 2) <= np.sum(E * dV)
-
         # store
 
         out['/A/A'] = A_A
