@@ -118,7 +118,7 @@ for ifile, file in enumerate(files):
 
 idx = np.argwhere(norm > 30).ravel()
 
-norm = norm[idx].astype(np.float)
+norm = norm[idx].astype(np.float64)
 
 for key in out:
   for field in out[key]:
@@ -167,7 +167,7 @@ v_sig_eq = v_sig_xx * ((m_sig_xx - 0.5 * (m_sig_xx + m_sig_yy)) / m_sig_eq)**2.0
 with h5py.File(output, 'w') as data:
 
   # store averages
-  data['/avr/A'     ] = (out['1st']['A'] / norm).astype(np.int)
+  data['/avr/A'     ] = (out['1st']['A'] / norm).astype(np.int64)
   data['/avr/iiter' ] = m_iiter * dt / t0
   data['/avr/sig_eq'] = m_sig_eq / sig0
   data['/avr/sig_m' ] = m_sig_m  / sig0
