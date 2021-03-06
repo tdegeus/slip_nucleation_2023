@@ -47,7 +47,7 @@ sigc = 0.15464095 * sig0
 # push_stresses = np.array([1.0 * sigc, 0.8 * sigc, 0.6 * sigc])
 # push_names = ['sigc-1d0', 'sigc-0d8', 'sigc-0d6']
 push_stresses = np.array([1.25 * sigc, 1.31 * sigc])
-push_names = ['sigc-1d24', 'sigc-1d31']
+push_names = ['sigc-1d25', 'sigc-1d31']
 
 for stress, inc, file in zip(stresses, incs, files):
 

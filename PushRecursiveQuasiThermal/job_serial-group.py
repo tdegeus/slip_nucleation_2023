@@ -5,6 +5,7 @@ import re
 import subprocess
 import h5py
 import GooseSLURM as gs
+import numpy as np
 
 # ----
 
@@ -31,23 +32,34 @@ fi
 {0:s}
 '''
 
-for file in files:
+files_per_group = 10
+ngroup = int(np.ceil(len(files) / files_per_group))
+fmt = str(int(np.ceil(np.log10(ngroup))))
 
-    basename = os.path.splitext(os.path.normpath(file))[0]
+for group in range(ngroup):
 
-    command = 'time PushRecursiveQuasiThermal "{0:s}" "{1:s}"'.format(file, basename)
+    f = files[group * files_per_group: (group + 1) * files_per_group]
+    c = []
+
+    for file in f:
+        basename = os.path.splitext(os.path.normpath(file))[0]
+        c += ['PushRecursiveQuasiThermal "{0:s}" "{1:s}"'.format(file, basename)]
+
+    command = '\n'.join(c)
     command = slurm.format(command)
 
+    jobname = ('PushRecursiveQuasiThermal-{0:0' + fmt + 'd}').format(group)
+
     sbatch = {
-        'job-name': basename,
-        'out': basename + '.out',
+        'job-name': jobname,
+        'out': jobname + '.out',
         'nodes': 1,
         'ntasks': 1,
         'cpus-per-task': 1,
         'time': '12h',
         'account': 'pcsl',
         'partition': 'serial',
-        'mem': '8G',
+        'mem' : '8G',
     }
 
-    open(basename + '.slurm', 'w').write(gs.scripts.plain(command=slurm.format(command), **sbatch))
+    open(jobname + '.slurm', 'w').write(gs.scripts.plain(command=command, **sbatch))
