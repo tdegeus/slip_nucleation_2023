@@ -24,6 +24,8 @@ if [[ "${{SYS_TYPE}}" == *E5v4* ]]; then
     conda activate code_velocity_E5v4
 elif [[ "${{SYS_TYPE}}" == *s6g1* ]]; then
     conda activate code_velocity_s6g1
+else
+    echo "Unknown SYS_TYPE ${{SYS_TYPE}}"
 fi
 
 {0:s}
@@ -31,9 +33,9 @@ fi
 
 for file in files:
 
-    basename = os.path.splitext(file)[0]
+    basename = os.path.splitext(os.path.normpath(file))[0]
 
-    command = 'time PushRecursiveQuasiThermal "{0:s}"'.format(file)
+    command = 'PushRecursiveQuasiThermal "{0:s}"'.format(file)
     command = slurm.format(command)
 
     sbatch = {
