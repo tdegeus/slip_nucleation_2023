@@ -22,6 +22,7 @@ import click
 import h5py
 import numpy as np
 import tqdm
+from setuptools_scm import get_version
 
 # ==================================================================================================
 # get files
@@ -203,6 +204,7 @@ plas_epspdot = plas_epspdot[:, :imax, :] / eps0 / (dt / t0)
 
 with h5py.File(output, 'w') as data:
 
+    data['/meta/versions/{0:s}'.format(os.path.basename(__file__))] = get_version(root='..', relative_to=__file__)
     data['/glob_norm'] = np.mean(glob_norm, axis=0)
     data['/plastic/r/sig_xx'] = np.average(plas_sig_xx, weights=plas_norm, axis=0)
     data['/plastic/r/sig_xy'] = np.average(plas_sig_xy, weights=plas_norm, axis=0)
