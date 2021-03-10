@@ -23,6 +23,7 @@ import h5py
 import numpy as np
 import GooseFEM as gf
 import tqdm
+from setuptools_scm import get_version
 
 # ==================================================================================================
 # compute center of mass
@@ -281,6 +282,10 @@ for key in out:
     for field in out[key]:
         out[key][field] = out[key][field][idx, :]
 
+for key in moving_average:
+    for field in out[key]:
+        moving_average[key][field] = moving_average[key][field][idx]
+
 # ----------------------
 # store support function
 # ----------------------
@@ -356,8 +361,12 @@ norm: number of items in sum
 # open output file
 with h5py.File(output, 'w') as data:
 
+    data['/meta/versions/{0:s}'.format(os.path.basename(__file__))] = get_version(root='..', relative_to=__file__)
+
     data['/A'] = A
     data['/dA'] = dA
+    data['/dA'].attrs['description'] = 'epspdot == (epsp[A] - epsp[A - dA]) / (t[A] - t[A - dA])'
+    data['/dA'].attrs['usage'] = 'measured = epspdot[dA:, ...]'
 
     # ---------
 
