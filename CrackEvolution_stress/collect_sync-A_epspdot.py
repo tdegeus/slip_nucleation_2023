@@ -92,16 +92,17 @@ with h5py.File(info, 'r') as data:
 
 left = int((nx - nx % 2) / 2 - 100)
 right = int((nx - nx % 2) / 2 + 100 + 1)
-ret = np.zeros((len(files), nx + 1, nx), dtype='float')
-norm = np.zeros((len(files), nx + 1, nx), dtype='float')
-pbar = tqdm.tqdm(files)
+Depsp = np.zeros((len(files), nx + 1, nx), dtype='float') # #samples, A, r
+Epspdot = np.zeros((len(files), nx + 1, nx), dtype='float')
+Moving = np.zeros((len(files), nx + 1, nx), dtype='int')
+Norm = np.zeros((len(files), nx + 1, nx), dtype='float')
+Norm_dot = np.zeros((len(files), nx + 1, nx), dtype='float')
+
 edx = np.empty((2, nx), dtype='int')
 edx[0, :] = np.arange(nx)
 dA = 50
 
-for ifile, file in enumerate(pbar):
-
-    pbar.set_description(file)
+for ifile, file in enumerate(tqdm.tqdm(files)):
 
     idnum = os.path.basename(file).split('_')[0]
 
@@ -119,12 +120,36 @@ for ifile, file in enumerate(pbar):
 
         idx0 = data['/sync-A/plastic/{0:d}/idx'.format(np.min(A))][...]
 
-        norm[ifile, A[dA:], :] += 1
+        edx[1, :] = idx0
+        i = np.ravel_multi_index(edx, epsy.shape)
+        epsy_l = epsy.flat[i]
+        epsy_r = epsy.flat[i + 1]
+        epsp0 = 0.5 * (epsy_l + epsy_r)
 
-        for a_n, a in zip(A[:-dA], A[dA:]):
+        for ia, a in enumerate(A):
+
+            if ia == 0:
+                continue
+
+            # read epsp_n
+
+            if ia >= dA:
+
+                a_n = A[ia - dA]
+                idx_n = data['/sync-A/plastic/{0:d}/idx'.format(a_n)][...]
+
+                edx[1, :] = idx_n
+                i = np.ravel_multi_index(edx, epsy.shape)
+                epsy_l = epsy.flat[i]
+                epsy_r = epsy.flat[i + 1]
+                epsp_n = 0.5 * (epsy_l + epsy_r)
+
+                if '/sync-A/plastic/{0:d}/epsp'.format(a) in data:
+                    assert np.allclose(epsp_n, data['/sync-A/plastic/{0:d}/epsp'.format(a_n)][...]) or a_n == 0
+
+            # read epsp
 
             idx = data['/sync-A/plastic/{0:d}/idx'.format(a)][...]
-            idx_n = data['/sync-A/plastic/{0:d}/idx'.format(a_n)][...]
 
             edx[1, :] = idx
             i = np.ravel_multi_index(edx, epsy.shape)
@@ -132,21 +157,29 @@ for ifile, file in enumerate(pbar):
             epsy_r = epsy.flat[i + 1]
             epsp = 0.5 * (epsy_l + epsy_r)
 
-            edx[1, :] = idx_n
-            i = np.ravel_multi_index(edx, epsy.shape)
-            epsy_l = epsy.flat[i]
-            epsy_r = epsy.flat[i + 1]
-            epsp_n = 0.5 * (epsy_l + epsy_r)
-
-            if '/sync-A/plastic/{0:d}/epsp'.format(a) in data:
+            if '/sync-A/plastic/{0:d}/epsp'.format(a) in data and a > 0:
                 assert np.allclose(epsp, data['/sync-A/plastic/{0:d}/epsp'.format(a)][...])
-                assert np.allclose(epsp_n, data['/sync-A/plastic/{0:d}/epsp'.format(a_n)][...]) or a_n == 0
 
-            renum = renumber(np.argwhere(idx0 != idx).ravel(), nx)
+            # rotate
+
+            moved = idx0 != idx
+            renum = renumber(np.argwhere(moved).ravel(), nx)
+            moved = moved[renum]
+            epsp0 = epsp0[renum]
             epsp = epsp[renum]
-            epsp_n = epsp_n[renum]
 
-            ret[ifile, a, :] = (epsp - epsp_n) / (T[a] - T[a_n])
+            if ia >= dA:
+                epsp_n = epsp_n[renum]
+
+            # adding to output
+
+            Depsp[ifile, a, :] = (epsp - epsp0)
+            Moving[ifile, a, :] = moved
+            Norm[ifile, a, :] += 1
+
+            if ia >= dA:
+                Norm_dot[ifile, a, :] += 1
+                Epspdot[ifile, a, :] = (epsp - epsp_n) / (T[a] - T[a_n])
 
 # ==================================================================================================
 # store
@@ -154,17 +187,38 @@ for ifile, file in enumerate(pbar):
 
 with h5py.File(output, 'w') as data:
 
-    A = np.arange(nx + 1)
+    # non-dimensionalising
 
-    A = A[dA:]
-    ret = ret[:, dA:, :]
-    norm = norm[:, dA:]
+    Depsp = Depsp / eps0
+    Epspdot = Epspdot / eps0 / (dt / t0)
 
-    ret = ret / eps0 / (dt / t0)
+    # select
 
-    data['/epspdot/norm'] = np.mean(norm, axis=0)
-    data['/epspdot/r'] = np.average(ret, weights=norm, axis=0)
-    data['/epspdot/center'] = np.average(ret[:, :, left: right], weights=norm[:, :, left: right], axis=(0, 2))
-    data['/epspdot/plastic'] = np.average(ret, weights=norm, axis=(0, 2))
-    data['/A'] = A
+    i_dot = np.argwhere(np.mean(Norm_dot[:, :, 0], axis=0) >= 0.9).ravel()
+    A_dot = np.arange(nx + 1)[i_dot]
+    Moving_dot = Moving[:, i_dot, :]
+    Norm_dot = Norm_dot[:, i_dot, :]
+    Epspdot = Epspdot[:, i_dot, :]
+
+    i = np.argwhere(np.mean(Norm[:, :, 0], axis=0) >= 0.9).ravel()
+    A = np.arange(nx + 1)[i]
+    Depsp = Depsp[:, i, :]
+    Norm = Norm[:, i, :]
+    Moving = Moving[:, i, :]
+
+    data['/depsp/r'] = np.average(Depsp, weights=Norm, axis=0)
+    data['/depsp/r'].attrs['norm'] = np.mean(Norm, axis=(0, 2))
+    data['/depsp/moved'] = np.mean(Moving, axis=0)
+    data['/depsp/mean/center'] = np.average(Depsp[:, :, left: right], weights=Norm[:, :, left: right], axis=(0, 2))
+    data['/depsp/mean/plastic'] = np.average(Depsp, weights=Norm, axis=(0, 2))
+    data['/depsp/mean/crack'] = np.average(Depsp, weights=Moving, axis=(0, 2))
+    data['/depsp/A'] = A
+
+    data['/epspdot/r'] = np.average(Epspdot, weights=Norm_dot, axis=0)
+    data['/epspdot/r'].attrs['norm'] = np.mean(Norm_dot, axis=(0, 2))
+    data['/epspdot/moved'] = np.mean(Moving_dot, axis=0)
+    data['/epspdot/mean/center'] = np.average(Epspdot[:, :, left: right], weights=Norm_dot[:, :, left: right], axis=(0, 2))
+    data['/epspdot/mean/plastic'] = np.average(Epspdot, weights=Norm_dot, axis=(0, 2))
+    data['/epspdot/mean/crack'] = np.average(Epspdot, weights=Moving_dot, axis=(0, 2))
+    data['/epspdot/A'] = A_dot
 
