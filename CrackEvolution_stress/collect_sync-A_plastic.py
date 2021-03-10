@@ -250,21 +250,21 @@ for ifile, file in enumerate(tqdm.tqdm(files)):
             out['2nd']['epspdot'][a, :] += epspdot ** 2.0
             out['2nd']['moved'  ][a, :] += moved ** 2
 
-            moving_average['1st']['sig_xx' ] = np.sum(moved * sig_xx )
-            moving_average['1st']['sig_xy' ] = np.sum(moved * sig_xy )
-            moving_average['1st']['sig_yy' ] = np.sum(moved * sig_yy )
-            moving_average['1st']['S'      ] = np.sum(moved * S      )
-            moving_average['1st']['epsp'   ] = np.sum(moved * epsp   )
-            moving_average['1st']['epspdot'] = np.sum(moved * epspdot)
-            moving_average['1st']['moved'  ] = np.sum(moved * moved  )
+            moving_average['1st']['sig_xx' ][a] = np.sum(moved * sig_xx )
+            moving_average['1st']['sig_xy' ][a] = np.sum(moved * sig_xy )
+            moving_average['1st']['sig_yy' ][a] = np.sum(moved * sig_yy )
+            moving_average['1st']['S'      ][a] = np.sum(moved * S      )
+            moving_average['1st']['epsp'   ][a] = np.sum(moved * epsp   )
+            moving_average['1st']['epspdot'][a] = np.sum(moved * epspdot)
+            moving_average['1st']['moved'  ][a] = np.sum(moved * moved  )
 
-            moving_average['2nd']['sig_xx' ] = np.sum((moved * sig_xx) ** 2.0 )
-            moving_average['2nd']['sig_xy' ] = np.sum((moved * sig_xy) ** 2.0 )
-            moving_average['2nd']['sig_yy' ] = np.sum((moved * sig_yy) ** 2.0 )
-            moving_average['2nd']['S'      ] = np.sum((moved * S) ** 2        )
-            moving_average['2nd']['epsp'   ] = np.sum((moved * epsp) ** 2.0   )
-            moving_average['2nd']['epspdot'] = np.sum((moved * epspdot) ** 2.0)
-            moving_average['2nd']['moved'  ] = np.sum((moved * moved) ** 2    )
+            moving_average['2nd']['sig_xx' ][a] = np.sum((moved * sig_xx) ** 2.0 )
+            moving_average['2nd']['sig_xy' ][a] = np.sum((moved * sig_xy) ** 2.0 )
+            moving_average['2nd']['sig_yy' ][a] = np.sum((moved * sig_yy) ** 2.0 )
+            moving_average['2nd']['S'      ][a] = np.sum((moved * S) ** 2        )
+            moving_average['2nd']['epsp'   ][a] = np.sum((moved * epsp) ** 2.0   )
+            moving_average['2nd']['epspdot'][a] = np.sum((moved * epspdot) ** 2.0)
+            moving_average['2nd']['moved'  ][a] = np.sum((moved * moved) ** 2    )
 
 # ---------------------------------------------
 # select only measurements with sufficient data
