@@ -462,11 +462,13 @@ with h5py.File(output, 'w') as data:
 
     # remove data outside crack
     mid = int((nx - nx % 2) / 2)
+    il = int(mid - 100)
+    iu = int(mid + 100)
     for key in red:
         for field in red[key]:
             red[key][field] = red[key][field].astype(np.float64)
-            red[key][field][i, :(mid - 100)] = 0.
-            red[key][field][i, (mid + 100):] = 0.
+            red[key][field][:, :il] = 0.
+            red[key][field][:, iu:] = 0.
 
     # compute mean
     m_sig_xx  = compute_mean(np.sum(red['1st']['sig_xx' ], axis=1), norm * 200)
