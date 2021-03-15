@@ -461,32 +461,45 @@ with h5py.File(output, 'w') as data:
             red[key][field] = np.array(out[key][field], copy=True)
 
     # remove data outside crack
+    n = np.array(A, copy=True)
     mid = int((nx - nx % 2) / 2)
-    il = int(mid - 100)
-    iu = int(mid + 100)
-    for key in red:
-        for field in red[key]:
-            red[key][field] = red[key][field].astype(np.float64)
-            red[key][field][:, :il] = 0.
-            red[key][field][:, iu:] = 0.
+
+    for i, a in enumerate(A):
+
+        il = int(mid - a / 2)
+        iu = int(mid + a / 2)
+        if iu - il > 200:
+            il = int(mid - 100)
+            iu = int(mid + 100)
+
+        n[i] = iu - il
+
+        for key in red:
+            for field in red[key]:
+                red[key][field] = red[key][field].astype(np.float64)
+                red[key][field][i, :il] = 0.
+                red[key][field][i, iu:] = 0.
+
+    n[n == 0] = 1
+    n = n.astype(np.float64)
 
     # compute mean
-    m_sig_xx  = compute_mean(np.sum(red['1st']['sig_xx' ], axis=1), norm * 200)
-    m_sig_xy  = compute_mean(np.sum(red['1st']['sig_xy' ], axis=1), norm * 200)
-    m_sig_yy  = compute_mean(np.sum(red['1st']['sig_yy' ], axis=1), norm * 200)
-    m_S       = compute_mean(np.sum(red['1st']['S'      ], axis=1), norm * 200)
-    m_epsp    = compute_mean(np.sum(red['1st']['epsp'   ], axis=1), norm * 200)
-    m_epspdot = compute_mean(np.sum(red['1st']['epspdot'], axis=1), norm * 200)
-    m_moved   = compute_mean(np.sum(red['1st']['moved'  ], axis=1), norm * 200)
+    m_sig_xx  = compute_mean(np.sum(red['1st']['sig_xx' ], axis=1), norm * n)
+    m_sig_xy  = compute_mean(np.sum(red['1st']['sig_xy' ], axis=1), norm * n)
+    m_sig_yy  = compute_mean(np.sum(red['1st']['sig_yy' ], axis=1), norm * n)
+    m_S       = compute_mean(np.sum(red['1st']['S'      ], axis=1), norm * n)
+    m_epsp    = compute_mean(np.sum(red['1st']['epsp'   ], axis=1), norm * n)
+    m_epspdot = compute_mean(np.sum(red['1st']['epspdot'], axis=1), norm * n)
+    m_moved   = compute_mean(np.sum(red['1st']['moved'  ], axis=1), norm * n)
 
     # compute variance
-    v_sig_xx  = compute_variance(np.sum(red['1st']['sig_xx' ], axis=1), np.sum(red['2nd']['sig_xx' ], axis=1) , norm * 200)
-    v_sig_xy  = compute_variance(np.sum(red['1st']['sig_xy' ], axis=1), np.sum(red['2nd']['sig_xy' ], axis=1) , norm * 200)
-    v_sig_yy  = compute_variance(np.sum(red['1st']['sig_yy' ], axis=1), np.sum(red['2nd']['sig_yy' ], axis=1) , norm * 200)
-    v_S       = compute_variance(np.sum(red['1st']['S'      ], axis=1), np.sum(red['2nd']['S'      ], axis=1) , norm * 200)
-    v_epsp    = compute_variance(np.sum(red['1st']['epsp'   ], axis=1), np.sum(red['2nd']['epsp'   ], axis=1) , norm * 200)
-    v_epspdot = compute_variance(np.sum(red['1st']['epspdot'], axis=1), np.sum(red['2nd']['epspdot'], axis=1) , norm * 200)
-    v_moved   = compute_variance(np.sum(red['1st']['moved'  ], axis=1), np.sum(red['2nd']['moved'  ], axis=1) , norm * 200)
+    v_sig_xx  = compute_variance(np.sum(red['1st']['sig_xx' ], axis=1), np.sum(red['2nd']['sig_xx' ], axis=1) , norm * n)
+    v_sig_xy  = compute_variance(np.sum(red['1st']['sig_xy' ], axis=1), np.sum(red['2nd']['sig_xy' ], axis=1) , norm * n)
+    v_sig_yy  = compute_variance(np.sum(red['1st']['sig_yy' ], axis=1), np.sum(red['2nd']['sig_yy' ], axis=1) , norm * n)
+    v_S       = compute_variance(np.sum(red['1st']['S'      ], axis=1), np.sum(red['2nd']['S'      ], axis=1) , norm * n)
+    v_epsp    = compute_variance(np.sum(red['1st']['epsp'   ], axis=1), np.sum(red['2nd']['epsp'   ], axis=1) , norm * n)
+    v_epspdot = compute_variance(np.sum(red['1st']['epspdot'], axis=1), np.sum(red['2nd']['epspdot'], axis=1) , norm * n)
+    v_moved   = compute_variance(np.sum(red['1st']['moved'  ], axis=1), np.sum(red['2nd']['moved'  ], axis=1) , norm * n)
 
     # store
     store(data, 'center',

@@ -84,6 +84,7 @@ plas_epsp = np.zeros(plas_shape, dtype='float')
 plas_epspdot = np.zeros(plas_shape, dtype='float')
 
 pbar = tqdm.tqdm(files)
+nfiles = 0
 
 dstep = 10 # with storage every 500 increments this corresponds roughly to dA = 50 during nucleation
 astep = 50
@@ -113,6 +114,8 @@ for ifile, file in enumerate(pbar):
 
         if "/sync-t/stored" not in data:
             continue
+
+        nfiles += 1
 
         A = data["/sync-A/stored"][...]
         T = data["/sync-t/global/iiter"][...]
@@ -205,7 +208,8 @@ plas_epspdot = plas_epspdot[:, :imax, :] / eps0 / (dt / t0)
 with h5py.File(output, 'w') as data:
 
     data['/meta/versions/{0:s}'.format(os.path.basename(__file__))] = get_version(root='..', relative_to=__file__)
-    data['/glob_norm'] = np.mean(glob_norm, axis=0)
+    data['/glob_norm'] = np.sum(glob_norm, axis=0) / float(nfiles)
+    data['/glob_norm'].attrs['nfiles'] = nfiles
     data['/plastic/r/sig_xx'] = np.average(plas_sig_xx, weights=plas_norm, axis=0)
     data['/plastic/r/sig_xy'] = np.average(plas_sig_xy, weights=plas_norm, axis=0)
     data['/plastic/r/sig_yy'] = np.average(plas_sig_yy, weights=plas_norm, axis=0)
