@@ -186,6 +186,7 @@ def main():
                     sig_yy = mapping.mapToRegular(Sig[:, 1, 1])[get]
 
                     print(sig_xx.shape)
+                    print(refine.nelem())
                     print(refine.meanToCoarse(sig_xx).shape)
 
                     sig_xx = refine.meanToCoarse(sig_xx).reshape(coarse.nely(), -1)
