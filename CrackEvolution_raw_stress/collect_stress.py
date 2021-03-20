@@ -185,13 +185,9 @@ def main():
                     sig_xy = mapping.mapToRegular(Sig[:, 0, 1])[get]
                     sig_yy = mapping.mapToRegular(Sig[:, 1, 1])[get]
 
-                    print(sig_xx.shape)
-                    print(fine.nelem())
-                    print(refine.meanToCoarse(sig_xx).shape)
-
                     sig_xx = refine.meanToCoarse(sig_xx).reshape(coarse.nely(), -1)
-                    sig_xy = refine.meanToCoarse(sig_xx).reshape(coarse.nely(), -1)
-                    sig_yy = refine.meanToCoarse(sig_xx).reshape(coarse.nely(), -1)
+                    sig_xy = refine.meanToCoarse(sig_xy).reshape(coarse.nely(), -1)
+                    sig_yy = refine.meanToCoarse(sig_yy).reshape(coarse.nely(), -1)
 
                     m_sig_xx[i].add_sample(sig_xx)
                     m_sig_xy[i].add_sample(sig_xy)
