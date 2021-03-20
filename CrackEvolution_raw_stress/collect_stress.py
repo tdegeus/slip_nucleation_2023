@@ -176,7 +176,7 @@ def main():
                         continue
 
                     system.setU(data["/sync-A/{0:d}/u".format(A)][...])
-                    Sig = np.average(system.Sig(), weights=dV)
+                    Sig = np.average(system.Sig(), weights=dV, axis=1)
                     idx = system.plastic_CurrentIndex()[:, 0]
                     renum = renumber(np.argwhere(idx0 != idx).ravel(), N)
                     get = elmat[:, renum].ravel()
