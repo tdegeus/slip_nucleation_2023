@@ -185,9 +185,9 @@ def main():
                     sig_xy = mapping.mapToRegular(Sig[:, 0, 1])[get]
                     sig_yy = mapping.mapToRegular(Sig[:, 1, 1])[get]
 
-                    sig_xx = np.linalg.norm(refine.meanToCoarse(sig_xx), axis=1).reshape(coarse.nely(), -1)
-                    sig_xy = np.linalg.norm(refine.meanToCoarse(sig_xx), axis=1).reshape(coarse.nely(), -1)
-                    sig_yy = np.linalg.norm(refine.meanToCoarse(sig_xx), axis=1).reshape(coarse.nely(), -1)
+                    sig_xx = refine.meanToCoarse(sig_xx).reshape(coarse.nely(), -1)
+                    sig_xy = refine.meanToCoarse(sig_xx).reshape(coarse.nely(), -1)
+                    sig_yy = refine.meanToCoarse(sig_xx).reshape(coarse.nely(), -1)
 
                     m_sig_xx[i].add_sample(sig_xx)
                     m_sig_xy[i].add_sample(sig_xy)
