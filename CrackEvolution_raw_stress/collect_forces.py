@@ -31,6 +31,7 @@ import tqdm
 from FrictionQPotFEM.UniformSingleLayer2d import HybridSystem
 from setuptools_scm import get_version
 
+
 # https://en.wikipedia.org/wiki/Center_of_mass#Systems_with_periodic_boundary_conditions
 
 def center_of_mass(x, L):
