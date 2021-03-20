@@ -111,7 +111,8 @@ def main():
             coor = system.coor()
             conn = system.conn()
             vector = system.vector()
-            dV = gf.AsTensor(2, system.dV())
+            quad = system.quad()
+            dV = quad.AsTensor(2, system.dV())
             is_p = vector.dofs_is_p()
 
             mesh = gf.Mesh.Quad4.FineLayer(coor, conn)
