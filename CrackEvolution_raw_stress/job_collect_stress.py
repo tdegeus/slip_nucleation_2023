@@ -13,7 +13,7 @@ conda activate code_collect_s6g1
 {command:s}
 '''
 
-fbase = "job_collect_forces"
+fbase = "job_collect_stress"
 cmd = [
     "python ../collect_stress.py --force -i ../../../data/nx=3\^6x2/EnsembleInfo.hdf5 -o out_collect_stress_stress=0d6.hdf5 list_stress=0d6.yaml",
     "python ../collect_stress.py --force -i ../../../data/nx=3\^6x2/EnsembleInfo.hdf5 -o out_collect_stress_stress=1d6.hdf5 list_stress=1d6.yaml",
