@@ -160,10 +160,10 @@ def main():
 
                 if ifile == 0:
                     m_A = np.linspace(200, N - N % 100, 13).astype(np.int64)
-                    m_t = [enstat.mean.Scalar() for A in m_A]
                     m_sig_xx = [enstat.mean.StaticNd() for A in m_A]
                     m_sig_xy = [enstat.mean.StaticNd() for A in m_A]
                     m_sig_yy = [enstat.mean.StaticNd() for A in m_A]
+                    m_t = [enstat.mean.Scalar() for A in m_A]
                     m_S = [enstat.mean.StaticNd() for A in m_A]
 
                 stored = data["/sync-A/stored"][...]
@@ -192,6 +192,11 @@ def main():
                     m_sig_xx[i].add_sample(sig_xx)
                     m_sig_xy[i].add_sample(sig_xy)
                     m_sig_yy[i].add_sample(sig_yy)
+                    
+                    S = (idx.astype(np.int64) - idx0.astype(np.int64))[renum]
+                    S = np.mean(S.reshape(-1, 6), axis=1)
+                    m_S[i].add_sample(S)
+                    m_t[i].add_sample(iiter[A])
 
         # store
 
