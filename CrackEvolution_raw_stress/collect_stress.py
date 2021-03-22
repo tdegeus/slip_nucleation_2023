@@ -149,6 +149,7 @@ def main():
                 uuid = data["/meta/uuid"].asstr()[...]
                 idname = "id={0:03d}.hdf5".format(idnum)
                 system = LoadSystem(os.path.join(source_dir, idname), uuid)
+                iiter = data["/sync-A/global/iiter"][...]
 
                 if ifile == 0:
                     if "/meta/versions/CrackEvolution_raw_stress" not in data:
