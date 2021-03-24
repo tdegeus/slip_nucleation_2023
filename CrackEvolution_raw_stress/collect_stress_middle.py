@@ -124,7 +124,7 @@ def main():
 
     fine = mapping.getRegularMesh()
     elmat = fine.elementgrid()
-    mid = int((mid - mid % 2) / 2)
+    mid = int((N - N % 2) / 2)
 
     # Ensemble average
 
