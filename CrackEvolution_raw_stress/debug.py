@@ -144,9 +144,12 @@ def main():
                 system.setU(data["/sync-A/{0:d}/u".format(np.min(stored))][...])
                 idx0 = system.plastic_CurrentIndex()[:, 0]
 
-                for i, A in enumerate(tqdm.tqdm(m_A)):
+                for i, A in enumerate(stored):
 
                     if A not in stored:
+                        continue
+
+                    if A != 0:
                         continue
 
                     system.setU(data["/sync-A/{0:d}/u".format(A)][...])
