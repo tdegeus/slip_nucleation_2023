@@ -110,6 +110,7 @@ def main():
             system = LoadSystem(os.path.join(source_dir, idname), uuid)
             plastic = system.plastic()
             N = plastic.size
+            mid = int((N - N % 2) / 2)
             assert np.all(np.equal(plastic, data['/meta/plastic'][...]))
 
             M = system.mass().Todiagonal()
