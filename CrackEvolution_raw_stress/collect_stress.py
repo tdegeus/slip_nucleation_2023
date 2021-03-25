@@ -83,14 +83,19 @@ def main():
 
     source = args['<files.yaml>']
     key = list(filter(None, args['--key'].split('/')))
-    files = shelephant.YamlGetItem(source, key)
+    files = shelephant.yaml.read_item(source, key)
     assert len(files) > 0
     info = args['--info']
     output = args['--output']
     source_dir = os.path.dirname(info)
 
-    shelephant.CheckAllIsFile(files + [info])
-    shelephant.OverWrite(output, args['--force'])
+    shelephant.path.check_allisfile(files + [info])
+    shelephant.path.overwrite(output, args['--force'])
+
+    # Read normalisation
+
+    with h5py.File(info, "r") as data:
+        sig0 = data["/normalisation/sig0"][...]
 
     # Define mapping (same for all input)
 
@@ -136,6 +141,8 @@ def main():
         out['/coarse/nely'] = coarse.nely()
         out['/coarse/Lx'] = coarse.nelx() * 6 * coarse.h()
         out['/coarse/Ly'] = coarse.nely() * 3 * coarse.h()
+        out['/center/nely'] = fine.nely()
+        out['/center/h'] = fine.h()
         out['/mesh/h'] = mesh.h()
         out['/mesh/nelx'] = mesh.nelx()
         out['/mesh/nely'] = mesh.nely()
@@ -160,12 +167,15 @@ def main():
                 # ensemble average different "A"
 
                 if ifile == 0:
-                    m_A = np.linspace(200, N - N % 100, 13).astype(np.int64)
-                    m_sig_xx = [enstat.mean.StaticNd() for A in m_A]
-                    m_sig_xy = [enstat.mean.StaticNd() for A in m_A]
-                    m_sig_yy = [enstat.mean.StaticNd() for A in m_A]
+                    m_A = np.linspace(0, N - N % 100, 15).astype(np.int64)
+                    m_i_sig_xx = [enstat.mean.StaticNd() for A in m_A]
+                    m_i_sig_xy = [enstat.mean.StaticNd() for A in m_A]
+                    m_i_sig_yy = [enstat.mean.StaticNd() for A in m_A]
+                    m_c_sig_xx = [enstat.mean.StaticNd() for A in m_A]
+                    m_c_sig_xy = [enstat.mean.StaticNd() for A in m_A]
+                    m_c_sig_yy = [enstat.mean.StaticNd() for A in m_A]
+                    m_c_S = [enstat.mean.StaticNd() for A in m_A]
                     m_t = [enstat.mean.Scalar() for A in m_A]
-                    m_S = [enstat.mean.StaticNd() for A in m_A]
 
                 stored = data["/sync-A/stored"][...]
                 system.setU(data["/sync-A/{0:d}/u".format(np.min(stored))][...])
@@ -181,22 +191,23 @@ def main():
                     idx = system.plastic_CurrentIndex()[:, 0]
                     renum = renumber(np.argwhere(idx0 != idx).ravel(), N)
                     get = elmat[:, renum].ravel()
+                    select = elmat[:, mid].ravel()
 
-                    sig_xx = mapping.mapToRegular(Sig[:, 0, 0])[get]
-                    sig_xy = mapping.mapToRegular(Sig[:, 0, 1])[get]
-                    sig_yy = mapping.mapToRegular(Sig[:, 1, 1])[get]
+                    sig_xx = mapping.mapToRegular(Sig[:, 0, 0])[get] / sig0
+                    sig_xy = mapping.mapToRegular(Sig[:, 0, 1])[get] / sig0
+                    sig_yy = mapping.mapToRegular(Sig[:, 1, 1])[get] / sig0
 
-                    sig_xx = refine.meanToCoarse(sig_xx).reshape(coarse.nely(), -1)
-                    sig_xy = refine.meanToCoarse(sig_xy).reshape(coarse.nely(), -1)
-                    sig_yy = refine.meanToCoarse(sig_yy).reshape(coarse.nely(), -1)
+                    m_c_sig_xx[i].add_sample(refine.meanToCoarse(sig_xx).reshape(coarse.nely(), -1))
+                    m_c_sig_xy[i].add_sample(refine.meanToCoarse(sig_xy).reshape(coarse.nely(), -1))
+                    m_c_sig_yy[i].add_sample(refine.meanToCoarse(sig_yy).reshape(coarse.nely(), -1))
 
-                    m_sig_xx[i].add_sample(sig_xx)
-                    m_sig_xy[i].add_sample(sig_xy)
-                    m_sig_yy[i].add_sample(sig_yy)
-                    
+                    m_i_sig_xx[i].add_sample(sig_xx[select])
+                    m_i_sig_xy[i].add_sample(sig_xy[select])
+                    m_i_sig_yy[i].add_sample(sig_yy[select])
+
                     S = (idx.astype(np.int64) - idx0.astype(np.int64))[renum]
                     S = np.mean(S.reshape(-1, 6), axis=1)
-                    m_S[i].add_sample(S)
+                    m_c_S[i].add_sample(S)
                     m_t[i].add_sample(iiter[A])
 
         # store
@@ -205,10 +216,13 @@ def main():
 
         for i, A in enumerate(m_A):
 
-            out['/{0:d}/sig_xx'.format(A)] = m_sig_xx[i].mean()
-            out['/{0:d}/sig_xy'.format(A)] = m_sig_xx[i].mean()
-            out['/{0:d}/sig_yy'.format(A)] = m_sig_yy[i].mean()
-            out['/{0:d}/S'.format(A)] = m_S[i].mean()
+            out['/{0:d}/center/sig_xx'.format(A)] = m_i_sig_xx[i].mean()
+            out['/{0:d}/center/sig_xy'.format(A)] = m_i_sig_xy[i].mean()
+            out['/{0:d}/center/sig_yy'.format(A)] = m_i_sig_yy[i].mean()
+            out['/{0:d}/coarse/sig_xx'.format(A)] = m_c_sig_xx[i].mean()
+            out['/{0:d}/coarse/sig_xy'.format(A)] = m_c_sig_xy[i].mean()
+            out['/{0:d}/coarse/sig_yy'.format(A)] = m_c_sig_yy[i].mean()
+            out['/{0:d}/coarse/S'.format(A)] = m_c_S[i].mean()
             out['/{0:d}/iiter'.format(A)] = m_t[i].mean()
 
         try:

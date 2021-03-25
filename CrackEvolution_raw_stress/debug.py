@@ -29,7 +29,37 @@ from FrictionQPotFEM.UniformSingleLayer2d import HybridSystem
 from setuptools_scm import get_version
 
 
+import matplotlib.pyplot as plt
+import GooseMPL as gplt
+import cppcolormap as cm
+
+plt.style.use(['goose', 'goose-latex'])
+
+
 # https://en.wikipedia.org/wiki/Center_of_mass#Systems_with_periodic_boundary_conditions
+
+def center_of_mass(x, L):
+
+    if np.allclose(x, 0):
+        return 0
+
+    theta = 2.0 * np.pi * x / L
+    xi = np.cos(theta)
+    zeta = np.sin(theta)
+    xi_bar = np.mean(xi)
+    zeta_bar = np.mean(zeta)
+    theta_bar = np.arctan2(-zeta_bar, -xi_bar) + np.pi
+    return L * theta_bar / (2.0 * np.pi)
+
+
+def renumber(x, L):
+
+    center = center_of_mass(x, L)
+    N = int(L)
+    M = int((N - N % 2) / 2)
+    C = int(center)
+    return np.roll(np.arange(N), M - C)
+
 
 
 def LoadSystem(filename, uuid):
@@ -61,14 +91,19 @@ def main():
 
     source = args['<files.yaml>']
     key = list(filter(None, args['--key'].split('/')))
-    files = shelephant.YamlGetItem(source, key)
+    files = shelephant.yaml.read_item(source, key)
     assert len(files) > 0
     info = args['--info']
     output = args['--output']
     source_dir = os.path.dirname(info)
 
-    shelephant.CheckAllIsFile(files + [info])
-    shelephant.OverWrite(output, args['--force'])
+    shelephant.path.check_allisfile(files + [info])
+    shelephant.path.overwrite(output, args['--force'])
+    
+    # Read normalisation
+
+    with h5py.File(info, "r") as data:
+        sig0 = data["/normalisation/sig0"][...]
 
     # Define mapping (same for all input)
 
@@ -133,43 +168,63 @@ def main():
 
                 # ensemble average different "A"
 
-                # if ifile == 0:
-                #     m_A = np.linspace(0, N - N % 100, 15).astype(np.int64)
-                #     m_sig_xx = [enstat.mean.StaticNd() for A in m_A]
-                #     m_sig_xy = [enstat.mean.StaticNd() for A in m_A]
-                #     m_sig_yy = [enstat.mean.StaticNd() for A in m_A]
-                #     m_t = [enstat.mean.Scalar() for A in m_A]
+                if ifile == 0:
+                    m_A = np.linspace(0, N - N % 100, 15).astype(np.int64)
+                    m_sig_xx = [enstat.mean.StaticNd() for A in m_A]
+                    m_sig_xy = [enstat.mean.StaticNd() for A in m_A]
+                    m_sig_yy = [enstat.mean.StaticNd() for A in m_A]
+                    m_t = [enstat.mean.Scalar() for A in m_A]
 
                 stored = data["/sync-A/stored"][...]
                 system.setU(data["/sync-A/{0:d}/u".format(np.min(stored))][...])
                 idx0 = system.plastic_CurrentIndex()[:, 0]
 
-                for i, A in enumerate(stored):
+                for i, A in enumerate(m_A):
 
                     if A not in stored:
                         continue
 
-                    if A != 0:
+                    print(A)
+
+                    if A != 100:
                         continue
 
                     system.setU(data["/sync-A/{0:d}/u".format(A)][...])
                     Sig = np.average(system.Sig(), weights=dV, axis=1)
                     idx = system.plastic_CurrentIndex()[:, 0]
                     renum = renumber(np.argwhere(idx0 != idx).ravel(), N)
-                    # get = elmat[:, renum].ravel()
-                    # select = elmat[:, mid].ravel()
+                    get = elmat[:, renum].ravel()
+                    select = elmat[:, mid].ravel()
 
-                    sig_xx = mapping.mapToRegular(Sig[:, 0, 0]).reshape(fine.nely(), fine.nelx())
-                    sig_xy = mapping.mapToRegular(Sig[:, 0, 1]).reshape(fine.nely(), fine.nelx())
-                    sig_yy = mapping.mapToRegular(Sig[:, 1, 1]).reshape(fine.nely(), fine.nelx())
+                    sig_xx = mapping.mapToRegular(Sig[:, 0, 0])[get].reshape(fine.nely(), fine.nelx()) / sig0
+                    sig_xy = mapping.mapToRegular(Sig[:, 0, 1])[get].reshape(fine.nely(), fine.nelx()) / sig0
+                    sig_yy = mapping.mapToRegular(Sig[:, 1, 1])[get].reshape(fine.nely(), fine.nelx()) / sig0
+
+                    i_sig_xx = mapping.mapToRegular(Sig[:, 0, 0])[get][select] / sig0
+                    i_sig_xy = mapping.mapToRegular(Sig[:, 0, 1])[get][select] / sig0
+                    i_sig_yy = mapping.mapToRegular(Sig[:, 1, 1])[get][select] / sig0
 
                     assert sig_xy.shape == elmat.shape
 
-                    out['sig_xx'] = sig_xx
-                    out['sig_xy'] = sig_xy
-                    out['sig_yy'] = sig_yy
+                    print(i)
 
-                    return 0
+                    m_sig_xx[i].add_sample(i_sig_xx)
+                    m_sig_xy[i].add_sample(i_sig_xy)
+                    m_sig_yy[i].add_sample(i_sig_yy)
+
+                    # print(file)
+
+
+                    # out['sig_xx'] = sig_xx
+                    # out['sig_xy'] = sig_xy
+                    # out['sig_yy'] = sig_yy
+
+        fig, axes = gplt.subplots(ncols=2)
+        axes[0].imshow(sig_xy, clim=(0, 0.2))
+        axes[1].plot(np.linspace(0, 1, i_sig_xy.size), m_sig_xy[1].mean())
+        plt.show()
+
+        return 0
 
 #                     m_sig_xx[i].add_sample(sig_xx)
 #                     m_sig_xy[i].add_sample(sig_xy)
