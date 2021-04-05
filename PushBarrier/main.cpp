@@ -1,5 +1,6 @@
 
 #include <FrictionQPotFEM/UniformSingleLayer2d.h>
+#include <GMatElastoPlasticQPot/Cartesian2d.h>
 #include <GooseFEM/GooseFEM.h>
 #include <highfive/H5Easy.hpp>
 #include <fmt/core.h>
@@ -7,10 +8,6 @@
 #include <docopt/docopt.h>
 #include <cstdio>
 #include <ctime>
-
-#ifndef GIT_COMMIT_HASH
-#define GIT_COMMIT_HASH "?"
-#endif
 
 #define MYASSERT(expr) MYASSERT_IMPL(expr, __FILE__, __LINE__)
 #define MYASSERT_IMPL(expr, file, line) \
@@ -21,6 +18,23 @@
     }
 
 namespace FQF = FrictionQPotFEM::UniformSingleLayer2d;
+namespace GM = GMatElastoPlasticQPot::Cartesian2d;
+
+
+static const char USAGE[] =
+    R"(PushBarrier
+    Push an element with the i-th lowest barrier.
+
+Usage:
+    PushBarrier [options] <input> <output>
+
+Options:
+    -h, --help      Show help.
+        --version   Show version.
+
+(c) Tom de Geus
+)";
+
 
 template <class T>
 inline void dump_check(H5Easy::File& file, const std::string& key, const T& data)
@@ -33,13 +47,14 @@ inline void dump_check(H5Easy::File& file, const std::string& key, const T& data
     }
 }
 
-class Main : public FQF::HybridSystem {
+
+class Main : public FQF::System {
 
 private:
 
     FQF::LocalTriggerFineLayer m_trigger;
     H5Easy::File m_file;
-    GooseFEM::Iterate::StopList m_stop = GF::Iterate::StopList(20);
+    GooseFEM::Iterate::StopList m_stop = GooseFEM::Iterate::StopList(20);
     size_t m_inc;
     double m_deps_kick;
 
@@ -47,7 +62,7 @@ public:
 
     Main(const std::string& fname) : m_file(fname, H5Easy::File::ReadWrite)
     {
-        this->initHybridSystem(
+        this->init(
             H5Easy::load<xt::xtensor<double, 2>>(m_file, "/coor"),
             H5Easy::load<xt::xtensor<size_t, 2>>(m_file, "/conn"),
             H5Easy::load<xt::xtensor<size_t, 2>>(m_file, "/dofs"),
@@ -305,17 +320,16 @@ public:
         this->computeStress();
         xt::noalias(Sig_bar) = xt::average(m_Sig, dV, {0, 1});
 
-        std::string hash = GIT_COMMIT_HASH;
-        dump_check(m_file, "/git/PushBarrier", hash);
-        dump_check(m_file, "/version/PushBarrier", FQF::versionInfo());
+        dump_check(m_file, "/git/PushBarrier", std::string(MYVERSION));
+        dump_check(m_file, "/version/PushBarrier", FQF::version_dependencies());
 
         H5Easy::dump(m_file, "/stored", m_inc, {m_inc});
         H5Easy::dump(m_file, "/t", m_t, {m_inc});
         H5Easy::dump(m_file, "/sigd", GM::Sigd(Sig_bar)(), {m_inc});
         H5Easy::dump(m_file, fmt::format("/disp/{0:d}", m_inc), m_u);
 
-        dump_check(data, "/git/PushBarrier", hash);
-        dump_check(data, "/version/PushBarrier", FQF::versionInfo());
+        dump_check(data, "/git/PushBarrier", std::string(MYVERSION));
+        dump_check(data, "/version/PushBarrier", FQF::version_dependencies());
 
         H5Easy::dump(data, "/meta/completed", 1);
         H5Easy::dump(data, "/meta/uuid", H5Easy::load<std::string>(m_file, "/uuid"));
@@ -329,26 +343,11 @@ public:
     }
 };
 
-static const char USAGE[] =
-    R"(PushBarrier
-    Push an element with the i-th lowest barrier.
-
-Usage:
-    PushBarrier [options] <input> <output>
-
-Options:
-    -h, --help      Show help.
-        --version   Show version.
-
-(c) Tom de Geus
-)";
 
 int main(int argc, const char** argv)
 {
-    std::string hash = GIT_COMMIT_HASH;
-
     std::map<std::string, docopt::value> args =
-        docopt::docopt(USAGE, {argv + 1, argv + argc}, true, hash);
+        docopt::docopt(USAGE, {argv + 1, argv + argc}, true, std::string(MYVERSION));
 
     std::string output = args["<output>"].asString();
     std::string input = args["<input>"].asString();
