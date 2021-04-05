@@ -1,25 +1,11 @@
 
+#include <FrictionQPotFEM/UniformSingleLayer2d.h>
 #include <GMatElastoPlasticQPot/Cartesian2d.h>
 #include <GooseFEM/GooseFEM.h>
+#include <highfive/H5Easy.hpp>
+#include <fmt/core.h>
 #include <cpppath.h>
 #include <docopt/docopt.h>
-#include <fmt/core.h>
-#include <highfive/H5Easy.hpp>
-#include <xtensor-blas/xlinalg.hpp>
-#include <xtensor/xio.hpp>
-#include <xtensor/xstrides.hpp>
-#include <xtensor/xview.hpp>
-
-
-#ifndef GIT_COMMIT_HASH
-#define GIT_COMMIT_HASH "?"
-#endif
-
-
-namespace GF = GooseFEM;
-namespace QD = GooseFEM::Element::Quad4;
-namespace GM = GMatElastoPlasticQPot::Cartesian2d;
-
 
 #define MYASSERT(expr) MYASSERT_IMPL(expr, __FILE__, __LINE__)
 #define MYASSERT_IMPL(expr, file, line) \
@@ -29,334 +15,97 @@ namespace GM = GMatElastoPlasticQPot::Cartesian2d;
             ": assertion failed (" #expr ") \n\t"); \
     }
 
+namespace FQF = FrictionQPotFEM::UniformSingleLayer2d;
+namespace GM = GMatElastoPlasticQPot::Cartesian2d;
 
-class Main {
+
+static const char USAGE[] =
+    R"(EventEvolution_strain
+  Extract evolution of a specific push.
+
+Usage:
+  EventEvolution_strain [options] --output=N --element=N --file=N --incc=N
+
+Arguments:
+      --output=N      Path of the output file (overwritten).
+      --element=N     Element to push.
+      --file=N        The path to the simulation file (read-only).
+      --incc=N        Increment number of the system-spanning avalanche.
+
+Options:
+  -h, --help          Show help.
+      --version       Show version.
+
+(c) Tom de Geus
+)";
+
+
+class Main : public FQF::System {
 
 private:
 
-    // input/output file
     H5Easy::File m_file;
-
-    // mesh parameters
-    xt::xtensor<size_t, 2> m_conn;
-    xt::xtensor<double, 2> m_coor;
-    xt::xtensor<size_t, 2> m_dofs;
-    xt::xtensor<size_t, 1> m_iip;
-
-    // mesh dimensions
-    size_t m_nelem;
-    size_t m_nne;
-    size_t m_nnode;
-    size_t m_ndim;
-    size_t m_nip;
-
-    // numerical quadrature
-    QD::Quadrature m_quad;
-
-    // convert vectors between 'nodevec', 'elemvec', ...
-    GF::VectorPartitioned m_vector;
-
-    // mass matrix
-    GF::MatrixDiagonalPartitioned m_M;
-
-    // damping matrix
-    GF::MatrixDiagonal m_D;
-
-    // material definition
-    GM::Array<2> m_material;
-
-    // convergence check
-    GF::Iterate::StopList m_stop = GF::Iterate::StopList(20);
-
-    // time evolution
-    double m_t = 0.0;   // current time
-    double m_dt;        // time step
-
-    // event-driven settings
-    size_t m_inc = 0;                 // current increment
-    double m_deps_kick;               // equivalent strain increment
-    xt::xtensor<size_t, 1> m_plastic; // plastic elements
-
-    // nodal displacements, velocities, and accelerations (current and last time-step)
-    xt::xtensor<double, 2> m_u;
-    xt::xtensor<double, 2> m_v;
-    xt::xtensor<double, 2> m_a;
-    xt::xtensor<double, 2> m_v_n;
-    xt::xtensor<double, 2> m_a_n;
-
-    // element vectors
-    xt::xtensor<double, 3> m_ue;
-    xt::xtensor<double, 3> m_fe;
-
-    // nodal forces
-    xt::xtensor<double, 2> m_felas;
-    xt::xtensor<double, 2> m_fdamp;
-    xt::xtensor<double, 2> m_fint;
-    xt::xtensor<double, 2> m_fext;
-    xt::xtensor<double, 2> m_fres;
-
-    // integration point tensors
-    xt::xtensor<double, 4> m_Eps;
-    xt::xtensor<double, 4> m_Sig;
+    GooseFEM::Iterate::StopList m_stop = GooseFEM::Iterate::StopList(20);
+    size_t m_inc;
+    double m_deps_kick;
 
 public:
 
     Main(const std::string& fname) : m_file(fname, H5Easy::File::ReadOnly)
     {
-        readMesh();
-        setMass();
-        setDamping();
-        setMaterial();
-        readParameters();
-        computeStrainStress();
-    }
+        this->init(
+            H5Easy::load<xt::xtensor<double, 2>>(m_file, "/coor"),
+            H5Easy::load<xt::xtensor<size_t, 2>>(m_file, "/conn"),
+            H5Easy::load<xt::xtensor<size_t, 2>>(m_file, "/dofs"),
+            H5Easy::load<xt::xtensor<size_t, 1>>(m_file, "/dofsP"),
+            H5Easy::load<xt::xtensor<size_t, 1>>(m_file, "/elastic/elem"),
+            H5Easy::load<xt::xtensor<size_t, 1>>(m_file, "/cusp/elem"));
 
-public:
+        this->setMassMatrix(H5Easy::load<xt::xtensor<double, 1>>(m_file, "/rho"));
+        this->setDampingMatrix(H5Easy::load<xt::xtensor<double, 1>>(m_file, "/damping/alpha"));
 
-    void readParameters()
-    {
-        m_dt = H5Easy::load<double>(m_file, "/run/dt");
+        this->setElastic(
+            H5Easy::load<xt::xtensor<double, 1>>(m_file, "/elastic/K"),
+            H5Easy::load<xt::xtensor<double, 1>>(m_file, "/elastic/G"));
+
+        this->setPlastic(
+            H5Easy::load<xt::xtensor<double, 1>>(m_file, "/cusp/K"),
+            H5Easy::load<xt::xtensor<double, 1>>(m_file, "/cusp/G"),
+            H5Easy::load<xt::xtensor<double, 2>>(m_file, "/cusp/epsy"));
+
+        this->setDt(H5Easy::load<double>(m_file, "/run/dt"));
+
         m_deps_kick = H5Easy::load<double>(m_file, "/run/epsd/kick");
     }
 
 public:
 
-    void readMesh()
-    {
-        m_conn = H5Easy::load<decltype(m_conn)>(m_file, "/conn");
-        m_coor = H5Easy::load<decltype(m_coor)>(m_file, "/coor");
-        m_dofs = H5Easy::load<decltype(m_dofs)>(m_file, "/dofs");
-        m_iip = H5Easy::load<decltype(m_iip)>(m_file, "/dofsP");
-
-        m_nnode = m_coor.shape(0);
-        m_ndim = m_coor.shape(1);
-        m_nelem = m_conn.shape(0);
-        m_nne = m_conn.shape(1);
-
-        m_vector = GF::VectorPartitioned(m_conn, m_dofs, m_iip);
-
-        m_quad = QD::Quadrature(m_vector.AsElement(m_coor));
-        m_nip = m_quad.nip();
-
-        m_u = xt::zeros<double>(m_coor.shape());
-        m_v = xt::zeros<double>(m_coor.shape());
-        m_a = xt::zeros<double>(m_coor.shape());
-        m_v_n = xt::zeros<double>(m_coor.shape());
-        m_a_n = xt::zeros<double>(m_coor.shape());
-
-        m_ue = xt::zeros<double>({m_nelem, m_nne, m_ndim});
-        m_fe = xt::zeros<double>({m_nelem, m_nne, m_ndim});
-
-        m_felas = xt::zeros<double>(m_coor.shape());
-        m_fdamp = xt::zeros<double>(m_coor.shape());
-        m_fint = xt::zeros<double>(m_coor.shape());
-        m_fext = xt::zeros<double>(m_coor.shape());
-        m_fres = xt::zeros<double>(m_coor.shape());
-
-        m_Eps = xt::zeros<double>({m_nelem, m_nip, m_ndim, m_ndim});
-        m_Sig = xt::zeros<double>({m_nelem, m_nip, m_ndim, m_ndim});
-    }
-
-public:
-
-    void setMass()
-    {
-        m_M = GF::MatrixDiagonalPartitioned(m_conn, m_dofs, m_iip);
-
-        auto x = m_vector.AsElement(m_coor);
-
-        QD::Quadrature nodalQuad(x, QD::Nodal::xi(), QD::Nodal::w());
-
-        auto val_elem = H5Easy::load<xt::xtensor<double, 1>>(m_file, "/rho");
-
-        MYASSERT(val_elem.size() == m_nelem);
-
-        xt::xtensor<double, 2> val_quad = xt::empty<double>({m_nelem, nodalQuad.nip()});
-
-        for (size_t q = 0; q < nodalQuad.nip(); ++q) {
-            xt::view(val_quad, xt::all(), q) = val_elem;
-        }
-
-        m_M.assemble(nodalQuad.Int_N_scalar_NT_dV(val_quad));
-    }
-
-public:
-
-    void setDamping()
-    {
-        m_D = GF::MatrixDiagonal(m_conn, m_dofs);
-
-        auto x = m_vector.AsElement(m_coor);
-
-        QD::Quadrature nodalQuad(x, QD::Nodal::xi(), QD::Nodal::w());
-
-        auto val_elem = H5Easy::load<xt::xtensor<double, 1>>(m_file, "/damping/alpha");
-
-        MYASSERT(val_elem.size() == m_nelem);
-
-        xt::xtensor<double, 2> val_quad = xt::empty<double>({m_nelem, nodalQuad.nip()});
-
-        for (size_t q = 0; q < nodalQuad.nip(); ++q) {
-            xt::view(val_quad, xt::all(), q) = val_elem;
-        }
-
-        m_D.assemble(nodalQuad.Int_N_scalar_NT_dV(val_quad));
-    }
-
-public:
-
-    void setMaterial()
-    {
-        m_material = GM::Array<2>({m_nelem, m_nip});
-
-        {
-            auto elem = H5Easy::load<xt::xtensor<size_t, 1>>(m_file, "/elastic/elem");
-            auto k = H5Easy::load<xt::xtensor<double, 1>>(m_file, "/elastic/K");
-            auto g = H5Easy::load<xt::xtensor<double, 1>>(m_file, "/elastic/G");
-
-            xt::xtensor<size_t, 2> I = xt::zeros<size_t>({m_nelem, m_nip});
-            xt::xtensor<size_t, 2> idx = xt::zeros<size_t>({m_nelem, m_nip});
-
-            xt::view(I, xt::keep(elem), xt::all()) = 1ul;
-
-            for (size_t q = 0; q < m_nip; ++q) {
-                xt::view(idx, xt::keep(elem), q) = xt::arange<size_t>(elem.size());
-            }
-
-            m_material.setElastic(I, idx, k, g);
-        }
-
-        {
-            auto elem = H5Easy::load<xt::xtensor<size_t, 1>>(m_file, "/cusp/elem");
-            auto k = H5Easy::load<xt::xtensor<double, 1>>(m_file, "/cusp/K");
-            auto g = H5Easy::load<xt::xtensor<double, 1>>(m_file, "/cusp/G");
-            auto y = H5Easy::load<xt::xtensor<double, 2>>(m_file, "/cusp/epsy");
-
-            xt::xtensor<size_t, 2> I = xt::zeros<size_t>({m_nelem, m_nip});
-            xt::xtensor<size_t, 2> idx = xt::zeros<size_t>({m_nelem, m_nip});
-
-            xt::view(I, xt::keep(elem), xt::all()) = 1ul;
-
-            for (size_t q = 0; q < m_nip; ++q) {
-                xt::view(idx, xt::keep(elem), q) = xt::arange<size_t>(elem.size());
-            }
-
-            m_material.setCusp(I, idx, k, g, y);
-        }
-
-        xt::xtensor<double, 2> k = m_material.K();
-        xt::xtensor<double, 2> g = m_material.G();
-        MYASSERT(xt::mean(k)() == k(0, 0));
-        MYASSERT(xt::mean(g)() == g(0, 0));
-
-        m_material.check();
-
-        m_plastic = xt::sort(xt::flatten_indices(xt::argwhere(xt::amin(m_material.isPlastic(), {1}))));
-    }
-
-public:
-
-    void timeStep()
-    {
-        // history
-
-        m_t += m_dt;
-
-        xt::noalias(m_v_n) = m_v;
-        xt::noalias(m_a_n) = m_a;
-
-        // new displacement
-
-        xt::noalias(m_u) = m_u + m_dt * m_v + 0.5 * std::pow(m_dt, 2.) * m_a;
-
-        // compute strain/strain, and corresponding force
-
-        computeStrainStress();
-
-        m_quad.int_gradN_dot_tensor2_dV(m_Sig, m_fe);
-        m_vector.assembleNode(m_fe, m_felas);
-
-        // estimate new velocity, update corresponding force
-
-        xt::noalias(m_v) = m_v_n + m_dt * m_a_n;
-
-        m_D.dot(m_v, m_fdamp);
-
-        // compute residual force & solve
-
-        xt::noalias(m_fint) = m_felas + m_fdamp;
-
-        m_vector.copy_p(m_fint, m_fext);
-
-        xt::noalias(m_fres) = m_fext - m_fint;
-
-        m_M.solve(m_fres, m_a);
-
-        // re-estimate new velocity, update corresponding force
-
-        xt::noalias(m_v) = m_v_n + .5 * m_dt * (m_a_n + m_a);
-
-        m_D.dot(m_v, m_fdamp);
-
-        // compute residual force & solve
-
-        xt::noalias(m_fint) = m_felas + m_fdamp;
-
-        m_vector.copy_p(m_fint, m_fext);
-
-        xt::noalias(m_fres) = m_fext - m_fint;
-
-        m_M.solve(m_fres, m_a);
-
-        // new velocity, update corresponding force
-
-        xt::noalias(m_v) = m_v_n + .5 * m_dt * (m_a_n + m_a);
-
-        m_D.dot(m_v, m_fdamp);
-
-        // compute residual force & solve
-
-        xt::noalias(m_fint) = m_felas + m_fdamp;
-
-        m_vector.copy_p(m_fint, m_fext);
-
-        xt::noalias(m_fres) = m_fext - m_fint;
-
-        m_M.solve(m_fres, m_a);
-    }
-
-public:
-
-    void computeStrainStress()
-    {
-        m_vector.asElement(m_u, m_ue);
-        m_quad.symGradN_vector(m_ue, m_Eps);
-        m_material.setStrain(m_Eps);
-        m_material.stress(m_Sig);
-    }
-
-public:
-
+    /**
+    Get list with increments of system-spanning avalanches.
+
+    \return List of increments numbers.
+    */
     xt::xtensor<size_t, 1> getIncPush()
     {
-        // integration point volume
-        auto dV = m_quad.DV(2);
-
-        // number of plastic cells
-        size_t N = m_plastic.size();
+        auto dV = m_quad.AsTensor<2>(m_quad.dV());
+        size_t N = m_N;
 
         // basic information for each increment
         auto stored = H5Easy::load<xt::xtensor<size_t, 1>>(m_file, "/stored");
         auto kick = H5Easy::load<xt::xtensor<size_t, 1>>(m_file, "/kick");
+        MYASSERT(stored.size() > 0);
 
         // allocate result
-        xt::xtensor<size_t, 1> A = xt::zeros<size_t>({xt::amax(stored)[0] + 1});
-        xt::xtensor<double, 1> epsd = xt::zeros<double>({xt::amax(stored)[0] + 1});
-        xt::xtensor<double, 1> sigd = xt::zeros<double>({xt::amax(stored)[0] + 1});
+        xt::xtensor<size_t, 1> A = xt::zeros<size_t>({xt::amax(stored)() + 1});
+        xt::xtensor<double, 1> epsd = xt::zeros<double>({xt::amax(stored)() + 1});
+        xt::xtensor<double, 1> sigd = xt::zeros<double>({xt::amax(stored)() + 1});
+
+        // restore displacement
+        this->setU(H5Easy::load<decltype(m_u)>(m_file, fmt::format("/disp/{0:d}", stored(0))));
 
         // index of the current quadratic potential,
         // for the first integration point per plastic element
-        auto idx_n = xt::view(m_material.CurrentIndex(), xt::keep(m_plastic), 0);
+        auto idx_n = xt::view(this->plastic_CurrentIndex(), xt::all(), 0);
 
         // loop over increments
         for (size_t istored = 0; istored < stored.size(); ++istored) {
@@ -364,24 +113,21 @@ public:
             size_t inc = stored(istored);
 
             // - restore displacement
-            xt::noalias(m_u) = H5Easy::load<decltype(m_u)>(m_file, fmt::format("/disp/{0:d}", inc));
-
-            // - update strain/strain
-            computeStrainStress();
+            this->setU(H5Easy::load<decltype(m_u)>(m_file, fmt::format("/disp/{0:d}", inc)));
 
             // - index of the current quadratic potential
-            auto idx = xt::view(m_material.CurrentIndex(), xt::keep(m_plastic), 0);
+            auto idx = xt::view(this->plastic_CurrentIndex(), xt::all(), 0);
 
             // - macroscopic strain/stress tensor
-            xt::xtensor_fixed<double, xt::xshape<2, 2>> Epsbar = xt::average(m_Eps, dV, {0, 1});
-            xt::xtensor_fixed<double, xt::xshape<2, 2>> Sigbar = xt::average(m_Sig, dV, {0, 1});
+            xt::xtensor_fixed<double, xt::xshape<2, 2>> Epsbar = xt::average(this->Eps(), dV, {0, 1});
+            xt::xtensor_fixed<double, xt::xshape<2, 2>> Sigbar = xt::average(this->Sig(), dV, {0, 1});
 
             // - macroscopic equivalent strain/stress
             epsd(inc) = GM::Epsd(Epsbar)();
             sigd(inc) = GM::Sigd(Sigbar)();
 
             // - avalanche area
-            A(inc) = xt::sum(xt::not_equal(idx, idx_n))[0];
+            A(inc) = xt::sum(xt::not_equal(idx, idx_n))();
 
             // - update history
             idx_n = idx;
@@ -420,88 +166,36 @@ public:
 
 public:
 
-    void triggerElement(size_t element)
-    {
-        // convert plastic-element to element number
-        size_t e = m_plastic(element);
-
-        // make sure to start from quenched state
-        m_v.fill(0.0);
-        m_a.fill(0.0);
-        m_stop.reset();
-
-        // current equivalent deviatoric strain
-        auto eps = GM::Epsd(m_Eps);
-
-        // distance to yielding on the positive side
-        auto epsy = m_material.CurrentYieldRight();
-        auto deps = eps - epsy;
-
-        // find integration point closest to yielding
-        // - isolate element
-        xt::xtensor<double, 1> deps_e = xt::view(deps, e, xt::all());
-        // - get integration point
-        auto q = xt::argmin(xt::abs(deps_e))[0];
-
-        // extract (equivalent) deviatoric strain at quadrature-point "(e,q)"
-        auto Epsd = xt::view(GM::Deviatoric(m_Eps), e, q);
-
-        // new equivalent deviatoric strain: yield strain + small strain kick
-        double eps_new = epsy(e, q) + m_deps_kick / 2.;
-
-        // convert to increment in shear strain (N.B. "dgamma = 2 * Epsd(0,1)")
-        double dgamma =
-            2.0 * (-Epsd(0, 1) + std::sqrt(std::pow(eps_new, 2.0) - std::pow(Epsd(0, 0), 2.0)));
-
-        // apply increment in shear strain as a perturbation to the selected element
-        // - nodes belonging to the current element, from connectivity
-        auto nodes = xt::view(m_conn, e, xt::all());
-        // - displacement-DOFs
-        xt::xtensor<double, 1> udofs = m_vector.AsDofs(m_u);
-        // - update displacement-DOFs for the element
-        for (size_t n = 0; n < m_nne; ++n) {
-            udofs(m_dofs(nodes(n), 0)) += dgamma * (m_coor(nodes(n), 1) - m_coor(nodes(0), 1));
-        }
-        // - convert displacement-DOFs to (periodic) nodal displacement vector
-        //   (N.B. storing to nodes directly does not ensure periodicity)
-        m_vector.asNode(udofs, m_u);
-
-        // compute strain/stress
-        computeStrainStress();
-    }
-
-public:
-
     void run(size_t element, size_t inc_c, const std::string& output)
     {
+        auto dV = m_quad.AsTensor<2>(m_quad.dV());
+        auto dV_plas = m_quad_plas.AsTensor<2>(m_quad_plas.dV());
+        size_t N = m_N;
+
         // extract a list with increments at which to start elastic loading
         xt::xtensor<size_t, 1> inc_system = getIncPush();
         MYASSERT(inc_system.size() > 0);
         MYASSERT(xt::any(xt::equal(inc_system, inc_c)));
 
-        // set increment
-        m_inc = inc_c;
+        // clear/open the output file
+        H5Easy::File data(output, H5Easy::File::Overwrite);
 
-        // restore displacement
-        xt::noalias(m_u) = H5Easy::load<decltype(m_u)>(m_file, fmt::format("/disp/{0:d}", m_inc));
-        computeStrainStress();
+        // restore increment
+        m_inc = inc_c;
+        this->setU(H5Easy::load<decltype(m_u)>(m_file, fmt::format("/disp/{0:d}", m_inc)));
+        H5Easy::dump(data, fmt::format("/disp/{0:d}", 0), this->u());
 
         // extract "id" from filename (stored to data)
         std::string id = cpppath::split(cpppath::filename(m_file.getName()), ".")[0];
         size_t id_num = static_cast<size_t>(std::stoi(cpppath::split(id, "=")[1]));
 
         // extract information needed for storage
-        size_t N = m_plastic.size();
-        auto dV = m_quad.DV(2);
-        xt::xtensor<int, 1> idx_last = xt::view(m_material.CurrentIndex(), xt::keep(m_plastic), 0);
-        xt::xtensor<int, 1> idx_n = xt::view(m_material.CurrentIndex(), xt::keep(m_plastic), 0);
-        xt::xtensor<int, 1> idx = xt::view(m_material.CurrentIndex(), xt::keep(m_plastic), 0);
+        xt::xtensor<int, 1> idx_last = xt::view(this->plastic_CurrentIndex(), xt::all(), 0);
+        xt::xtensor<int, 1> idx_n = xt::view(this->plastic_CurrentIndex(), xt::all(), 0);
+        xt::xtensor<int, 1> idx = xt::view(this->plastic_CurrentIndex(), xt::all(), 0);
 
         // perturb the displacement of the set element, to (try to) trigger an avalanche
-        triggerElement(element);
-
-        // clear/open the output file
-        H5Easy::File data(output, H5Easy::File::Overwrite);
+        this->triggerElementWithLocalSimpleShear(m_deps_kick, element);
 
         // storage parameters
         int S = 0;           // avalanche size (maximum size since beginning)
@@ -521,8 +215,8 @@ public:
         bool last = false;
         bool event_attribute = true;
         bool event = false;
-        xt::xtensor_fixed<double, xt::xshape<2, 2>> Sig_bar = xt::average(m_Sig, dV, {0, 1});
-        xt::xtensor<double, 3> Sig_elem = xt::average(m_Sig, dV, {1});
+        xt::xtensor_fixed<double, xt::xshape<2, 2>> Sig_bar = xt::average(this->Sig(), dV, {0, 1});
+        xt::xtensor<double, 3> Sig_elem = xt::average(this->plastic_Sig(), dV_plas, {1}); // only shape matters
         xt::xtensor<double, 2> Sig_plas = xt::empty<double>({3ul, N});
         xt::xtensor<double, 1> sig_weak = xt::empty<double>({3ul});
         xt::xtensor<double, 1> sig_crack = xt::empty<double>({3ul});
@@ -532,7 +226,7 @@ public:
         // quench: force equilibrium
         for (size_t iiter = 0;; ++iiter) {
             if (iiter > 0) {
-                idx = xt::view(m_material.CurrentIndex(), xt::keep(m_plastic), 0);
+                idx = xt::view(this->plastic_CurrentIndex(), xt::all(), 0);
             }
 
             size_t a = xt::sum(xt::not_equal(idx, idx_n))();
@@ -552,11 +246,11 @@ public:
                 for (size_t k = 0; k < 3; ++k) {
                     xt::view(yielded_2, k, xt::all()) = yielded;
                 }
-                xt::noalias(Sig_bar) = xt::average(m_Sig, dV, {0, 1});
-                xt::noalias(Sig_elem) = xt::average(m_Sig, dV, {1});
-                xt::view(Sig_plas, 0, xt::all()) = xt::view(Sig_elem, xt::keep(m_plastic), 0, 0);
-                xt::view(Sig_plas, 1, xt::all()) = xt::view(Sig_elem, xt::keep(m_plastic), 0, 1);
-                xt::view(Sig_plas, 2, xt::all()) = xt::view(Sig_elem, xt::keep(m_plastic), 1, 1);
+                xt::noalias(Sig_bar) = xt::average(this->Sig(), dV, {0, 1});
+                xt::noalias(Sig_elem) = xt::average(this->plastic_Sig(), dV_plas, {1});
+                xt::view(Sig_plas, 0, xt::all()) = xt::view(Sig_elem, xt::all(), 0, 0);
+                xt::view(Sig_plas, 1, xt::all()) = xt::view(Sig_elem, xt::all(), 0, 1);
+                xt::view(Sig_plas, 2, xt::all()) = xt::view(Sig_elem, xt::all(), 1, 1);
                 xt::noalias(sig_weak) = xt::mean(Sig_plas, {1});
                 xt::noalias(sig_crack) = xt::average(Sig_plas, yielded_2, {1});
             }
@@ -693,57 +387,32 @@ public:
             }
 
             // time increment
-            timeStep();
+            this->timeStep();
 
             // - check for convergence
-            if (m_stop.stop(xt::linalg::norm(m_fres) / xt::linalg::norm(m_fext), 1.e-5)) {
+            if (m_stop.stop(this->residual(), 1.e-5)) {
                 last = true;
             }
         }
 
-        std::string hash = GIT_COMMIT_HASH;
-        H5Easy::dump(data, "/git/run", hash);
+        H5Easy::dump(data, "/git/EventEvolution_strain", std::string(MYVERSION));
+        H5Easy::dump(data, "/version/EventEvolution_strain", FQF::version_dependencies());
+        H5Easy::dump(data, fmt::format("/disp/{0:d}", 1), this->u());
 
         H5Easy::dump(data, "/meta/completed", 1);
         H5Easy::dump(data, "/meta/uuid", H5Easy::load<std::string>(m_file, "/uuid"));
         H5Easy::dump(data, "/meta/id", id_num);
         H5Easy::dump(data, "/meta/inc_c", inc_c);
         H5Easy::dump(data, "/meta/element", element);
-        H5Easy::dump(data, "/meta/dt", m_dt);
-        H5Easy::dump(data, "/meta/plastic", m_plastic);
-        H5Easy::dump(data, "/meta/N", N);
     }
 
 };
 
 
-static const char USAGE[] =
-    R"(Run
-  Extract time evolution of a specific push.
-
-Usage:
-  Run [options] --output=N --element=N --file=N --incc=N
-
-Arguments:
-      --output=N      Path of the output file.
-      --element=N     Element to push.
-      --file=N        The path to the simulation file.
-      --incc=N        Increment number of the system-spanning avalanche.
-
-Options:
-  -h, --help          Show help.
-      --version       Show version.
-
-(c) Tom de Geus
-)";
-
-
 int main(int argc, const char** argv)
 {
-    std::string hash = GIT_COMMIT_HASH;
-
     std::map<std::string, docopt::value> args =
-        docopt::docopt(USAGE, {argv + 1, argv + argc}, true, hash);
+        docopt::docopt(USAGE, {argv + 1, argv + argc}, true, std::string(MYVERSION));
 
     std::string output = args["--output"].asString();
     std::string file = args["--file"].asString();

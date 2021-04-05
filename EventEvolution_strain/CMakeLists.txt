@@ -3,20 +3,15 @@ cmake_minimum_required(VERSION 3.16)
 project(EventEvolution_strain)
 
 option(ASSERT "Use assertions" OFF)
+option(DEBUG "Switch on all possible assertions" OFF)
 
-# Get the current working branch
 execute_process(
-    COMMAND git rev-parse --abbrev-ref HEAD
+    COMMAND python -c "from setuptools_scm import get_version; print(get_version(root='..'))"
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    OUTPUT_VARIABLE GIT_BRANCH
+    OUTPUT_VARIABLE MYVERSION
     OUTPUT_STRIP_TRAILING_WHITESPACE)
 
-# Get the latest commit hash
-execute_process(
-    COMMAND git rev-parse HEAD
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    OUTPUT_VARIABLE GIT_COMMIT_HASH
-    OUTPUT_STRIP_TRAILING_WHITESPACE)
+message(STATUS "Building ${PROJECT_NAME} ${MYVERSION}")
 
 set(CMAKE_BUILD_TYPE Release)
 
@@ -25,36 +20,31 @@ add_executable(${PROJECT_NAME} main.cpp)
 set(HIGHFIVE_USE_BOOST 0)
 set(HIGHFIVE_USE_XTENSOR 1)
 
+find_package(FrictionQPotFEM REQUIRED)
 find_package(xtensor REQUIRED)
-find_package(xtensor-blas REQUIRED)
 find_package(HighFive REQUIRED)
 find_package(docopt REQUIRED)
 find_package(fmt REQUIRED)
 find_package(cpppath REQUIRED)
-find_package(GooseFEM REQUIRED)
-find_package(GMatElastoPlasticQPot REQUIRED)
 
 target_link_libraries(${PROJECT_NAME}
-    xtensor
+    FrictionQPotFEM
     xtensor::optimize
     xtensor::use_xsimd
-    xtensor-blas
     HighFive
     docopt
     fmt::fmt
     cpppath
-    GooseFEM
-    GooseFEM::compiler_warnings
-    GMatElastoPlasticQPot)
+    FrictionQPotFEM::compiler_warnings)
 
-target_compile_definitions(${PROJECT_NAME} PRIVATE "-DGIT_COMMIT_HASH=\"${GIT_COMMIT_HASH}\"")
+target_compile_definitions(${PROJECT_NAME} PRIVATE "-DMYVERSION=\"${MYVERSION}\"")
 
-if(NOT ASSERT)
-    target_compile_definitions(${PROJECT_NAME} PRIVATE -DNDEBUG)
+if(DEBUG)
+    target_link_libraries(${PROJECT_NAME} FrictionQPotFEM::debug)
+elseif(ASSERT)
+    target_link_libraries(${PROJECT_NAME} FrictionQPotFEM::assert)
 else()
-    target_link_libraries(${PROJECT_NAME}
-        GooseFEM::assert
-        GMatElastoPlasticQPot::assert)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE -DNDEBUG)
 endif()
 
 if (APPLE)

@@ -50,7 +50,7 @@ def get_runs():
             continue
 
         commands += [{
-            'file'   : os.path.join('..', dbase, p_files[p_file[i]]),
+            'file'   : os.path.join(dbase, p_files[p_file[i]]),
             'element': p_elem[i],
             'incc'   : p_incc[i],
             'output' : fname,
@@ -82,30 +82,28 @@ fi
 
 # --------------------------------------------------------------------------------------------------
 
-name = 'strain=0'
 commands = get_runs()
+commands_per_group = 10
+ngroup = int(np.ceil(len(commands) / commands_per_group))
+fmt = str(int(np.ceil(np.log10(ngroup))))
 
-print(len(commands))
+for group in range(ngroup):
 
-dirname = 'EventEvolution_' + name
+    c = commands[group * commands_per_group: (group + 1) * commands_per_group]
+    command = '\n'.join(c)
+    command = slurm.format(command)
 
-if not os.path.isdir(dirname):
-    os.makedirs(dirname)
-
-for i, command in enumerate(commands):
-
-    basename = 'job{0:04d}'.format(i)
+    jobname = ('EventEvolution_strain-{0:0' + fmt + 'd}').format(group)
 
     sbatch = {
-        'job-name': 'EventEvolution_{0:s}_{1:d}'.format(name, i),
-        'out': basename + '.out',
+        'job-name': jobname,
+        'out': jobname + '.out',
         'nodes': 1,
         'ntasks': 1,
         'cpus-per-task': 1,
-        'time': '3h',
+        'time': '12h',
         'account': 'pcsl',
         'partition': 'serial',
     }
 
-    open(os.path.join(dirname, basename + '.slurm'), 'w').write(
-        gs.scripts.plain(command=slurm.format(command), **sbatch))
+    open(jobname + '.slurm', 'w').write(gs.scripts.plain(command=command, **sbatch))
