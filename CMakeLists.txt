@@ -2,11 +2,11 @@ cmake_minimum_required(VERSION 3.16)
 
 project(Evolution)
 
-option(PushWeakest "Compile PushWeakest" ON)
+option(PushBarrier "Compile PushBarrier" ON)
 option(PushElement "Compile PushElement" ON)
 
-if (PushWeakest)
-    add_subdirectory(PushWeakest)
+if (PushBarrier)
+    add_subdirectory(PushBarrier)
 endif()
 
 if (PushElement)
