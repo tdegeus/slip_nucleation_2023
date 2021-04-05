@@ -5,19 +5,13 @@ project(PushElement)
 option(ASSERT "Use assertions" OFF)
 option(DEBUG "Switch on all possible assertions" OFF)
 
-# Get the current working branch
 execute_process(
-    COMMAND git rev-parse --abbrev-ref HEAD
+    COMMAND python -c "from setuptools_scm import get_version; print(get_version(root='..'))"
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    OUTPUT_VARIABLE GIT_BRANCH
+    OUTPUT_VARIABLE MYVERSION
     OUTPUT_STRIP_TRAILING_WHITESPACE)
 
-# Get the latest commit hash
-execute_process(
-    COMMAND git rev-parse HEAD
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    OUTPUT_VARIABLE GIT_COMMIT_HASH
-    OUTPUT_STRIP_TRAILING_WHITESPACE)
+message(STATUS "Building ${PROJECT_NAME} ${MYVERSION}")
 
 set(CMAKE_BUILD_TYPE Release)
 
@@ -43,7 +37,7 @@ target_link_libraries(${PROJECT_NAME}
     cpppath
     FrictionQPotFEM::compiler_warnings)
 
-target_compile_definitions(${PROJECT_NAME} PRIVATE "-DGIT_COMMIT_HASH=\"${GIT_COMMIT_HASH}\"")
+target_compile_definitions(${PROJECT_NAME} PRIVATE "-DMYVERSION=\"${MYVERSION}\"")
 
 if(DEBUG)
     target_link_libraries(${PROJECT_NAME} FrictionQPotFEM::debug)

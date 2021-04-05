@@ -1,5 +1,6 @@
 
 #include <FrictionQPotFEM/UniformSingleLayer2d.h>
+#include <GMatElastoPlasticQPot/Cartesian2d.h>
 #include <GooseFEM/GooseFEM.h>
 #include <highfive/H5Easy.hpp>
 #include <fmt/core.h>
@@ -8,10 +9,6 @@
 #include <cstdio>
 #include <ctime>
 #include <xtensor/xrandom.hpp>
-
-#ifndef GIT_COMMIT_HASH
-#define GIT_COMMIT_HASH "?"
-#endif
 
 #define MYASSERT(expr) MYASSERT_IMPL(expr, __FILE__, __LINE__)
 #define MYASSERT_IMPL(expr, file, line) \
@@ -22,6 +19,29 @@
     }
 
 namespace FQF = FrictionQPotFEM::UniformSingleLayer2d;
+namespace GM = GMatElastoPlasticQPot::Cartesian2d;
+
+
+static const char USAGE[] =
+    R"(PushElement
+    Push a random element and compute the force equilibrium.
+    Store new state to input-file and write evolution to a separate output-file per increment.
+    Note that the function automatically retries pushing is nothing was triggered.
+
+Usage:
+    PushElement [options] --output=N --input=N
+
+Arguments:
+    --output=N      Base pat of the output-file: appended with "_ipush={inc:d}.hdf5"
+    --input=N       The path to the simulation file.
+
+Options:
+    -h, --help      Show help.
+        --version   Show version.
+
+(c) Tom de Geus
+)";
+
 
 template <class T>
 inline void dump_check(H5Easy::File& file, const std::string& key, const T& data)
@@ -29,26 +49,32 @@ inline void dump_check(H5Easy::File& file, const std::string& key, const T& data
     if (!file.exist(key)) {
         H5Easy::dump(file, key, data);
     }
-    // else {
-    //     MYASSERT(H5Easy::load<T>(file, key) == data);
-    // }
+    else {
+        MYASSERT(H5Easy::load<T>(file, key) == data);
+    }
 }
 
-class Main : public FQF::HybridSystem {
+
+class Main : public FQF::System {
+
+private:
+
+    H5Easy::File m_file;
+    GooseFEM::Iterate::StopList m_stop = GooseFEM::Iterate::StopList(20);
+    size_t m_inc;
+    double m_deps_kick;
 
 public:
 
     Main(const std::string& fname) : m_file(fname, H5Easy::File::ReadWrite)
     {
-        this->initGeometry(
+        this->init(
             H5Easy::load<xt::xtensor<double, 2>>(m_file, "/coor"),
             H5Easy::load<xt::xtensor<size_t, 2>>(m_file, "/conn"),
             H5Easy::load<xt::xtensor<size_t, 2>>(m_file, "/dofs"),
             H5Easy::load<xt::xtensor<size_t, 1>>(m_file, "/dofsP"),
             H5Easy::load<xt::xtensor<size_t, 1>>(m_file, "/elastic/elem"),
             H5Easy::load<xt::xtensor<size_t, 1>>(m_file, "/cusp/elem"));
-
-        this->initHybridSystem();
 
         this->setMassMatrix(H5Easy::load<xt::xtensor<double, 1>>(m_file, "/rho"));
         this->setDampingMatrix(H5Easy::load<xt::xtensor<double, 1>>(m_file, "/damping/alpha"));
@@ -122,7 +148,7 @@ public:
         xt::xtensor<double, 1> sig_crack = xt::empty<double>({3ul});
         xt::xtensor<double, 1> yielded = xt::empty<double>({m_N});
         xt::xtensor<double, 2> yielded_broadcast = xt::empty<double>({3ul, m_N});
-        MYASSERT(std::abs(GM::Sigd(Sig_bar)() - H5Easy::load<double>(m_file, "/sigd", {m_inc})) < 1e-8);
+        MYASSERT(xt::allclose(GM::Sigd(Sig_bar)(), H5Easy::load<double>(m_file, "/sigd", {m_inc})));
 
         xt::xtensor<size_t, 1> random = xt::random::randint({1,}, 0, static_cast<int>(m_N));
         size_t trigger_element = random(0);
@@ -151,7 +177,11 @@ public:
 
             // if nothing was triggered, stop and retry on another randomly selected element
             // the number of iterations has been check phenomenologically
-            if ((iiter == 20000 && A <= 1) || (A_last == 0 && iiter > iiter_last + 20000 && iiter > 30000)) {
+            bool retry = (iiter == 20000 && A <= 1) ||
+                         (iiter == 20000 && a <= 1 && std::abs(s) <= 1) ||
+                         (A_last == 0 && iiter > iiter_last + 20000 && iiter > 30000);
+
+            if (retry) {
                 size_t failed = 0;
                 if (m_file.exist("/failed_push/element")) {
                     failed = H5Easy::getSize(m_file, "/failed_push/element");
@@ -261,17 +291,16 @@ public:
         this->computeStress();
         xt::noalias(Sig_bar) = xt::average(m_Sig, dV, {0, 1});
 
-        std::string hash = GIT_COMMIT_HASH;
-        dump_check(m_file, "/git/run", hash);
-        dump_check(m_file, "/version/run", FQF::versionInfo());
+        dump_check(m_file, "/git/PushElement", std::string(MYVERSION));
+        dump_check(m_file, "/version/PushElement", FQF::version_dependencies());
 
         H5Easy::dump(m_file, "/stored", m_inc, {m_inc});
         H5Easy::dump(m_file, "/t", m_t, {m_inc});
         H5Easy::dump(m_file, "/sigd", GM::Sigd(Sig_bar)(), {m_inc});
         H5Easy::dump(m_file, fmt::format("/disp/{0:d}", m_inc), m_u);
 
-        dump_check(data, "/git/run", hash);
-        dump_check(data, "/version/run", FQF::versionInfo());
+        dump_check(data, "/git/PushElement", std::string(MYVERSION));
+        dump_check(data, "/version/PushElement", FQF::version_dependencies());
 
         H5Easy::dump(data, "/meta/completed", 1);
         H5Easy::dump(data, "/meta/uuid", H5Easy::load<std::string>(m_file, "/uuid"));
@@ -283,43 +312,15 @@ public:
 
         return 0;
     }
-
-private:
-
-    H5Easy::File m_file;
-    GooseFEM::Iterate::StopList m_stop = GF::Iterate::StopList(20);
-    size_t m_inc;
-    double m_deps_kick;
-
 };
 
-static const char USAGE[] =
-    R"(PushElement
-    Push a specific element and compute the force equilibrium.
-    Store new state to input-file and write evolution to a separate output-file per increment.
-
-Usage:
-    PushElement [options] --output=N --input=N
-
-Arguments:
-    --output=N      Base pat of the output-file: appended with "_ipush={inc:d}.hdf5"
-    --input=N       The path to the simulation file.
-
-Options:
-    -h, --help      Show help.
-        --version   Show version.
-
-(c) Tom de Geus
-)";
 
 int main(int argc, const char** argv)
 {
     xt::random::seed(time(NULL));
 
-    std::string hash = GIT_COMMIT_HASH;
-
     std::map<std::string, docopt::value> args =
-        docopt::docopt(USAGE, {argv + 1, argv + argc}, true, hash);
+        docopt::docopt(USAGE, {argv + 1, argv + argc}, true, std::string(MYVERSION));
 
     std::string output = args["--output"].asString();
     std::string input = args["--input"].asString();
