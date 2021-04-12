@@ -1,4 +1,3 @@
-
 #include <FrictionQPotFEM/UniformSingleLayer2d.h>
 #include <GMatElastoPlasticQPot/Cartesian2d.h>
 #include <GooseFEM/GooseFEM.h>
@@ -18,23 +17,60 @@
 namespace FQF = FrictionQPotFEM::UniformSingleLayer2d;
 namespace GM = GMatElastoPlasticQPot::Cartesian2d;
 
+template <class T>
+void DumpWithDescription(
+    H5Easy::File& file,
+    const std::string& path,
+    const T& data,
+    const std::string& description)
+{
+    H5Easy::dump(file, path, data);
+    H5Easy::dumpAttribute(file, path, "desc", description);
+}
+
 
 static const char USAGE[] =
     R"(EventEvolution_strain
-  Extract evolution of a specific push.
+
+Description:
+    1.  Load a specific system-spanning increment.
+    2.  Apply a local push to a specific element.
+    3.  Store evolution to output file.
+
+Data:
+    -   At every event:
+        -   Time-step.
+        -   Position of the event.
+        -   Stress: macroscopic, on the weak layer, in the crack.
+        -   Avalanche properties: size "S", radius "A".
+    -   Periodic global snapshots:
+        -   Time-step.
+        -   Stress: macroscopic, on the weak layer, in the crack.
+        -   Avalanche properties: size "S", radius "A".
+    -   Periodic snapshots on weak layer:
+        -   Stress.
+        -   Index of the local potential.
+
+Dependencies:
+    -   Simulations ran using "Run" serve as input, and could be necessary to interpret
+        some of the output.
+    -   Parameters stored "EnsembleInfo" may be needed for normalisation.
+
+Job:
+    Use job*.py in the source directory to create the necessary ensemble (based on earlier data).
 
 Usage:
-  EventEvolution_strain [options] --output=N --element=N --file=N --incc=N
+    EventEvolution_strain [options] --output=N --file=N --element=N --incc=N
 
 Arguments:
-      --output=N      Path of the output file (overwritten).
-      --element=N     Element to push.
-      --file=N        The path to the simulation file (read-only).
-      --incc=N        Increment number of the system-spanning avalanche.
+        --output=N      Path of the output file (overwritten).
+        --file=N        The path to the simulation file (read-only).
+        --element=N     Element to push.
+        --incc=N        Increment number of the system-spanning avalanche.
 
 Options:
-  -h, --help          Show help.
-      --version       Show version.
+    -h, --help          Show help.
+        --version       Show version.
 
 (c) Tom de Geus
 )";
@@ -182,8 +218,12 @@ public:
 
         // restore increment
         m_inc = inc_c;
+
         this->setU(H5Easy::load<decltype(m_u)>(m_file, fmt::format("/disp/{0:d}", m_inc)));
-        H5Easy::dump(data, fmt::format("/disp/{0:d}", 0), this->u());
+
+        DumpWithDescription(data, fmt::format("/disp/{0:d}", 0),
+            this->u(),
+            "Displacement at mechanical equilibrium before pushing.");
 
         // extract "id" from filename (stored to data)
         std::string id = cpppath::split(cpppath::filename(m_file.getName()), ".")[0];
@@ -326,24 +366,38 @@ public:
 
             // write info
             if (event && event_attribute) {
-                H5Easy::dumpAttribute(data, "/event/step", "desc", std::string("Number of times the block yielded since the last event"));
-                H5Easy::dumpAttribute(data, "/event/r", "desc", std::string("Position of the yielding block"));
+                H5Easy::dumpAttribute(data, "/event/step", "desc",
+                    std::string("Number of times the block yielded since the last event"));
 
-                H5Easy::dumpAttribute(data, "/event/global/iiter", "desc", std::string("Iteration number for event"));
-                H5Easy::dumpAttribute(data, "/event/global/S", "desc", std::string("Avalanche size at time of event"));
-                H5Easy::dumpAttribute(data, "/event/global/A", "desc", std::string("Avalanche radius at time of event"));
+                H5Easy::dumpAttribute(data, "/event/r", "desc",
+                    std::string("Position of the yielding block"));
 
-                H5Easy::dumpAttribute(data, "/event/global/sig", "desc", std::string("Macroscopic stress (xx, xy, yy) at time of event"));
+                H5Easy::dumpAttribute(data, "/event/global/iiter", "desc",
+                    std::string("Iteration number for event"));
+
+                H5Easy::dumpAttribute(data, "/event/global/S", "desc",
+                    std::string("Avalanche size at time of event"));
+
+                H5Easy::dumpAttribute(data, "/event/global/A", "desc",
+                    std::string("Avalanche 'radius' at time of event"));
+
+                H5Easy::dumpAttribute(data, "/event/global/sig", "desc",
+                    std::string("Macroscopic stress (xx, xy, yy) at time of event"));
+
                 H5Easy::dumpAttribute(data, "/event/global/sig", "xx", static_cast<size_t>(0));
                 H5Easy::dumpAttribute(data, "/event/global/sig", "xy", static_cast<size_t>(1));
                 H5Easy::dumpAttribute(data, "/event/global/sig", "yy", static_cast<size_t>(2));
 
-                H5Easy::dumpAttribute(data, "/event/weak/sig", "desc", std::string("Stress averaged on weak layer (xx, xy, yy) at time of event"));
+                H5Easy::dumpAttribute(data, "/event/weak/sig", "desc",
+                    std::string("Stress averaged on weak layer (xx, xy, yy) at time of event"));
+
                 H5Easy::dumpAttribute(data, "/event/weak/sig", "xx", static_cast<size_t>(0));
                 H5Easy::dumpAttribute(data, "/event/weak/sig", "xy", static_cast<size_t>(1));
                 H5Easy::dumpAttribute(data, "/event/weak/sig", "yy", static_cast<size_t>(2));
 
-                H5Easy::dumpAttribute(data, "/event/crack/sig", "desc", std::string("Stress averaged on yielded blocks (xx, xy, yy) at time of event"));
+                H5Easy::dumpAttribute(data, "/event/crack/sig", "desc",
+                    std::string("Stress averaged on yielded blocks (xx, xy, yy) at time of event"));
+
                 H5Easy::dumpAttribute(data, "/event/crack/sig", "xx", static_cast<size_t>(0));
                 H5Easy::dumpAttribute(data, "/event/crack/sig", "xy", static_cast<size_t>(1));
                 H5Easy::dumpAttribute(data, "/event/crack/sig", "yy", static_cast<size_t>(2));
@@ -352,30 +406,45 @@ public:
             }
 
             if (iiter == 0) {
-                H5Easy::dumpAttribute(data, "/overview/global/iiter", "desc", std::string("Iteration number"));
-                H5Easy::dumpAttribute(data, "/overview/global/S", "desc", std::string("Avalanche size"));
-                H5Easy::dumpAttribute(data, "/overview/global/A", "desc", std::string("Avalanche radius"));
+                H5Easy::dumpAttribute(data, "/overview/global/iiter", "desc",
+                    std::string("Iteration (time-step) number"));
 
-                H5Easy::dumpAttribute(data, "/overview/global/sig", "desc", std::string("Macroscopic stress (xx, xy, yy)"));
+                H5Easy::dumpAttribute(data, "/overview/global/S", "desc",
+                    std::string("Avalanche size"));
+
+                H5Easy::dumpAttribute(data, "/overview/global/A", "desc",
+                    std::string("Avalanche 'radius'"));
+
+                H5Easy::dumpAttribute(data, "/overview/global/sig", "desc",
+                    std::string("Macroscopic stress (xx, xy, yy)"));
+
                 H5Easy::dumpAttribute(data, "/overview/global/sig", "xx", static_cast<size_t>(0));
                 H5Easy::dumpAttribute(data, "/overview/global/sig", "xy", static_cast<size_t>(1));
                 H5Easy::dumpAttribute(data, "/overview/global/sig", "yy", static_cast<size_t>(2));
 
-                H5Easy::dumpAttribute(data, "/overview/weak/sig", "desc", std::string("Stress averaged on weak layer (xx, xy, yy)"));
+                H5Easy::dumpAttribute(data, "/overview/weak/sig", "desc",
+                    std::string("Stress averaged on weak layer (xx, xy, yy)"));
+
                 H5Easy::dumpAttribute(data, "/overview/weak/sig", "xx", static_cast<size_t>(0));
                 H5Easy::dumpAttribute(data, "/overview/weak/sig", "xy", static_cast<size_t>(1));
                 H5Easy::dumpAttribute(data, "/overview/weak/sig", "yy", static_cast<size_t>(2));
 
-                H5Easy::dumpAttribute(data, "/overview/crack/sig", "desc", std::string("Stress averaged on yielded blocks (xx, xy, yy)"));
+                H5Easy::dumpAttribute(data, "/overview/crack/sig", "desc",
+                    std::string("Stress averaged on yielded blocks (xx, xy, yy)"));
+
                 H5Easy::dumpAttribute(data, "/overview/crack/sig", "xx", static_cast<size_t>(0));
                 H5Easy::dumpAttribute(data, "/overview/crack/sig", "xy", static_cast<size_t>(1));
                 H5Easy::dumpAttribute(data, "/overview/crack/sig", "yy", static_cast<size_t>(2));
 
+                H5Easy::dumpAttribute(data, fmt::format("/snapshot/plastic/{0:d}/sig", 0), "desc",
+                    std::string("Stress tensor along the weak layer (xx, xy, yy)"));
+
                 H5Easy::dumpAttribute(data, fmt::format("/snapshot/plastic/{0:d}/sig", 0), "xx", static_cast<size_t>(0));
                 H5Easy::dumpAttribute(data, fmt::format("/snapshot/plastic/{0:d}/sig", 0), "xy", static_cast<size_t>(1));
                 H5Easy::dumpAttribute(data, fmt::format("/snapshot/plastic/{0:d}/sig", 0), "yy", static_cast<size_t>(2));
-                H5Easy::dumpAttribute(data, fmt::format("/snapshot/plastic/{0:d}/sig", 0), "desc", std::string("Stress tensor along the weak layer (xx, xy, yy)"));
-                H5Easy::dumpAttribute(data, fmt::format("/snapshot/plastic/{0:d}/idx", 0), "desc", std::string("Index of the current local minimum"));
+
+                H5Easy::dumpAttribute(data, fmt::format("/snapshot/plastic/{0:d}/idx", 0), "desc",
+                    std::string("Index of the current local minimum"));
 
                 H5Easy::dump(data, "/snapshot/storage/A/step", A_step);
                 H5Easy::dump(data, "/snapshot/storage/S/step", S_step);
@@ -390,20 +459,42 @@ public:
             this->timeStep();
 
             // - check for convergence
-            if (m_stop.stop(this->residual(), 1.e-5)) {
+            if (m_stop.stop(this->residual(), 1e-5)) {
                 last = true;
             }
         }
 
-        H5Easy::dump(data, "/git/EventEvolution_strain", std::string(MYVERSION));
-        H5Easy::dump(data, "/version/EventEvolution_strain", FQF::version_dependencies());
-        H5Easy::dump(data, fmt::format("/disp/{0:d}", 1), this->u());
+        DumpWithDescription(data, fmt::format("/disp/{0:d}", 1),
+            this->u(),
+            "Displacement at new mechanical equilibrium after pushing.");
 
-        H5Easy::dump(data, "/meta/completed", 1);
-        H5Easy::dump(data, "/meta/uuid", H5Easy::load<std::string>(m_file, "/uuid"));
-        H5Easy::dump(data, "/meta/id", id_num);
-        H5Easy::dump(data, "/meta/inc_c", inc_c);
-        H5Easy::dump(data, "/meta/element", element);
+        DumpWithDescription(data, "/meta/uuid",
+            H5Easy::load<std::string>(m_file, "/uuid"),
+            "uuid of the input simulation.");
+
+        DumpWithDescription(data, "/meta/id",
+            id_num,
+            "id of the input simulation");
+
+        DumpWithDescription(data, "/meta/inc_c",
+            inc_c,
+            "Increment of the system-spanning avalanche at which push was applied.");
+
+        DumpWithDescription(data, "/meta/element",
+            element,
+            "Element number (along the weak layer) to which push was applied.");
+
+        DumpWithDescription(data, "/meta/EventEvolution_strain/version",
+            std::string(MYVERSION),
+            "Code version at compile-time.");
+
+        DumpWithDescription(data, "/meta/EventEvolution_strain/dependencies",
+            FQF::version_dependencies(),
+            "Version of key dependencies at compile-time.");
+
+        DumpWithDescription(data, "/meta/EventEvolution_strain/completed",
+            1,
+            "Signal that this program finished.");
     }
 
 };
