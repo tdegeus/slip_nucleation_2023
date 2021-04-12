@@ -46,7 +46,7 @@ jobs:
     - name: Set conda environment
       uses: mamba-org/provision-with-micromamba@main
       with:
-        environment-file: ${{ matrix.conda }}
+        environment-file: environment.yaml
         environment-name: myenv
 
     - name: Set dummy version
