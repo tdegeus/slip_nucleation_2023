@@ -13,7 +13,6 @@ jobs:
 
     strategy:
       fail-fast: false
-      runs-on: ubuntu-latest
       matrix:
         code:
           - CrackEvolution_raw_stress
@@ -37,6 +36,7 @@ jobs:
         shell: bash -l {0}
 
     name: "${{ matrix.code }}"
+    runs-on: ubuntu-latest
 
     steps:
 
