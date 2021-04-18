@@ -20,3 +20,4 @@ dependencies:
   - gooseslurm
   - goosehdf5
   - tqdm
+  - setuptools_scm
