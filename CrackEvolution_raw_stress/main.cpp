@@ -1,13 +1,11 @@
-
 #include <FrictionQPotFEM/UniformSingleLayer2d.h>
-#include <GooseFEM/GooseFEM.h>
 #include <GMatElastoPlasticQPot/Cartesian2d.h>
-#include <docopt/docopt.h>
-#include <fmt/core.h>
+#include <GooseFEM/GooseFEM.h>
 #include <highfive/H5Easy.hpp>
+#include <fmt/core.h>
 #include <cpppath.h>
+#include <docopt/docopt.h>
 #include <xtensor/xindex_view.hpp>
-
 
 #define MYASSERT(expr) MYASSERT_IMPL(expr, __FILE__, __LINE__)
 #define MYASSERT_IMPL(expr, file, line) \
@@ -17,9 +15,40 @@
             ": assertion failed (" #expr ") \n\t"); \
     }
 
-
 namespace FQF = FrictionQPotFEM::UniformSingleLayer2d;
 namespace GM = GMatElastoPlasticQPot::Cartesian2d;
+
+
+static const char USAGE[] =
+    R"(CrackEvolution_raw_stress
+
+Description:
+    1.  Load a specific system-spanning increment.
+    2.  Advance to a given stress
+        (involves advancing increments and/or elastic loading).
+    3.  Apply a local push to a specific element.
+    4.  Store evolution to output file.
+
+Usage:
+    CrackEvolution_raw_stress [options] --incc=N --element=N --stress=N --file=N --output=N
+
+Arguments:
+        --file=N        The path to the simulation file.
+        --output=N      Path of the output file.
+        --incc=N        Increment number of the last system-spanning avalanche.
+        --element=N     Element to push.
+        --stress=N      Stress at which to push.
+
+Options:
+        --Astep=N       Save states at crack sizes A = (0: N: Astep). [default: 1]
+        --tstep=N       Save states at times t = (t0: : tstep). [default: 500]
+        --tfac=N        Stop simulation after "tfac * iiter" iterations (iiter when A = N). [default: 100]
+    -h, --help          Show help.
+        --version       Show version.
+
+(c) Tom de Geus
+)";
+
 
 class Main : public FQF::HybridSystem {
 
@@ -322,31 +351,6 @@ public:
     }
 
 };
-
-
-static const char USAGE[] =
-    R"(CrackEvolution_raw_stress
-    Extract time evolution of a specific push.
-
-Usage:
-    CrackEvolution_raw_stress [options] --incc=N --element=N --stress=N --file=N --output=N
-
-Arguments:
-        --file=N        The path to the simulation file.
-        --output=N      Path of the output file.
-        --incc=N        Increment number of the last system-spanning avalanche.
-        --element=N     Element to push.
-        --stress=N      Stress at which to push.
-
-Options:
-        --Astep=N       Save states at crack sizes A = (0: N: Astep). [default: 1]
-        --tstep=N       Save states at times t = (t0: : tstep). [default: 500]
-        --tfac=N        Stop simulation after "tfac * iiter" iterations (iiter when A = N). [default: 100]
-    -h, --help          Show help.
-        --version       Show version.
-
-(c) Tom de Geus
-)";
 
 
 int main(int argc, const char** argv)
