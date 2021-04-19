@@ -51,7 +51,7 @@ for group in range(ngroup):
         'nodes': 1,
         'ntasks': 1,
         'cpus-per-task': 1,
-        'time': '12h',
+        'time': '24h',
         'account': 'pcsl',
         'partition': 'serial',
     }
