@@ -250,7 +250,9 @@ public:
         MYASSERT(xt::mean(k)() == k(0, 0));
         MYASSERT(xt::mean(g)() == g(0, 0));
 
-        m_material.check();
+        if (xt::any(xt::equal(m_material.type(), GMatElastoPlasticQPot::Cartesian2d::Type::Unset))) {
+            throw std::runtime_error("Please set all points");
+        }
 
         m_plastic = xt::sort(xt::flatten_indices(xt::argwhere(xt::amin(m_material.isPlastic(), {1}))));
     }

@@ -50,7 +50,7 @@ Options:
 )";
 
 
-class Main : public FQF::HybridSystem {
+class Main : public FQF::System {
 
 private:
 
@@ -63,7 +63,7 @@ public:
 
     Main(const std::string& fname) : m_file(fname, H5Easy::File::ReadOnly)
     {
-        this->initHybridSystem(
+        this->init(
             H5Easy::load<xt::xtensor<double, 2>>(m_file, "/coor"),
             H5Easy::load<xt::xtensor<size_t, 2>>(m_file, "/conn"),
             H5Easy::load<xt::xtensor<size_t, 2>>(m_file, "/dofs"),
