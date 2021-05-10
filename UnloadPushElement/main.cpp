@@ -20,6 +20,7 @@
     }
 
 namespace FQF = FrictionQPotFEM::UniformSingleLayer2d;
+namespace GM = GMatElastoPlasticQPot::Cartesian2d;
 
 template <class T>
 inline void dump_check(H5Easy::File& file, const std::string& key, const T& data)
@@ -32,21 +33,19 @@ inline void dump_check(H5Easy::File& file, const std::string& key, const T& data
     }
 }
 
-class Main : public FQF::HybridSystem {
+class Main : public FQF::System {
 
 public:
 
     Main(const std::string& fname) : m_file(fname, H5Easy::File::ReadWrite)
     {
-        this->initGeometry(
+        this->init(
             H5Easy::load<xt::xtensor<double, 2>>(m_file, "/coor"),
             H5Easy::load<xt::xtensor<size_t, 2>>(m_file, "/conn"),
             H5Easy::load<xt::xtensor<size_t, 2>>(m_file, "/dofs"),
             H5Easy::load<xt::xtensor<size_t, 1>>(m_file, "/dofsP"),
             H5Easy::load<xt::xtensor<size_t, 1>>(m_file, "/elastic/elem"),
             H5Easy::load<xt::xtensor<size_t, 1>>(m_file, "/cusp/elem"));
-
-        this->initHybridSystem();
 
         this->setMassMatrix(H5Easy::load<xt::xtensor<double, 1>>(m_file, "/rho"));
         this->setDampingMatrix(H5Easy::load<xt::xtensor<double, 1>>(m_file, "/damping/alpha"));
@@ -148,7 +147,7 @@ public:
             std::string hash = GIT_COMMIT_HASH;
 
             dump_check(m_file, "/git/run", hash);
-            dump_check(m_file, "/version/run", FQF::versionInfo());
+            dump_check(m_file, "/version/run", FQF::version_dependencies());
 
             H5Easy::dump(m_file, "/stored", m_inc, {m_inc});
             H5Easy::dump(m_file, "/t", m_t, {m_inc});
@@ -327,7 +326,7 @@ public:
 
         std::string hash = GIT_COMMIT_HASH;
         dump_check(m_file, "/git/run", hash);
-        dump_check(m_file, "/version/run", FQF::versionInfo());
+        dump_check(m_file, "/version/run", FQF::version_dependencies());
 
         H5Easy::dump(m_file, "/push/stored", push, {push});
         H5Easy::dump(m_file, "/push/t", m_t, {push});
@@ -338,7 +337,7 @@ public:
         H5Easy::dump(m_file, fmt::format("/push/init/disp/{0:d}", push), u0);
 
         dump_check(data, "/git/run", hash);
-        dump_check(data, "/version/run", FQF::versionInfo());
+        dump_check(data, "/version/run", FQF::version_dependencies());
 
         H5Easy::dump(data, "/meta/completed", 1);
         H5Easy::dump(data, "/meta/uuid", H5Easy::load<std::string>(m_file, "/uuid"));
@@ -364,7 +363,7 @@ public:
 private:
 
     H5Easy::File m_file;
-    GooseFEM::Iterate::StopList m_stop = GF::Iterate::StopList(20);
+    GooseFEM::Iterate::StopList m_stop = GooseFEM::Iterate::StopList(20);
     size_t m_inc;
     double m_deps_kick;
     xt::xtensor<double, 4> m_dV;
