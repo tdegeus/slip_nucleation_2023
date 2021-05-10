@@ -26,7 +26,6 @@ jobs:
           - PushBarrier
           - PushBarrierRecursive
           - PushElement
-          - PushElementThermal
           - PushRecursiveQuasiThermal
           - Run
           - UnloadPushElement

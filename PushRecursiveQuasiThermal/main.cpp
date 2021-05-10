@@ -21,6 +21,7 @@
     }
 
 namespace FQF = FrictionQPotFEM::UniformSingleLayer2d;
+namespace GM = GMatElastoPlasticQPot::Cartesian2d;
 
 template <class T>
 inline void dump_check(H5Easy::File& file, const std::string& key, const T& data)
@@ -33,13 +34,13 @@ inline void dump_check(H5Easy::File& file, const std::string& key, const T& data
     }
 }
 
-class Main : public FQF::HybridSystem {
+class Main : public FQF::System {
 
 public:
 
     Main(const std::string& fname) : m_file(fname, H5Easy::File::ReadWrite)
     {
-        this->initHybridSystem(
+        this->init(
             H5Easy::load<xt::xtensor<double, 2>>(m_file, "/coor"),
             H5Easy::load<xt::xtensor<size_t, 2>>(m_file, "/conn"),
             H5Easy::load<xt::xtensor<size_t, 2>>(m_file, "/dofs"),
@@ -184,7 +185,7 @@ public:
 
         std::string hash = GIT_COMMIT_HASH;
         dump_check(m_file, "/git/run", hash);
-        dump_check(m_file, "/version/run", FQF::versionInfo());
+        dump_check(m_file, "/version/run", FQF::version_dependencies());
 
         H5Easy::dump(m_file, "/stored", m_inc, {m_inc});
         H5Easy::dump(m_file, "/t", m_t, {m_inc});
@@ -371,7 +372,7 @@ public:
 
         std::string hash = GIT_COMMIT_HASH;
         dump_check(m_file, "/git/run", hash);
-        dump_check(m_file, "/version/run", FQF::versionInfo());
+        dump_check(m_file, "/version/run", FQF::version_dependencies());
 
         H5Easy::dump(m_file, "/stored", m_inc, {m_inc});
         H5Easy::dump(m_file, "/t", m_t, {m_inc});
@@ -379,7 +380,7 @@ public:
         H5Easy::dump(m_file, fmt::format("/disp/{0:d}", m_inc), m_u);
 
         dump_check(data, "/git/run", hash);
-        dump_check(data, "/version/run", FQF::versionInfo());
+        dump_check(data, "/version/run", FQF::version_dependencies());
 
         H5Easy::dump(data, "/meta/completed", 1);
         H5Easy::dump(data, "/meta/uuid", H5Easy::load<std::string>(m_file, "/uuid"));
@@ -396,7 +397,7 @@ public:
 private:
 
     H5Easy::File m_file;
-    GooseFEM::Iterate::StopList m_stop = GF::Iterate::StopList(20);
+    GooseFEM::Iterate::StopList m_stop = GooseFEM::Iterate::StopList(20);
     size_t m_inc;
     double m_deps_kick;
 };

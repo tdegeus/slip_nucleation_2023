@@ -251,7 +251,9 @@ public:
         MYASSERT(xt::mean(k)() == k(0, 0));
         MYASSERT(xt::mean(g)() == g(0, 0));
 
-        m_material.check();
+        if (xt::any(xt::equal(m_material.type(), GMatElastoPlasticQPot::Cartesian2d::Type::Unset))) {
+            throw std::runtime_error("Please set all points");
+        }
 
         m_plastic = xt::sort(xt::flatten_indices(xt::argwhere(xt::amin(m_material.isPlastic(), {1}))));
     }
@@ -342,7 +344,7 @@ public:
     std::tuple<xt::xtensor<size_t, 1>, xt::xtensor<size_t, 1>> getIncPush(double stress)
     {
         // integration point volume
-        auto dV = m_quad.DV(2);
+        auto dV = m_quad.AsTensor<2>(m_quad.dV());
 
         // number of plastic cells
         size_t N = m_plastic.size();
@@ -490,7 +492,7 @@ public:
         auto idx_n = m_material.CurrentIndex();
 
         // integration point volume
-        auto dV = m_quad.DV(2);
+        auto dV = m_quad.AsTensor<2>(m_quad.dV());
 
         // macroscopic (deviatoric) stress/strain tensor
         xt::xtensor_fixed<double, xt::xshape<2, 2>> Sigbar = xt::average(m_Sig, dV, {0, 1});
@@ -627,7 +629,7 @@ public:
 
         // extract information needed for storage
         size_t N = m_plastic.size();
-        auto dV = m_quad.DV(2);
+        auto dV = m_quad.AsTensor<2>(m_quad.dV());
         xt::xtensor<int, 1> idx_n = xt::view(m_material.CurrentIndex(), xt::keep(m_plastic), 0);
         xt::xtensor<int, 1> idx = xt::view(m_material.CurrentIndex(), xt::keep(m_plastic), 0);
 
