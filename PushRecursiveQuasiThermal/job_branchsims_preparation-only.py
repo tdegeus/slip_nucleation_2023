@@ -46,8 +46,10 @@ with h5py.File(os.path.join(dbase, 'EnsembleInfo.hdf5'), 'r') as data:
 sigc = 0.15464095 * sig0
 # push_stresses = np.array([1.0 * sigc, 0.8 * sigc, 0.6 * sigc])
 # push_names = ['sigc-1d0', 'sigc-0d8', 'sigc-0d6']
-push_stresses = np.array([1.25 * sigc, 1.31 * sigc])
-push_names = ['sigc-1d25', 'sigc-1d31']
+# push_stresses = np.array([1.25 * sigc, 1.31 * sigc])
+# push_names = ['sigc-1d25', 'sigc-1d31']
+push_stresses = np.array([1.20 * sigc])
+push_names = ['sigc-1d20']
 
 for stress, inc, file in zip(stresses, incs, files):
 
@@ -82,13 +84,13 @@ for stress, inc, file in zip(stresses, incs, files):
                     output['/push/kBT'] = T
                     output['/disp/0'] = data['disp'][str(inc)][...]
 
-                    dset = output.create_dataset('/stored', (1, ), maxshape=(None, ), dtype=np.int)
+                    dset = output.create_dataset('/stored', (1, ), maxshape=(None, ), dtype=np.int64)
                     dset[0] = 0
 
-                    dset = output.create_dataset('/sigd', (1, ), maxshape=(None, ), dtype=np.float)
+                    dset = output.create_dataset('/sigd', (1, ), maxshape=(None, ), dtype=np.float64)
                     dset[0] = stress
 
-                    dset = output.create_dataset('/t', (1, ), maxshape=(None, ), dtype=np.float)
+                    dset = output.create_dataset('/t', (1, ), maxshape=(None, ), dtype=np.float64)
                     dset[0] = float(data['/t'][inc])
 
 
