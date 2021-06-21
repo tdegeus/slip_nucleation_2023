@@ -10,7 +10,7 @@ import numpy as np
 # ----
 
 files = sorted(list(filter(None, subprocess.check_output(
-    "find . -iname 'id*.hdf5'", shell=True).decode('utf-8').split('\n'))))
+    "find . -maxdepth 1 -iname 'id*.hdf5'", shell=True).decode('utf-8').split('\n'))))
 
 # ----
 
@@ -32,7 +32,7 @@ fi
 {0:s}
 '''
 
-files_per_group = 50
+files_per_group = 25
 ngroup = int(np.ceil(len(files) / files_per_group))
 fmt = str(int(np.ceil(np.log10(ngroup))))
 

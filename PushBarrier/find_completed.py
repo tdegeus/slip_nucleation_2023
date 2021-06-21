@@ -2,7 +2,7 @@ import subprocess
 import h5py
 import os
 import tqdm
-from shelephant import YamlDump
+from shelephant.yaml import dump
 
 def is_completed(file):
     with h5py.File(file, 'r') as data:
@@ -31,4 +31,4 @@ ret = {
     'pushes': pushes,
 }
 
-YamlDump('completed.yaml', ret)
+dump('completed.yaml', ret)
