@@ -218,7 +218,6 @@ public:
 
         // restore increment
         m_inc = inc_c;
-
         this->setU(H5Easy::load<decltype(m_u)>(m_file, fmt::format("/disp/{0:d}", m_inc)));
 
         DumpWithDescription(data, fmt::format("/disp/{0:d}", 0),
