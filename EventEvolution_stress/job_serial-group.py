@@ -81,6 +81,9 @@ for name, stress in zip(stress_names, stresses):
             incc = p_incc[i],
             id = p_files[p_file[i]].replace('.hdf5', ''))
 
+        if os.path.isfile(os.path.join(dbase, 'EventEvolution', fname)):
+            continue
+
         commands += ['EventEvolution_stress --file {file:s} --element {element:d} --incc {incc:d} --stress {stress:.8e} --output {output:s}'.format(
             file = os.path.join('Run', p_files[p_file[i]]),
             element = p_elem[i],
