@@ -7,15 +7,16 @@ from shelephant.yaml import dump
 
 parser = argparse.ArgumentParser()
 parser.add_argument('files', nargs='*', type=str)
+parser.add_argument('-o', '--output', default='completed.yaml')
 args = parser.parse_args()
 assert np.all([os.path.isfile(file) for file in args.files])
 
 def is_completed(file):
-    with h5py.File(file, 'r') as data:
-        try:
+    try:
+        with h5py.File(file, 'r') as data:
             return data['/meta/EventEvolution_stress/completed'][...]
-        except:
-            return False
+    except:
+        return False
 
 completed = []
 partial = []
@@ -31,4 +32,4 @@ ret = {
     'failed': partial,
 }
 
-dump('completed.yaml', ret)
+dump(args.output, ret)
