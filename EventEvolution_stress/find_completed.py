@@ -2,6 +2,7 @@ import h5py
 import os
 import tqdm
 import argparse
+import numpy as np
 from shelephant.yaml import dump
 
 parser = argparse.ArgumentParser()
