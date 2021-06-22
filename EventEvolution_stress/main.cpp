@@ -275,7 +275,7 @@ public:
         MYASSERT(xt::any(xt::equal(inc_system, inc_c)));
 
         // get push increment
-        size_t ipush = xt::flatten_indices(xt::argwhere(xt::equal(inc_system, inc_c)))(0);
+        size_t ipush = xt::flatten_indices(xt::argwhere(xt::greater_equal(inc_push, inc_c)))(0);
         m_inc = inc_push(ipush);
         MYASSERT(ipush < inc_push.size());
         MYASSERT(inc_push(ipush) >= inc_c);
