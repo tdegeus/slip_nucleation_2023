@@ -1,8 +1,13 @@
-import subprocess
 import h5py
 import os
 import tqdm
+import argparse
 from shelephant.yaml import dump
+
+parser = argparse.ArgumentParser()
+parser.add_argument('files', nargs='*', type=str)
+args = parser.parse_args()
+assert np.all([os.path.isfile(file) for file in args.files])
 
 def is_completed(file):
     with h5py.File(file, 'r') as data:
@@ -11,9 +16,18 @@ def is_completed(file):
         except:
             return False
 
-files = sorted(list(filter(None, subprocess.check_output(
-    "find . -maxdepth 1 -iname 'id*.hdf5'", shell=True).decode('utf-8').split('\n'))))
+completed = []
+partial = []
 
-files = [os.path.relpath(file) for file in tqdm.tqdm(files) if is_completed(file)]
+for file in tqdm.tqdm(args.files):
+    if is_completed(file):
+        completed += [file]
+    else:
+        partial += [file]
 
-dump('completed.yaml', files)
+ret = {
+    'completed': completed,
+    'failed': failed,
+}
+
+dump('completed.yaml', ret)
