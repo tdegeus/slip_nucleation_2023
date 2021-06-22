@@ -28,7 +28,7 @@ for file in tqdm.tqdm(args.files):
 
 ret = {
     'completed': completed,
-    'failed': failed,
+    'failed': partial,
 }
 
 dump('completed.yaml', ret)
