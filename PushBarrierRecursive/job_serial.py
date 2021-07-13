@@ -24,6 +24,9 @@ if [[ "${{SYS_TYPE}}" == *E5v4* ]]; then
     conda activate code_velocity_E5v4
 elif [[ "${{SYS_TYPE}}" == *s6g1* ]]; then
     conda activate code_velocity_s6g1
+else
+    echo "Unknown SYS_TYPE ${{SYS_TYPE}}"
+    exit 1
 fi
 
 {0:s}
