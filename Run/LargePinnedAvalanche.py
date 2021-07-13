@@ -1,13 +1,7 @@
-from setuptools_scm import get_version
-import argparse
 import FrictionQPotFEM.UniformSingleLayer2d as model
 import GMatElastoPlasticQPot.Cartesian2d as GMat
 import GooseFEM
 import h5py
-import numpy as np
-import os
-import prrng
-import tqdm
 
 
 def initsystem(data):
