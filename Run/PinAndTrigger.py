@@ -5,6 +5,16 @@ import QPot
 import h5py
 import numpy as np
 
+parser = argparse.ArgumentParser()
+parser.add_argument("-f", "--file", type=str, help="Filename of simulation file (read-only)")
+parser.add_argument("-o", "--output", type=str, help="Filename of output file (overwritten)")
+parser.add_argument("-s", "--stress", type=float, help="Stress as which to trigger")
+parser.add_argument("-i", "--incc", type=int, help="Increment number of last system-spanning event")
+parser.add_argument("-e", "--element", type=int, help="Element to push")
+parser.add_argument("-a", "--size", type=int, help="Number of elements to keep unpinned")
+args = parser.parse_args()
+assert os.path.isfile(os.path.realpath(args.file))
+assert os.path.realpath(args.file) != os.path.realpath(args.output)
 
 def initsystem(data):
 
@@ -24,18 +34,12 @@ def initsystem(data):
 
     return system
 
-# todo: hardcoded for now
-G = 1.0
-eps0 = 5.0e-4
-sig0 = 2.0 * G * eps0
-l0 = np.pi
+target_stress = args.stress
+target_inc_system = args.iinc
+target_A = args.size # number of blocks to keep unpinned
+target_element = args.element # element to trigger
 
-target_stress = 0.34
-target_inc_system = 41
-target_A = 200 # number of blocks to keep unpinned
-target_element = 0 # element to trigger
-
-with h5py.File("id=000.hdf5", "r") as data:
+with h5py.File(args.file, "r") as data:
 
     system = initsystem(data)
 
@@ -64,8 +68,8 @@ with h5py.File("id=000.hdf5", "r") as data:
         system.setU(data["/disp/{0:d}".format(inc)])
 
         idx = system.plastic_CurrentIndex()[:, 0].astype(int)
-        Sig = system.Sig() / sig0
-        Eps = system.Eps() / eps0           
+        Sig = system.Sig()
+        Eps = system.Eps()
 
         A[inc] = np.sum(idx != idx_n)
         Strain[inc] = GMat.Epsd(np.average(Eps, weights=dV, axis=(0, 1)))
@@ -114,22 +118,25 @@ with h5py.File("id=000.hdf5", "r") as data:
     assert np.any(target_inc_system == inc_system)
 
     system.setU(data["/disp/{0:d}".format(inc)])
-    system.addSimpleShearToFixedStress(target_stress * sig0)
+    system.addSimpleShearToFixedStress(target_stress)
+
+    # todo: store displacement
 
     # (*) Pin down a fraction of the system
 
     idx = system.plastic_CurrentIndex()
 
-    # todo: this is not correctly: A should be the free cells!!!
-    i = int((N - target_A) / 2)
-    pinned = np.zeros((N), dtype=bool)
-    pinned[i: i + target_A] = True
+    assert target_A <= N 
+    assert target_element <= N 
+    i = int(N - target_A / 2)
+    pinned = np.ones((3 * N), dtype=bool)
+    pinned[i: i + target_A] = False
+    pinned[N + i: N + i + target_A] = False
+    pinned = pinned[N: 2 * N]
     pinned = np.roll(pinned, target_element)
 
     material = system.material()
     material_plastic = system.material_plastic()
-
-    print(sum(pinned), target_A)
 
     for i, e in enumerate(plastic):
         if pinned[i]:
@@ -148,29 +155,9 @@ with h5py.File("id=000.hdf5", "r") as data:
 
     # (*) Apply push and minimise energy
 
+    with h5py.File(args.output, "w") as output:
 
-
-
-    # print(system.plastic_CurrentYieldLeft())
-    # print(system.plastic_CurrentYieldRight())
-    # print(system.plastic_CurrentYieldRight())
-
-            # print(chunk.y()[int(idx[i, q])], chunk.y()[int(idx[i, q] + 1)], epsp[i, q])
-            # y = chunk.y()[:int(idx[i, q] + 1 + 1)]
-            # print(y[-1] - epsp[i, q])
-            # print(idx[i, q], chunk.i())
-
-            # print(chunk.i())
-
-
-    # print(inc)
-
-    
-
-
-
-
-    # print(inc_system)
-# 
-
-
+        output["/disp/0"] = system.u()
+        system.triggerElementWithLocalSimpleShear(data["/run/epsd/kick"][...], target_element)
+        system.minimise()
+        output["/disp/1"] = system.u()
