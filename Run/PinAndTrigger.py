@@ -7,18 +7,14 @@ import numpy as np
 import os
 import QPot
 
-parser = argparse.ArgumentParser()
-parser.add_argument("-f", "--file", type=str, help="Filename of simulation file (read-only)")
-parser.add_argument("-o", "--output", type=str, help="Filename of output file (overwritten)")
-parser.add_argument("-s", "--stress", type=float, help="Stress as which to trigger")
-parser.add_argument("-i", "--incc", type=int, help="Increment number of last system-spanning event")
-parser.add_argument("-e", "--element", type=int, help="Element to push")
-parser.add_argument("-a", "--size", type=int, help="Number of elements to keep unpinned")
-args = parser.parse_args()
-assert os.path.isfile(os.path.realpath(args.file))
-assert os.path.realpath(args.file) != os.path.realpath(args.output)
 
 def initsystem(data):
+    r'''
+Read system from file.
+
+:param h5py.File data: Open simulation HDF5 archive (read-only).
+:return: FrictionQPotFEM.UniformSingleLayer2d.System
+    '''
 
     system = model.System(
         data["/coor"][...],
@@ -36,22 +32,19 @@ def initsystem(data):
 
     return system
 
-target_stress = args.stress
-target_inc_system = args.incc
-target_A = args.size # number of blocks to keep unpinned
-target_element = args.element # element to trigger
 
-with h5py.File(args.file, "r") as data:
+def pushincrements(system, data, target_stress):
+    r'''
+Get a list of increment from which the stress can be reached by elastic loading only.
 
-    system = initsystem(data)
+:param FrictionQPotFEM.UniformSingleLayer2d.System system: The system (modified: all increments visited).
+:param h5py.File data: Open simulation HDF5 archive (read-only).
+:param float target_stress: The stress at which to push (in real units).
+:return: 
+    ``inc_system`` List of system spanning avalanches.
+    ``inc_push`` List of increment from which the stress can be reached by elastic loading only.
+    '''
 
-    plastic = system.plastic()
-    N = plastic.size
-    nip = system.quad().nip()
-    dV = system.quad().AsTensor(2, system.quad().dV())
-
-    # (*) Determine at which increment a push could be applied
-    
     eps_kick = data["/run/epsd/kick"][...]
     kick = data["/kick"][...].astype(bool)
     incs = data["/stored"][...].astype(int)
@@ -115,20 +108,27 @@ with h5py.File(args.file, "r") as data:
 
     inc_push = np.array(inc_push)
 
-    # (*) Reload specific increment based on target stress and system-spanning increment
+    return inc_system, inc_push
 
-    inc = inc_push[np.argmax(target_inc_system >= inc_push)]
-    assert np.any(target_inc_system == inc_system)
 
-    system.setU(data["/disp/{0:d}".format(inc)])
-    system.addSimpleShearToFixedStress(target_stress)
+def pinsystem(system, target_element, target_A):
+    r'''
+Pin down part of the system by converting blocks to being elastic: 
+having a single parabolic potential with the minimum equal to the current minimum.
 
-    # (*) Pin down a fraction of the system
+:param FrictionQPotFEM.UniformSingleLayer2d.System system: The system (modified: yield strains changed).
+:param int target_element: The element to trigger.
+:param int target_A: Number of blocks to keep unpinned (``target_A / 2`` on both sides of ``target_element``).
+    '''
 
-    idx = system.plastic_CurrentIndex()
+    plastic = system.plastic()
+    N = plastic.size
+    nip = system.quad().nip()
 
     assert target_A <= N 
     assert target_element <= N 
+
+    idx = system.plastic_CurrentIndex()
     i = int(N - target_A / 2)
     pinned = np.ones((3 * N), dtype=bool)
     pinned[i: i + target_A] = False
@@ -151,11 +151,56 @@ with h5py.File(args.file, "r") as data:
                     ymin = 0.5 * sum(y) # current mininim
                     chunk.set_y([ymin - 2 * ymax, ymin + 2 * ymax]) 
 
-# (*) Apply push and minimise energy
+if __name__ == "__main__":
 
-with h5py.File(args.output, "w") as output:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-f", "--file", type=str, help="Filename of simulation file (read-only)")
+    parser.add_argument("-o", "--output", type=str, help="Filename of output file (overwritten)")
+    parser.add_argument("-s", "--stress", type=float, help="Stress as which to trigger")
+    parser.add_argument("-i", "--incc", type=int, help="Increment number of last system-spanning event")
+    parser.add_argument("-e", "--element", type=int, help="Element to push")
+    parser.add_argument("-a", "--size", type=int, help="Number of elements to keep unpinned")
+    args = parser.parse_args()
+    assert os.path.isfile(os.path.realpath(args.file))
+    assert os.path.realpath(args.file) != os.path.realpath(args.output)
 
-    output["/disp/0"] = system.u()
-    system.triggerElementWithLocalSimpleShear(eps_kick, target_element)
-    system.minimise()
-    output["/disp/1"] = system.u()
+    target_stress = args.stress
+    target_inc_system = args.incc
+    target_A = args.size # number of blocks to keep unpinned
+    target_element = args.element # element to trigger
+
+    with h5py.File(args.file, "r") as data:
+
+        system = initsystem(data)
+        N = system.plastic().size
+        dV = system.quad().AsTensor(2, system.quad().dV())
+
+        # (*) Determine at which increment a push could be applied
+        
+        inc_system, inc_push = pushincrements(system, data, target_stress)
+
+        # (*) Reload specific increment based on target stress and system-spanning increment
+
+        inc = inc_push[np.argmax(target_inc_system >= inc_push)]
+        assert np.any(target_inc_system == inc_system)
+
+        system.setU(data["/disp/{0:d}".format(inc)])
+        system.addSimpleShearToFixedStress(target_stress)
+
+        # (*) Pin down a fraction of the system
+
+        print(system.plastic_CurrentYieldLeft()[500, 0], system.plastic_CurrentYieldRight()[500, 0], system.plastic_Epsp()[500, 0])
+
+        pinsystem(system, target_element, target_A)
+
+    print(system.plastic_CurrentYieldLeft()[500, 0], system.plastic_CurrentYieldRight()[500, 0], system.plastic_Epsp()[500, 0])
+
+
+    # (*) Apply push and minimise energy
+
+    # with h5py.File(args.output, "w") as output:
+
+    #     output["/disp/0"] = system.u()
+    #     system.triggerElementWithLocalSimpleShear(eps_kick, target_element)
+    #     system.minimise()
+    #     output["/disp/1"] = system.u()
