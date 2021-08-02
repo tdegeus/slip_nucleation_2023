@@ -1,9 +1,11 @@
+import argparse
 import FrictionQPotFEM.UniformSingleLayer2d as model
 import GMatElastoPlasticQPot.Cartesian2d as GMat
 import GooseFEM
-import QPot
 import h5py
 import numpy as np
+import os
+import QPot
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-f", "--file", type=str, help="Filename of simulation file (read-only)")
@@ -35,7 +37,7 @@ def initsystem(data):
     return system
 
 target_stress = args.stress
-target_inc_system = args.iinc
+target_inc_system = args.incc
 target_A = args.size # number of blocks to keep unpinned
 target_element = args.element # element to trigger
 
@@ -50,6 +52,7 @@ with h5py.File(args.file, "r") as data:
 
     # (*) Determine at which increment a push could be applied
     
+    eps_kick = data["/run/epsd/kick"][...]
     kick = data["/kick"][...].astype(bool)
     incs = data["/stored"][...].astype(int)
     assert np.all(incs == np.arange(incs.size))
@@ -120,8 +123,6 @@ with h5py.File(args.file, "r") as data:
     system.setU(data["/disp/{0:d}".format(inc)])
     system.addSimpleShearToFixedStress(target_stress)
 
-    # todo: store displacement
-
     # (*) Pin down a fraction of the system
 
     idx = system.plastic_CurrentIndex()
@@ -141,23 +142,20 @@ with h5py.File(args.file, "r") as data:
     for i, e in enumerate(plastic):
         if pinned[i]:
             for q in range(nip):
-                cusp = material.refCusp([e, q])
-                chunk = cusp.refQPotChunked()
-                y = chunk.y()[:int(idx[i, q] + 2)] # idx is just left, slicing is up to not including
-                y[-1] = np.inf
-                chunk.set_y(y) 
+                for cusp in [material.refCusp([e, q]), material_plastic.refCusp([i, q])]:
+                    # cusp = m.refCusp([e, q])
+                    chunk = cusp.refQPotChunked()
+                    y = chunk.y()
+                    ymax = y[-1] # get some scale
+                    y = y[int(idx[i, q]): int(idx[i, q] + 2)] # idx is just left, slicing is up to not including 
+                    ymin = 0.5 * sum(y) # current mininim
+                    chunk.set_y([ymin - 2 * ymax, ymin + 2 * ymax]) 
 
-                cusp = material_plastic.refCusp([i, q])
-                chunk = cusp.refQPotChunked()
-                y = chunk.y()[:int(idx[i, q] + 2)] # idx is just left, slicing is up to not including
-                y[-1] = np.inf
-                chunk.set_y(y)
+# (*) Apply push and minimise energy
 
-    # (*) Apply push and minimise energy
+with h5py.File(args.output, "w") as output:
 
-    with h5py.File(args.output, "w") as output:
-
-        output["/disp/0"] = system.u()
-        system.triggerElementWithLocalSimpleShear(data["/run/epsd/kick"][...], target_element)
-        system.minimise()
-        output["/disp/1"] = system.u()
+    output["/disp/0"] = system.u()
+    system.triggerElementWithLocalSimpleShear(eps_kick, target_element)
+    system.minimise()
+    output["/disp/1"] = system.u()
