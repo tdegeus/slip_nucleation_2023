@@ -1,11 +1,13 @@
 import argparse
 import FrictionQPotFEM.UniformSingleLayer2d as model
+import git
 import GMatElastoPlasticQPot.Cartesian2d as GMat
 import GooseFEM
 import h5py
 import numpy as np
 import os
 import QPot
+import setuptools_scm
 
 
 def initsystem(data):
@@ -45,7 +47,6 @@ Get a list of increment from which the stress can be reached by elastic loading 
     ``inc_push`` List of increment from which the stress can be reached by elastic loading only.
     '''
 
-    eps_kick = data["/run/epsd/kick"][...]
     kick = data["/kick"][...].astype(bool)
     incs = data["/stored"][...].astype(int)
     assert np.all(incs == np.arange(incs.size))
@@ -87,6 +88,7 @@ Get a list of increment from which the stress can be reached by elastic loading 
 
     inc_system = np.argwhere(A == N).ravel()
     inc_push = []
+    inc_system_ret = []
 
     for i in range(inc_system.size - 1):
 
@@ -105,10 +107,12 @@ Get a list of increment from which the stress can be reached by elastic loading 
         assert kick[ipush + 1] == False
 
         inc_push += [ipush]
+        inc_system_ret += [n[0] - 1]
 
     inc_push = np.array(inc_push)
+    inc_system_ret = np.array(inc_system_ret)
 
-    return inc_system, inc_push
+    return inc_system_ret, inc_push
 
 
 def pinsystem(system, target_element, target_A):
@@ -119,6 +123,7 @@ having a single parabolic potential with the minimum equal to the current minimu
 :param FrictionQPotFEM.UniformSingleLayer2d.System system: The system (modified: yield strains changed).
 :param int target_element: The element to trigger.
 :param int target_A: Number of blocks to keep unpinned (``target_A / 2`` on both sides of ``target_element``).
+:return: Per element: pinned (``True``) or not (``False``)
     '''
 
     plastic = system.plastic()
@@ -151,6 +156,9 @@ having a single parabolic potential with the minimum equal to the current minimu
                     ymin = 0.5 * sum(y) # current mininim
                     chunk.set_y([ymin - 2 * ymax, ymin + 2 * ymax]) 
 
+    return pinned
+
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
@@ -164,6 +172,9 @@ if __name__ == "__main__":
     assert os.path.isfile(os.path.realpath(args.file))
     assert os.path.realpath(args.file) != os.path.realpath(args.output)
 
+    root = git.Repo(os.path.dirname(__file__), search_parent_directories=True).working_tree_dir
+    myversion = setuptools_scm.get_version(root=root)
+
     target_stress = args.stress
     target_inc_system = args.incc
     target_A = args.size # number of blocks to keep unpinned
@@ -172,6 +183,7 @@ if __name__ == "__main__":
     with h5py.File(args.file, "r") as data:
 
         system = initsystem(data)
+        eps_kick = data["/run/epsd/kick"][...]
         N = system.plastic().size
         dV = system.quad().AsTensor(2, system.quad().dV())
 
@@ -181,26 +193,30 @@ if __name__ == "__main__":
 
         # (*) Reload specific increment based on target stress and system-spanning increment
 
-        inc = inc_push[np.argmax(target_inc_system >= inc_push)]
-        assert np.any(target_inc_system == inc_system)
+        i = np.argmax(target_inc_system >= inc_push)
+        inc = inc_push[i]
+        assert target_inc_system == inc_system[i]
 
         system.setU(data["/disp/{0:d}".format(inc)])
         system.addSimpleShearToFixedStress(target_stress)
 
         # (*) Pin down a fraction of the system
 
-        print(system.plastic_CurrentYieldLeft()[500, 0], system.plastic_CurrentYieldRight()[500, 0], system.plastic_Epsp()[500, 0])
-
         pinsystem(system, target_element, target_A)
-
-    print(system.plastic_CurrentYieldLeft()[500, 0], system.plastic_CurrentYieldRight()[500, 0], system.plastic_Epsp()[500, 0])
-
 
     # (*) Apply push and minimise energy
 
-    # with h5py.File(args.output, "w") as output:
+    with h5py.File(args.output, "w") as output:
 
-    #     output["/disp/0"] = system.u()
-    #     system.triggerElementWithLocalSimpleShear(eps_kick, target_element)
-    #     system.minimise()
-    #     output["/disp/1"] = system.u()
+        output["/disp/0"] = system.u()
+        system.triggerElementWithLocalSimpleShear(eps_kick, target_element)
+        system.minimise()
+        output["/disp/1"] = system.u()
+
+        output["/meta/PushAndTrigger/file"] = args.file
+        output["/meta/PushAndTrigger/version"] = myversion
+        output["/meta/PushAndTrigger/target_stress"] = target_stress
+        output["/meta/PushAndTrigger/target_inc_system"] = target_inc_system
+        output["/meta/PushAndTrigger/target_A"] = target_A
+        output["/meta/PushAndTrigger/target_element"] = target_element
+
