@@ -97,7 +97,7 @@ Get a list of increment from which the stress can be reached by elastic loading 
         a = A[inc_system[i] + 1: inc_system[i + 1]: 2]
         n = incs[inc_system[i] + 1: inc_system[i + 1]: 2]
 
-        if not np.any(s > target_stress) or np.all(s > target_stress):
+        if not np.any(s > target_stress):
             continue
         
         j = np.argmax(s > target_stress)
