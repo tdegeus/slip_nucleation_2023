@@ -201,7 +201,7 @@ if __name__ == "__main__":
         # (*) Reload specific increment based on target stress and system-spanning increment
 
         assert target_inc_system in inc_system
-        i = max(np.argwhere(inc_push >= target_inc_system).ravel())
+        i = np.argmax((target_inc_system == inc_system) * (target_inc_system < inc_push))
         inc = inc_push[i]
         assert target_inc_system == inc_system[i]
 
