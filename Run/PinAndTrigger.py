@@ -216,9 +216,13 @@ if __name__ == "__main__":
     with h5py.File(args.output, "w") as output:
 
         output["/disp/0"] = system.u()
+        idx_n = system.plastic_CurrentIndex()[:, 0].astype(int)
+
         system.triggerElementWithLocalSimpleShear(eps_kick, target_element)
         niter = system.minimise()
+
         output["/disp/1"] = system.u()
+        idx = system.plastic_CurrentIndex()[:, 0].astype(int)
 
         print('niter =', niter)
 
@@ -229,4 +233,6 @@ if __name__ == "__main__":
         output["/meta/PushAndTrigger/target_inc_system"] = target_inc_system
         output["/meta/PushAndTrigger/target_A"] = target_A
         output["/meta/PushAndTrigger/target_element"] = target_element
+        output["/meta/PushAndTrigger/S"] = np.sum(idx - idx_n)
+        output["/meta/PushAndTrigger/A"] = np.sum(idx != idx_n)
 

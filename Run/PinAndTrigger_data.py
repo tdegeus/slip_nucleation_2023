@@ -10,22 +10,33 @@ import sys
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 import PinAndTrigger  
 
+with h5py.File("PinAndTrigger.h5", "r") as data:
 
-with h5py.File("id=000.hdf5", "r") as data:
+    for stress in data:
 
-    system = PinAndTrigger.initsystem(data)
+        for A in data[stress]:
 
-with h5py.File("stress=3d6_id=000_element=0.hdf5", "r") as data:
+            for simid in data[stress][A]:
 
-    system.setU(data["/disp/0"][...])
-    PinAndTrigger.pinsystem(system, data["/meta/PushAndTrigger/target_element"][...], data["/meta/PushAndTrigger/target_A"][...])
+                for incc in data[stress][A][simid]:
 
-    idx_n = system.plastic_CurrentIndex()[:, 0].astype(int)
+                    for element in data[stress][A][simid][incc]:
 
-    system.setU(data["/disp/1"][...])
+                        alias = data[stress][A][simid][incc][element]
+                        file = str(alias["file"].asstr()[...])
 
-    idx = system.plastic_CurrentIndex()[:, 0].astype(int)
+                        with h5py.File(file, "r") as s:
+                            system = PinAndTrigger.initsystem(s)
 
-    print(np.sum(idx - idx_n))
-    print(np.sum(idx != idx_n))
-    # print(system.plastic_CurrentYieldLeft()[500, 0], system.plastic_CurrentYieldRight()[500, 0], system.plastic_Epsp()[500, 0])
+                        system.setU(alias["disp"]["0"][...])
+                        PinAndTrigger.pinsystem(system, int(element.split('=')[1]), int(A.split('=')[1]))
+
+                        idx_n = system.plastic_CurrentIndex()[:, 0].astype(int)
+
+                        system.setU(alias["disp"]["1"][...])
+
+                        idx = system.plastic_CurrentIndex()[:, 0].astype(int)
+
+                        print(np.sum(idx - idx_n))
+                        print(np.sum(idx != idx_n))
+                        # print(system.plastic_CurrentYieldLeft()[500, 0], system.plastic_CurrentYieldRight()[500, 0], system.plastic_Epsp()[500, 0])
