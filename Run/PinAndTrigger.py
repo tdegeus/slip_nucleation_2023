@@ -172,6 +172,13 @@ if __name__ == "__main__":
     assert os.path.isfile(os.path.realpath(args.file))
     assert os.path.realpath(args.file) != os.path.realpath(args.output)
 
+    print('file =', args.file)
+    print('output =', args.output)
+    print('stress =', args.stress)
+    print('incc =', args.incc)
+    print('element =', args.element)
+    print('size =', args.size)
+
     root = git.Repo(os.path.dirname(__file__), search_parent_directories=True).working_tree_dir
     myversion = setuptools_scm.get_version(root=root)
 
@@ -210,8 +217,10 @@ if __name__ == "__main__":
 
         output["/disp/0"] = system.u()
         system.triggerElementWithLocalSimpleShear(eps_kick, target_element)
-        system.minimise()
+        niter = system.minimise()
         output["/disp/1"] = system.u()
+
+        print('niter =', niter)
 
         output["/meta/PushAndTrigger/file"] = args.file
         output["/meta/PushAndTrigger/version"] = myversion
