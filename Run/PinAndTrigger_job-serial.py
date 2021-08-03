@@ -1,3 +1,8 @@
+r'''
+It is adviced to first Run A = 1200 to select which events are large.
+Otherwise a lot of effort might be waisted computing small events.
+'''
+
 import argparse
 import GooseSLURM
 import h5py

@@ -97,7 +97,7 @@ Get a list of increment from which the stress can be reached by elastic loading 
         a = A[inc_system[i] + 1: inc_system[i + 1]: 2]
         n = incs[inc_system[i] + 1: inc_system[i + 1]: 2]
 
-        if not np.any(s > target_stress):
+        if not np.any(s > target_stress) or np.all(s > target_stress):
             continue
         
         j = np.argmax(s > target_stress)
@@ -200,12 +200,16 @@ if __name__ == "__main__":
 
         # (*) Reload specific increment based on target stress and system-spanning increment
 
-        i = np.argmax(target_inc_system >= inc_push)
+        assert target_inc_system in inc_system
+        i = max(np.argwhere(inc_push >= target_inc_system).ravel())
         inc = inc_push[i]
         assert target_inc_system == inc_system[i]
 
         system.setU(data["/disp/{0:d}".format(inc)])
+        idx_n = system.plastic_CurrentIndex()
         system.addSimpleShearToFixedStress(target_stress)
+        idx = system.plastic_CurrentIndex()
+        assert np.all(idx == idx_n)
 
         # (*) Pin down a fraction of the system
 
