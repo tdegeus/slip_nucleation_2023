@@ -32,7 +32,9 @@ fi
 
 cd "${SLURM_TMPDIR}"
 
-git clone git@github.com:tdegeus/FrictionQPotFEM.git
+git clone https://github.com/tdegeus/FrictionQPotFEM.git
 cd FrictionQPotFEM
 export CMAKE_ARGS="-DUSE_SIMD=1"
 python -m pip install -vv
+cd ..
+rm -rf FrictionQPotFEM
