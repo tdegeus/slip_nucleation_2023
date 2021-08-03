@@ -1,25 +1,31 @@
 channels:
   - conda-forge
 dependencies:
-  - frictionqpotfem
-  - goosefem
-  - gmatelastoplasticqpot
-  - python
-  - python-goosefem
-  - python-gmatelastoplasticqpot
-  - h5py
   - cmake
-  - make
-  - xtensor
-  - xtensor-blas
-  - xsimd
-  - highfive
   - cpppath
   - docopt.cpp
   - fmt
-  - parallel
-  - gooseslurm
+  - frictionqpotfem
+  - gitpython
+  - gmatelastoplasticqpot
+  - goosefem
   - goosehdf5
-  - tqdm
+  - gooseslurm
+  - h5py
+  - highfive
+  - make
+  - ninja
+  - parallel
+  - python
+  - python-frictionqpotfem
+  - python-gmatelastoplasticqpot
+  - python-goosefem
+  - python-qpot
+  - qpot
   - setuptools_scm
   - shelephant
+  - tqdm
+  - xsimd
+  - xtensor
+  - xtensor-blas
+  - xtensor-python

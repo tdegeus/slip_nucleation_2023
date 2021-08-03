@@ -215,6 +215,7 @@ if __name__ == "__main__":
 
         output["/meta/PushAndTrigger/file"] = args.file
         output["/meta/PushAndTrigger/version"] = myversion
+        output["/meta/PushAndTrigger/version_dependencies"] = model.version_dependencies()
         output["/meta/PushAndTrigger/target_stress"] = target_stress
         output["/meta/PushAndTrigger/target_inc_system"] = target_inc_system
         output["/meta/PushAndTrigger/target_A"] = target_A
