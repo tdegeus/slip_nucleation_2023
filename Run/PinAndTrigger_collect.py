@@ -1,90 +1,103 @@
 import argparse
+import GooseHDF5 as g5
 import h5py
 import numpy as np
 import os
+import shelephant
 import sys
-import GooseHDF5 as g5
+import tqdm
 
-# parser = argparse.ArgumentParser()
-# parser.add_argument("-o", "--output", type=str, help="Output file (appended)", default="PinAndTrigger.h5")
-# parser.add_argument("files", type=str, nargs="*", help="Files to add")
-# args = parser.parse_args()
+basename = os.path.splitext(os.path.basename(__file__))[0]
 
-
-files = [
-    "stress=0d6_A=800_id=939_incc=51_element=0.hdf5",
-    "stress=1d6_A=800_id=169_incc=37_element=0.hdf5",
-    "stress=1d6_A=800_id=224_incc=43_element=0.hdf5",
-    # "stress=1d6_A=800_id=457_incc=41_element=0.hdf5",
-    # "stress=1d6_A=800_id=481_incc=43_element=0.hdf5",
-    # "stress=1d6_A=800_id=925_incc=47_element=0.hdf5",
-    # "stress=1d6_A=800_id=978_incc=45_element=0.hdf5",
-    "stress=2d6_A=800_id=027_incc=55_element=0.hdf5",
-    # "stress=2d6_A=800_id=327_incc=47_element=0.hdf5",
-    "stress=2d6_A=800_id=367_incc=51_element=0.hdf5",
-    "stress=2d6_A=800_id=470_incc=41_element=0.hdf5",
-    "stress=2d6_A=800_id=685_incc=47_element=0.hdf5",
-    # "stress=3d6_A=800_id=013_incc=43_element=0.hdf5",
-    "stress=3d6_A=800_id=155_incc=45_element=0.hdf5",
-    "stress=3d6_A=800_id=286_incc=45_element=0.hdf5",
-    "stress=3d6_A=800_id=354_incc=37_element=0.hdf5",
-    "stress=3d6_A=800_id=380_incc=39_element=0.hdf5",
-    # "stress=3d6_A=800_id=431_incc=47_element=0.hdf5",
-    "stress=3d6_A=800_id=522_incc=43_element=0.hdf5",
-    "stress=3d6_A=800_id=658_incc=43_element=0.hdf5",
-    "stress=3d6_A=800_id=899_incc=39_element=0.hdf5",
-    # "stress=4d6_A=800_id=106_incc=29_element=0.hdf5",
-    # "stress=4d6_A=800_id=197_incc=47_element=0.hdf5",
-    "stress=4d6_A=800_id=302_incc=41_element=0.hdf5",
-    "stress=4d6_A=800_id=546_incc=55_element=0.hdf5",
-    # "stress=4d6_A=800_id=673_incc=39_element=0.hdf5",
-    # "stress=4d6_A=800_id=780_incc=47_element=0.hdf5",
-    "stress=4d6_A=800_id=870_incc=51_element=0.hdf5",
-    # "stress=5d6_A=800_id=117_incc=27_element=0.hdf5",
-    "stress=5d6_A=800_id=444_incc=35_element=0.hdf5",
-    # "stress=5d6_A=800_id=533_incc=39_element=0.hdf5",
-    # "stress=5d6_A=800_id=586_incc=53_element=0.hdf5",
-    # "stress=5d6_A=800_id=755_incc=33_element=0.hdf5",
-    # "stress=5d6_A=800_id=768_incc=41_element=0.hdf5",
-    # "stress=5d6_A=800_id=792_incc=37_element=0.hdf5",
-    # "stress=5d6_A=800_id=817_incc=43_element=0.hdf5",
-    # "stress=5d6_A=800_id=831_incc=35_element=0.hdf5",
-    # "stress=6d6_A=800_id=066_incc=37_element=0.hdf5",
-    # "stress=6d6_A=800_id=078_incc=27_element=0.hdf5",
-    # "stress=6d6_A=800_id=314_incc=43_element=0.hdf5",
-    # "stress=6d6_A=800_id=642_incc=43_element=0.hdf5",
-    # "stress=6d6_A=800_id=844_incc=43_element=0.hdf5",
-]
+parser = argparse.ArgumentParser()
+parser.add_argument("-A", "--min-A", type=int, help="Save events only with A > ...", default=200)
+parser.add_argument("-o", "--output", type=str, help="Output file (appended)", default=basename + ".h5")
+parser.add_argument("-e", "--error", type=str, help="Store list of corrupted files", default=basename + ".yaml")
+parser.add_argument("files", type=str, nargs="*", help="Files to add")
+args = parser.parse_args()
+assert np.all([os.path.isfile(os.path.realpath(file)) for file in args.files])
+assert len(args.files) > 0
+args = parser.parse_args()
 
 init = True
+corrupted = []
+existing = []
 
-with h5py.File("PinAndTrigger.h5", "a") as output:
+with h5py.File(args.output, "a") as output:
 
-    for file in files:
+    for file in tqdm.tqdm(args.files):
+
+        try:
+            with h5py.File(file, "r") as data:
+                pass
+        except:
+            corrupted += [file]
+            continue
+
+        with h5py.File(file, "r") as data:
+            paths = list(g5.getdatasets(data))
+            verify = g5.verify(data, paths)
+            if paths != verify:
+                corrupted += [file]
+                continue
+
 
         with h5py.File(file, "r") as data:
 
+            basename = os.path.basename(file)
+
             info = dict(
-                stress = file.split("stress=")[1].split("_")[0],
-                A = file.split("A=")[1].split("_")[0],
-                id = file.split("id=")[1].split("_")[0],
-                incc = file.split("incc=")[1].split("_")[0],
-                element = file.split("element=")[1].split(".hdf5")[0])
+                stress = basename.split("stress=")[1].split("_")[0],
+                A = basename.split("A=")[1].split("_")[0],
+                id = basename.split("id=")[1].split("_")[0],
+                incc = basename.split("incc=")[1].split("_")[0],
+                element = basename.split("element=")[1].split(".hdf5")[0])
+
+            # account for typo
+            if "PushAndTrigger" in data["meta"]:
+                meta = data["meta"]["PushAndTrigger"]
+                root_meta = "/meta/PushAndTrigger"
+            elif "PinAndTrigger" in data["meta"]:
+                meta = data["meta"]["PinAndTrigger"]
+                root_meta = "/meta/PinAndTrigger"
+            else:
+                raise IOError("Unknown input")
 
             if init:
-                version = data["/meta/PushAndTrigger/version"].asstr()[...]
+                version = meta["version"].asstr()[...]
+                version_dependencies = list(meta["version_dependencies"].asstr()[...])
+                output["/meta/version"] = version
+                output["/meta/version_dependencies"] = version_dependencies
+                init = False
             else:
-                assert version == data["/meta/PushAndTrigger/version"].asstr()[...]
+                assert version == meta["version"].asstr()[...]
+                assert version_dependencies == list(meta["version_dependencies"].asstr()[...])
 
-            # todo: save version and dependencies
+            assert int(info["incc"]) == meta["target_inc_system"][...]
+            assert int(info["A"]) == meta["target_A"][...]
+            assert int(info["element"]) == meta["target_element"][...]
+            assert int(info["id"]) == int(os.path.splitext(str(meta["file"].asstr()[...]).split("id=")[1])[0])
 
-            root = "/stress={stress:s}/A={A:s}/id={id:s}/incc={incc:s}/element={element:s}".format(**info)
+            root = "/data/stress={stress:s}/A={A:s}/id={id:s}/incc={incc:s}/element={element:s}".format(**info)
 
             if root in output:
-                print('Skipping', root)
+                existing += [file]
                 continue
 
-            g5.copydatasets(data, output, ["/disp/0", "/disp/1", "/meta/PushAndTrigger/file"], ["/disp/0", "/disp/1", "/file"], root=root)
+            A = meta["A"][...]
 
-            # todo add metadata?
+            source_datasets = [
+                "{0:s}/file".format(root_meta),
+                "{0:s}/target_stress".format(root_meta),
+                "{0:s}/S".format(root_meta),
+                "{0:s}/A".format(root_meta)]
 
+            dest_datasets = ["/file", "/target_stress", "/S", "/A"]
+
+            if A >= args.min_A:
+                source_datasets = ["/disp/0", "/disp/1"] + source_datasets
+                dest_datasets = ["/disp/0", "/disp/1"] + dest_datasets
+
+            g5.copydatasets(data, output, source_datasets, dest_datasets, root)
+
+shelephant.yaml.dump(args.error, dict(corrupted=corrupted, existing=existing), force=True)
