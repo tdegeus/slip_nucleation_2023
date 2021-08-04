@@ -42,11 +42,12 @@ Get a list of increment from which the stress can be reached by elastic loading 
 :param FrictionQPotFEM.UniformSingleLayer2d.System system: The system (modified: all increments visited).
 :param h5py.File data: Open simulation HDF5 archive (read-only).
 :param float target_stress: The stress at which to push (in real units).
-:return: 
+:return:
     ``inc_system`` List of system spanning avalanches.
     ``inc_push`` List of increment from which the stress can be reached by elastic loading only.
     '''
 
+    dV = system.quad().AsTensor(2, system.quad().dV())
     kick = data["/kick"][...].astype(bool)
     incs = data["/stored"][...].astype(int)
     assert np.all(incs == np.arange(incs.size))
@@ -70,7 +71,7 @@ Get a list of increment from which the stress can be reached by elastic loading 
 
         A[inc] = np.sum(idx != idx_n)
         Strain[inc] = GMat.Epsd(np.average(Eps, weights=dV, axis=(0, 1)))
-        Stress[inc] = GMat.Sigd(np.average(Sig, weights=dV, axis=(0, 1)))     
+        Stress[inc] = GMat.Sigd(np.average(Sig, weights=dV, axis=(0, 1)))
 
         idx_n = np.array(idx, copy=True)
 
@@ -81,7 +82,7 @@ Get a list of increment from which the stress can be reached by elastic loading 
     K[0] = np.inf
     K[1:] = (Stress[1:] - Stress[0]) / (Strain[1:] - Strain[0])
     steadystate = max(2, np.argmax(K <= 0.95 * K[1]))
-    if kick[steadystate]: 
+    if kick[steadystate]:
         steadystate += 1
 
     A[:steadystate] = 0
@@ -99,7 +100,7 @@ Get a list of increment from which the stress can be reached by elastic loading 
 
         if not np.any(s > target_stress):
             continue
-        
+
         j = np.argmax(s > target_stress)
         ipush = n[j] - 1
 
@@ -117,7 +118,7 @@ Get a list of increment from which the stress can be reached by elastic loading 
 
 def pinsystem(system, target_element, target_A):
     r'''
-Pin down part of the system by converting blocks to being elastic: 
+Pin down part of the system by converting blocks to being elastic:
 having a single parabolic potential with the minimum equal to the current minimum.
 
 :param FrictionQPotFEM.UniformSingleLayer2d.System system: The system (modified: yield strains changed).
@@ -130,8 +131,8 @@ having a single parabolic potential with the minimum equal to the current minimu
     N = plastic.size
     nip = system.quad().nip()
 
-    assert target_A <= N 
-    assert target_element <= N 
+    assert target_A <= N
+    assert target_element <= N
 
     idx = system.plastic_CurrentIndex()
     i = int(N - target_A / 2)
@@ -152,9 +153,9 @@ having a single parabolic potential with the minimum equal to the current minimu
                     chunk = cusp.refQPotChunked()
                     y = chunk.y()
                     ymax = y[-1] # get some scale
-                    y = y[int(idx[i, q]): int(idx[i, q] + 2)] # idx is just left, slicing is up to not including 
+                    y = y[int(idx[i, q]): int(idx[i, q] + 2)] # idx is just left, slicing is up to not including
                     ymin = 0.5 * sum(y) # current mininim
-                    chunk.set_y([ymin - 2 * ymax, ymin + 2 * ymax]) 
+                    chunk.set_y([ymin - 2 * ymax, ymin + 2 * ymax])
 
     return pinned
 
@@ -192,10 +193,9 @@ if __name__ == "__main__":
         system = initsystem(data)
         eps_kick = data["/run/epsd/kick"][...]
         N = system.plastic().size
-        dV = system.quad().AsTensor(2, system.quad().dV())
 
         # (*) Determine at which increment a push could be applied
-        
+
         inc_system, inc_push = pushincrements(system, data, target_stress)
 
         # (*) Reload specific increment based on target stress and system-spanning increment
@@ -230,13 +230,13 @@ if __name__ == "__main__":
 
         print('niter =', niter)
 
-        output["/meta/PushAndTrigger/file"] = args.file
-        output["/meta/PushAndTrigger/version"] = myversion
-        output["/meta/PushAndTrigger/version_dependencies"] = model.version_dependencies()
-        output["/meta/PushAndTrigger/target_stress"] = target_stress
-        output["/meta/PushAndTrigger/target_inc_system"] = target_inc_system
-        output["/meta/PushAndTrigger/target_A"] = target_A
-        output["/meta/PushAndTrigger/target_element"] = target_element
-        output["/meta/PushAndTrigger/S"] = np.sum(idx - idx_n)
-        output["/meta/PushAndTrigger/A"] = np.sum(idx != idx_n)
+        output["/meta/PinAndTrigger/file"] = args.file
+        output["/meta/PinAndTrigger/version"] = myversion
+        output["/meta/PinAndTrigger/version_dependencies"] = model.version_dependencies()
+        output["/meta/PinAndTrigger/target_stress"] = target_stress
+        output["/meta/PinAndTrigger/target_inc_system"] = target_inc_system
+        output["/meta/PinAndTrigger/target_A"] = target_A
+        output["/meta/PinAndTrigger/target_element"] = target_element
+        output["/meta/PinAndTrigger/S"] = np.sum(idx - idx_n)
+        output["/meta/PinAndTrigger/A"] = np.sum(idx != idx_n)
 
