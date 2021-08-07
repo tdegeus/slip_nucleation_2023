@@ -26,8 +26,8 @@ with h5py.File(args.output, "a") as output:
 
         with h5py.File(file, "r") as data:
 
-            assert str(output["/meta/version"].asstr()[...]) == str(data["/meta/version"].asstr()[...])
-            assert list(output["/meta/version_dependencies"].asstr()[...]) == list(data["/meta/version_dependencies"].asstr()[...])
+            for key in ["/meta/version", "/meta/version_dependencies"]:
+                assert g5.equal(output, data, key)
 
             paths = list(g5.getdatasets(data))
             paths.remove("/meta/version")
