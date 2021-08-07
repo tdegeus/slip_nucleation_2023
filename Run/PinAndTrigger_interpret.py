@@ -11,7 +11,7 @@ import tqdm
 basename = os.path.splitext(os.path.basename(__file__))[0]
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
-import PinAndTrigger  
+import PinAndTrigger
 
 with h5py.File(basename + ".h5", "w") as output:
 
@@ -21,7 +21,7 @@ with h5py.File(basename + ".h5", "w") as output:
 
             for A in tqdm.tqdm(data["data"][stress]):
 
-                ret_stress = []
+                ret_stress_crack = []
                 ret_A = []
                 ret_S = []
 
@@ -42,6 +42,7 @@ with h5py.File(basename + ".h5", "w") as output:
                                 system = PinAndTrigger.initsystem(s)
 
                             dV = system.quad().AsTensor(2, system.quad().dV())
+                            plastic = system.plastic()
 
                             system.setU(alias["disp"]["0"][...])
                             PinAndTrigger.pinsystem(system, int(element.split('=')[1]), int(A.split('=')[1]))
@@ -52,14 +53,12 @@ with h5py.File(basename + ".h5", "w") as output:
 
                             idx = system.plastic_CurrentIndex()[:, 0].astype(int)
 
+                            sel = plastic[np.logical_not(pinned)]
                             Sig = system.Sig()
                             ret_stress += [GMat.Sigd(np.average(Sig, weights=dV, axis=(0, 1)))]
                             ret_S += [np.sum(idx - idx_n)]
                             ret_A += [np.sum(idx != idx_n)]
 
-                output["/{0:s}/{1:s}/stress".format(stress, A)] = ret_stress
-                output["/{0:s}/{1:s}/S".format(stress, A)] = ret_S
-                output["/{0:s}/{1:s}/A".format(stress, A)] = ret_A
-
-
-
+                output[f"/{stress:s}/{A:s}/stress/crack"] = ret_stress_crack
+                output[f"/{stress:s}/{A:s}/S"] = ret_S
+                output[f"/{stress:s}/{A:s}/A"] = ret_A

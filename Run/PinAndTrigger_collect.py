@@ -41,17 +41,17 @@ with h5py.File(args.output, "a") as output:
                 corrupted += [file]
                 continue
 
-
         with h5py.File(file, "r") as data:
 
             basename = os.path.basename(file)
 
             info = dict(
-                stress = basename.split("stress=")[1].split("_")[0],
-                A = basename.split("A=")[1].split("_")[0],
-                id = basename.split("id=")[1].split("_")[0],
-                incc = basename.split("incc=")[1].split("_")[0],
-                element = basename.split("element=")[1].split(".hdf5")[0])
+                stress=basename.split("stress=")[1].split("_")[0],
+                A=basename.split("A=")[1].split("_")[0],
+                id=basename.split("id=")[1].split("_")[0],
+                incc=basename.split("incc=")[1].split("_")[0],
+                element=basename.split("element=")[1].split(".hdf5")[0],
+            )
 
             # account for typo
             if "PushAndTrigger" in data["meta"]:
@@ -61,7 +61,7 @@ with h5py.File(args.output, "a") as output:
                 meta = data["meta"]["PinAndTrigger"]
                 root_meta = "/meta/PinAndTrigger"
             else:
-                raise IOError("Unknown input")
+                raise OSError("Unknown input")
 
             if init:
                 version = meta["version"].asstr()[...]
@@ -87,10 +87,11 @@ with h5py.File(args.output, "a") as output:
             A = meta["A"][...]
 
             source_datasets = [
-                "{0:s}/file".format(root_meta),
-                "{0:s}/target_stress".format(root_meta),
-                "{0:s}/S".format(root_meta),
-                "{0:s}/A".format(root_meta)]
+                f"{root_meta:s}/file",
+                f"{root_meta:s}/target_stress",
+                f"{root_meta:s}/S",
+                f"{root_meta:s}/A",
+            ]
 
             dest_datasets = ["/file", "/target_stress", "/S", "/A"]
 

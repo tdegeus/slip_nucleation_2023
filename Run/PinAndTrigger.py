@@ -11,12 +11,12 @@ import setuptools_scm
 
 
 def initsystem(data):
-    r'''
-Read system from file.
+    r"""
+    Read system from file.
 
-:param h5py.File data: Open simulation HDF5 archive (read-only).
-:return: FrictionQPotFEM.UniformSingleLayer2d.System
-    '''
+    :param h5py.File data: Open simulation HDF5 archive (read-only).
+    :return: FrictionQPotFEM.UniformSingleLayer2d.System
+    """
 
     system = model.System(
         data["/coor"][...],
@@ -24,7 +24,8 @@ Read system from file.
         data["/dofs"][...],
         data["/dofsP"][...],
         data["/elastic/elem"][...],
-        data["/cusp/elem"][...])
+        data["/cusp/elem"][...],
+    )
 
     system.setMassMatrix(data["/rho"][...])
     system.setDampingMatrix(data["/damping/alpha"][...])
@@ -36,16 +37,16 @@ Read system from file.
 
 
 def pushincrements(system, data, target_stress):
-    r'''
-Get a list of increment from which the stress can be reached by elastic loading only.
+    r"""
+    Get a list of increment from which the stress can be reached by elastic loading only.
 
-:param FrictionQPotFEM.UniformSingleLayer2d.System system: The system (modified: all increments visited).
-:param h5py.File data: Open simulation HDF5 archive (read-only).
-:param float target_stress: The stress at which to push (in real units).
-:return:
-    ``inc_system`` List of system spanning avalanches.
-    ``inc_push`` List of increment from which the stress can be reached by elastic loading only.
-    '''
+    :param FrictionQPotFEM.UniformSingleLayer2d.System system: The system (modified: all increments visited).
+    :param h5py.File data: Open simulation HDF5 archive (read-only).
+    :param float target_stress: The stress at which to push (in real units).
+    :return:
+        ``inc_system`` List of system spanning avalanches.
+        ``inc_push`` List of increment from which the stress can be reached by elastic loading only.
+    """
 
     dV = system.quad().AsTensor(2, system.quad().dV())
     kick = data["/kick"][...].astype(bool)
@@ -63,7 +64,7 @@ Get a list of increment from which the stress can be reached by elastic loading 
 
     for inc in incs:
 
-        system.setU(data["/disp/{0:d}".format(inc)])
+        system.setU(data[f"/disp/{inc:d}"])
 
         idx = system.plastic_CurrentIndex()[:, 0].astype(int)
         Sig = system.Sig()
@@ -94,9 +95,9 @@ Get a list of increment from which the stress can be reached by elastic loading 
     for i in range(inc_system.size - 1):
 
         # state after elastc loading
-        s = Stress[inc_system[i] + 1: inc_system[i + 1]: 2]
-        a = A[inc_system[i] + 1: inc_system[i + 1]: 2]
-        n = incs[inc_system[i] + 1: inc_system[i + 1]: 2]
+        s = Stress[inc_system[i] + 1 : inc_system[i + 1] : 2]
+        a = A[inc_system[i] + 1 : inc_system[i + 1] : 2]
+        n = incs[inc_system[i] + 1 : inc_system[i + 1] : 2]
 
         if not np.any(s > target_stress):
             continue
@@ -117,15 +118,15 @@ Get a list of increment from which the stress can be reached by elastic loading 
 
 
 def pinsystem(system, target_element, target_A):
-    r'''
-Pin down part of the system by converting blocks to being elastic:
-having a single parabolic potential with the minimum equal to the current minimum.
+    r"""
+    Pin down part of the system by converting blocks to being elastic:
+    having a single parabolic potential with the minimum equal to the current minimum.
 
-:param FrictionQPotFEM.UniformSingleLayer2d.System system: The system (modified: yield strains changed).
-:param int target_element: The element to trigger.
-:param int target_A: Number of blocks to keep unpinned (``target_A / 2`` on both sides of ``target_element``).
-:return: Per element: pinned (``True``) or not (``False``)
-    '''
+    :param FrictionQPotFEM.UniformSingleLayer2d.System system: The system (modified: yield strains changed).
+    :param int target_element: The element to trigger.
+    :param int target_A: Number of blocks to keep unpinned (``target_A / 2`` on both sides of ``target_element``).
+    :return: Per element: pinned (``True``) or not (``False``)
+    """
 
     plastic = system.plastic()
     N = plastic.size
@@ -137,9 +138,9 @@ having a single parabolic potential with the minimum equal to the current minimu
     idx = system.plastic_CurrentIndex()
     i = int(N - target_A / 2)
     pinned = np.ones((3 * N), dtype=bool)
-    pinned[i: i + target_A] = False
-    pinned[N + i: N + i + target_A] = False
-    pinned = pinned[N: 2 * N]
+    pinned[i : i + target_A] = False
+    pinned[N + i : N + i + target_A] = False
+    pinned = pinned[N : 2 * N]
     pinned = np.roll(pinned, target_element)
 
     material = system.material()
@@ -152,9 +153,9 @@ having a single parabolic potential with the minimum equal to the current minimu
                     # cusp = m.refCusp([e, q])
                     chunk = cusp.refQPotChunked()
                     y = chunk.y()
-                    ymax = y[-1] # get some scale
-                    y = y[int(idx[i, q]): int(idx[i, q] + 2)] # idx is just left, slicing is up to not including
-                    ymin = 0.5 * sum(y) # current mininim
+                    ymax = y[-1]  # get some scale
+                    y = y[int(idx[i, q]) : int(idx[i, q] + 2)] # slicing is up to not including
+                    ymin = 0.5 * sum(y)  # current minimum
                     chunk.set_y([ymin - 2 * ymax, ymin + 2 * ymax])
 
     return pinned
@@ -173,20 +174,20 @@ if __name__ == "__main__":
     assert os.path.isfile(os.path.realpath(args.file))
     assert os.path.realpath(args.file) != os.path.realpath(args.output)
 
-    print('file =', args.file)
-    print('output =', args.output)
-    print('stress =', args.stress)
-    print('incc =', args.incc)
-    print('element =', args.element)
-    print('size =', args.size)
+    print("file =", args.file)
+    print("output =", args.output)
+    print("stress =", args.stress)
+    print("incc =", args.incc)
+    print("element =", args.element)
+    print("size =", args.size)
 
     root = git.Repo(os.path.dirname(__file__), search_parent_directories=True).working_tree_dir
     myversion = setuptools_scm.get_version(root=root)
 
     target_stress = args.stress
     target_inc_system = args.incc
-    target_A = args.size # number of blocks to keep unpinned
-    target_element = args.element # element to trigger
+    target_A = args.size  # number of blocks to keep unpinned
+    target_element = args.element  # element to trigger
 
     with h5py.File(args.file, "r") as data:
 
@@ -205,7 +206,7 @@ if __name__ == "__main__":
         inc = inc_push[i]
         assert target_inc_system == inc_system[i]
 
-        system.setU(data["/disp/{0:d}".format(inc)])
+        system.setU(data[f"/disp/{inc:d}"])
         idx_n = system.plastic_CurrentIndex()
         system.addSimpleShearToFixedStress(target_stress)
         idx = system.plastic_CurrentIndex()
@@ -228,7 +229,7 @@ if __name__ == "__main__":
         output["/disp/1"] = system.u()
         idx = system.plastic_CurrentIndex()[:, 0].astype(int)
 
-        print('niter =', niter)
+        print("niter =", niter)
 
         output["/meta/PinAndTrigger/file"] = args.file
         output["/meta/PinAndTrigger/version"] = myversion
@@ -239,4 +240,3 @@ if __name__ == "__main__":
         output["/meta/PinAndTrigger/target_element"] = target_element
         output["/meta/PinAndTrigger/S"] = np.sum(idx - idx_n)
         output["/meta/PinAndTrigger/A"] = np.sum(idx != idx_n)
-

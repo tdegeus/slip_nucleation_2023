@@ -1,9 +1,15 @@
 r'''
-It is adviced to first Run A = 1200 to select which events are large.
-Otherwise a lot of effort might be waisted computing small events.
+Run for ``A = 1200`` by pushing two different elements
+(and accordingly pinning different parts of the system).
+Note that this way two mostly independent ensembles are created.
+
+Afterwards, ``PinAndTrigger_job-serial-compact.py`` can be used to run for ``A < 1200``.
+That function skips all events that are know to be too small, and therefore less time is waisted
+on computing small events.
 '''
 
 import argparse
+import GooseHDF5 as g5
 import GooseSLURM
 import h5py
 import numpy as np
@@ -13,8 +19,16 @@ parser = argparse.ArgumentParser()
 parser.add_argument("info", type=str, help="EnsembleInfo (read-only)")
 parser.add_argument('-n', '--group', type=int, default=100)
 parser.add_argument('-e', '--executable', type=str, default='python PinAndTrigger.py')
+parser.add_argument('-c', '--collection', type=str, default='Result of PinAndTrigger_collect.py')
 args = parser.parse_args()
 assert os.path.isfile(os.path.realpath(args.info))
+
+paths = []
+
+if args.collection:
+    with h5py.File(args.collection, "r") as data:
+        paths = list(g5.getpaths(data, max_depth=6))
+        paths = [path.replace('/...', '') for path in paths]
 
 
 with h5py.File(args.info, "r") as data:
@@ -51,8 +65,6 @@ with h5py.File(args.info, "r") as data:
 
         for stress, sname in zip(stresses, stress_names):
 
-            # todo: select allowed stress!
-
             A = data["full"][file]["A"][...]
             sig = data["full"][file]["sigd"][...] * sig0
             i = data["full"][file]["steadystate"][...]
@@ -65,25 +77,28 @@ with h5py.File(args.info, "r") as data:
                 if stress >= sig[i] and stress <= sig[j - 1]:
                     trigger += [i]
 
-            # todo: skip based on stress
+            for element in [0, int(N / 2)]:
 
-            for element in [0]:
-
-                for A in [200]:
+                for A in [1200]:
 
                     for i in trigger:
 
                         keys = dict(
+                            A = A,
+                            element = element,
                             executable = args.executable,
                             file = file,
-                            stress_name = sname,
-                            fid = file.replace(".hdf5", ""),
-                            stress = stress,
+                            id = file.replace(".hdf5", ""),
                             incc = i,
-                            element = element,
-                            A = A)
+                            stress = stress,
+                            stress_name = sname,
+                        )
 
-                        keys['output'] = "{stress_name:s}_A={A:d}_{fid:s}_incc={incc:d}_element={element:d}.hdf5".format(**keys)
+                        root = "/data/{stress_name:s}/A={A:d}/{id:s}/incc={incc:d}/element={element:d}".format(**keys)
+                        if root in paths:
+                            continue
+
+                        keys['output'] = "{stress_name:s}_A={A:d}_{id:s}_incc={incc:d}_element={element:d}.hdf5".format(**keys)
                         cmd = '{executable:s} -f {file:s} -o {output:s} -s {stress:.8e} -i {incc:d} -e {element:d} -a {A:d}'.format(**keys)
                         commands += [cmd]
 
