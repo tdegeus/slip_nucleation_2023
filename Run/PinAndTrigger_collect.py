@@ -11,7 +11,7 @@ basename = os.path.splitext(os.path.basename(__file__))[0]
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-A", "--min-A", type=int, help="Save events only with A > ...", default=200)
-parser.add_argument("-o", "--output", type=str, help="Output file (appended)", default=basename + ".h5")
+parser.add_argument("-o", "--output", type=str, help="Output file ('a')", default=basename + ".h5")
 parser.add_argument("-e", "--error", type=str, help="Store list of corrupted files", default=basename + ".yaml")
 parser.add_argument("files", type=str, nargs="*", help="Files to add")
 args = parser.parse_args()
@@ -44,14 +44,11 @@ with h5py.File(args.output, "a") as output:
         with h5py.File(file, "r") as data:
 
             basename = os.path.basename(file)
-
-            info = dict(
-                stress=basename.split("stress=")[1].split("_")[0],
-                A=basename.split("A=")[1].split("_")[0],
-                id=basename.split("id=")[1].split("_")[0],
-                incc=basename.split("incc=")[1].split("_")[0],
-                element=basename.split("element=")[1].split(".hdf5")[0],
-            )
+            stress = basename.split("stress=")[1].split("_")[0]
+            A = basename.split("A=")[1].split("_")[0]
+            simid = basename.split("id=")[1].split("_")[0]
+            incc = basename.split("incc=")[1].split("_")[0]
+            element = basename.split("element=")[1].split(".hdf5")[0]
 
             # account for typo
             if "PushAndTrigger" in data["meta"]:
@@ -73,18 +70,16 @@ with h5py.File(args.output, "a") as output:
                 assert version == meta["version"].asstr()[...]
                 assert version_dependencies == list(meta["version_dependencies"].asstr()[...])
 
-            assert int(info["incc"]) == meta["target_inc_system"][...]
-            assert int(info["A"]) == meta["target_A"][...]
-            assert int(info["element"]) == meta["target_element"][...]
-            assert int(info["id"]) == int(os.path.splitext(str(meta["file"].asstr()[...]).split("id=")[1])[0])
+            assert int(incc) == meta["target_inc_system"][...]
+            assert int(A) == meta["target_A"][...]
+            assert int(element) == meta["target_element"][...]
+            assert int(simid) == int(os.path.splitext(str(meta["file"].asstr()[...]).split("id=")[1])[0])
 
-            root = "/data/stress={stress:s}/A={A:s}/id={id:s}/incc={incc:s}/element={element:s}".format(**info)
+            root = f"/data/stress={stress}/A={A}/id={simid}/incc={incc}/element={element}"
 
             if root in output:
                 existing += [file]
                 continue
-
-            A = meta["A"][...]
 
             source_datasets = [
                 f"{root_meta:s}/file",
@@ -95,7 +90,7 @@ with h5py.File(args.output, "a") as output:
 
             dest_datasets = ["/file", "/target_stress", "/S", "/A"]
 
-            if A >= args.min_A:
+            if meta["A"][...] >= args.min_A:
                 source_datasets = ["/disp/0", "/disp/1"] + source_datasets
                 dest_datasets = ["/disp/0", "/disp/1"] + dest_datasets
 

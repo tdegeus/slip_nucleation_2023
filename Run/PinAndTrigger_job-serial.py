@@ -1,4 +1,4 @@
-r'''
+r"""
 Run for ``A = 1200`` by pushing two different elements
 (and accordingly pinning different parts of the system).
 Note that this way two mostly independent ensembles are created.
@@ -6,47 +6,50 @@ Note that this way two mostly independent ensembles are created.
 Afterwards, ``PinAndTrigger_job-serial-compact.py`` can be used to run for ``A < 1200``.
 That function skips all events that are know to be too small, and therefore less time is waisted
 on computing small events.
-'''
+"""
 
 import argparse
 import GooseHDF5 as g5
 import GooseSLURM
 import h5py
+import itertools
 import numpy as np
 import os
 
 parser = argparse.ArgumentParser()
 parser.add_argument("info", type=str, help="EnsembleInfo (read-only)")
-parser.add_argument('-n', '--group', type=int, default=100)
-parser.add_argument('-e', '--executable', type=str, default='python PinAndTrigger.py')
-parser.add_argument('-c', '--collection', type=str, default='Result of PinAndTrigger_collect.py')
+parser.add_argument("-n", "--group", type=int, default=100)
+parser.add_argument("-e", "--executable", type=str, default="python PinAndTrigger.py")
+parser.add_argument("-c", "--collection", type=str, default="Result of PinAndTrigger_collect.py")
 args = parser.parse_args()
 assert os.path.isfile(os.path.realpath(args.info))
+
+executable = args.executable
 
 paths = []
 
 if args.collection:
     with h5py.File(args.collection, "r") as data:
         paths = list(g5.getpaths(data, max_depth=6))
-        paths = [path.replace('/...', '') for path in paths]
+        paths = [path.replace("/...", "") for path in paths]
 
 
 with h5py.File(args.info, "r") as data:
 
-    files = data['/files'].asstr()[...]
-    N = data['/normalisation/N'][...]
-    sig0 = data['/normalisation/sig0'][...]
-    sigc = data['/averages/sigd_bottom'][...] * sig0
-    sign = data['/averages/sigd_top'][...] * sig0
+    files = data["/files"].asstr()[...]
+    N = data["/normalisation/N"][...]
+    sig0 = data["/normalisation/sig0"][...]
+    sigc = data["/averages/sigd_bottom"][...] * sig0
+    sign = data["/averages/sigd_top"][...] * sig0
 
     stress_names = [
-        'stress=0d6',
-        'stress=1d6',
-        'stress=2d6',
-        'stress=3d6',
-        'stress=4d6',
-        'stress=5d6',
-        'stress=6d6',
+        "stress=0d6",
+        "stress=1d6",
+        "stress=2d6",
+        "stress=3d6",
+        "stress=4d6",
+        "stress=5d6",
+        "stress=6d6",
     ]
 
     stresses = [
@@ -61,50 +64,34 @@ with h5py.File(args.info, "r") as data:
 
     commands = []
 
-    for file in files:
+    for file, (stress, stress_name) in itertools.product(files, zip(stresses, stress_names)):
 
-        for stress, sname in zip(stresses, stress_names):
+        simid = file.replace(".hdf5", "")
 
-            A = data["full"][file]["A"][...]
-            sig = data["full"][file]["sigd"][...] * sig0
-            i = data["full"][file]["steadystate"][...]
-            A[:i] = 0
-            sig[:i] = 0.0
-            ss = np.argwhere(A == N).ravel()
-            trigger = []
+        a = data["full"][file]["A"][...]
+        sig = data["full"][file]["sigd"][...] * sig0
+        i = data["full"][file]["steadystate"][...]
+        a[:i] = 0
+        sig[:i] = 0.0
+        ss = np.argwhere(a == N).ravel()
+        trigger = []
 
-            for i, j in zip(ss[:-1], ss[1:]):
-                if stress >= sig[i] and stress <= sig[j - 1]:
-                    trigger += [i]
+        for i, j in zip(ss[:-1], ss[1:]):
+            if stress >= sig[i] and stress <= sig[j - 1]:
+                trigger += [i]
 
-            for element in [0, int(N / 2)]:
+        for element, A, incc in itertools.product([0, int(N / 2)], [1200], trigger):
 
-                for A in [1200]:
+            root = f"/data/{stress_name}/A={A:d}/{simid}/incc={incc:d}/element={element:d}"
+            if root in paths:
+                continue
 
-                    for i in trigger:
-
-                        keys = dict(
-                            A = A,
-                            element = element,
-                            executable = args.executable,
-                            file = file,
-                            id = file.replace(".hdf5", ""),
-                            incc = i,
-                            stress = stress,
-                            stress_name = sname,
-                        )
-
-                        root = "/data/{stress_name:s}/A={A:d}/{id:s}/incc={incc:d}/element={element:d}".format(**keys)
-                        if root in paths:
-                            continue
-
-                        keys['output'] = "{stress_name:s}_A={A:d}_{id:s}_incc={incc:d}_element={element:d}.hdf5".format(**keys)
-                        cmd = '{executable:s} -f {file:s} -o {output:s} -s {stress:.8e} -i {incc:d} -e {element:d} -a {A:d}'.format(**keys)
-                        commands += [cmd]
+            output = f"{stress_name}_A={A:d}_{simid}_incc={incc:d}_element={element:d}.hdf5"
+            cmd = f"{executable} -f {file} -o {output} -s {stress:.8e} -i {incc:d} -e {element:d} -a {A:d}"
+            commands += [cmd]
 
 
-
-slurm = '''
+slurm = """
 # print jobid
 echo "SLURM_JOBID = ${{SLURM_JOBID}}"
 echo ""
@@ -127,32 +114,30 @@ else
 fi
 
 {0:s}
-'''
+"""
 
-commands = ['stdbuf -o0 -e0 ' + cmd for cmd in commands]
+commands = ["stdbuf -o0 -e0 " + cmd for cmd in commands]
 
 ngroup = int(np.ceil(len(commands) / args.group))
 fmt = str(int(np.ceil(np.log10(ngroup))))
 
 for group in range(ngroup):
 
-    c = commands[group * args.group: (group + 1) * args.group]
-    command = '\n'.join(c)
+    c = commands[group * args.group : (group + 1) * args.group]
+    command = "\n".join(c)
     command = slurm.format(command)
 
-    jobname = ('{0:s}-{1:0' + fmt + 'd}').format(args.executable.replace(' ', '_'), group)
+    jobname = ("{0:s}-{1:0" + fmt + "d}").format(args.executable.replace(" ", "_"), group)
 
     sbatch = {
-        'job-name': 'velocity_' + jobname,
-        'out': jobname + '.out',
-        'nodes': 1,
-        'ntasks': 1,
-        'cpus-per-task': 1,
-        'time': '24h',
-        'account': 'pcsl',
-        'partition': 'serial',
+        "job-name": "velocity_" + jobname,
+        "out": jobname + ".out",
+        "nodes": 1,
+        "ntasks": 1,
+        "cpus-per-task": 1,
+        "time": "24h",
+        "account": "pcsl",
+        "partition": "serial",
     }
 
-    open(jobname + '.slurm', 'w').write(GooseSLURM.scripts.plain(command=command, **sbatch))
-
-
+    open(jobname + ".slurm", "w").write(GooseSLURM.scripts.plain(command=command, **sbatch))

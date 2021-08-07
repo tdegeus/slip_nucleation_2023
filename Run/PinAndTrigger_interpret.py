@@ -45,7 +45,7 @@ with h5py.File(basename + ".h5", "w") as output:
                             plastic = system.plastic()
 
                             system.setU(alias["disp"]["0"][...])
-                            PinAndTrigger.pinsystem(system, int(element.split('=')[1]), int(A.split('=')[1]))
+                            PinAndTrigger.pinsystem(system, int(element.split("=")[1]), int(A.split("=")[1]))
 
                             idx_n = system.plastic_CurrentIndex()[:, 0].astype(int)
 
