@@ -117,11 +117,11 @@ def average(data: h5py.File, paths: list[str], sig0: float) -> dict:
 
         # restore system
 
-        file = str(data[path]["file"].asstr()[...])
+        origsim = str(data[path]["file"].asstr()[...])
         e = int(path.split("element=")[1].split("/")[0])
         a = int(path.split("A=")[1].split("/")[0])
 
-        with h5py.File(file, "r") as mysim:
+        with h5py.File(origsim, "r") as mysim:
             if system is None:
                 system = PinAndTrigger.initsystem(mysim)
                 dV = system.quad().AsTensor(2, system.quad().dV())
