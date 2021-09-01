@@ -1,8 +1,9 @@
 import argparse
+import os
+
 import GooseHDF5 as g5
 import h5py
 import numpy as np
-import os
 import shelephant
 import tqdm
 

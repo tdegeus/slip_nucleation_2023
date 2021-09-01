@@ -16,10 +16,11 @@ Options:
 """
 
 import os
+
 import docopt
+import enstat.mean
 import h5py
 import numpy as np
-import enstat.mean
 import shelephant
 import tqdm
 from FrictionQPotFEM.UniformSingleLayer2d import HybridSystem

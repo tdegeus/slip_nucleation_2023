@@ -3,12 +3,13 @@ Run events small than pre-run events. This avoid rerunning small events.
 """
 
 import argparse
+import os
+import sys
+
 import GooseHDF5 as g5
 import GooseSLURM
 import h5py
 import numpy as np
-import os
-import sys
 
 parser = argparse.ArgumentParser()
 parser.add_argument(

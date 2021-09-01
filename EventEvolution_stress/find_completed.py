@@ -1,8 +1,9 @@
-import h5py
-import os
-import tqdm
 import argparse
+import os
+
+import h5py
 import numpy as np
+import tqdm
 from shelephant.yaml import dump
 
 parser = argparse.ArgumentParser()

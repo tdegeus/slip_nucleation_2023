@@ -9,12 +9,13 @@ on computing small events.
 """
 
 import argparse
+import itertools
+import os
+
 import GooseHDF5 as g5
 import GooseSLURM
 import h5py
-import itertools
 import numpy as np
-import os
 
 parser = argparse.ArgumentParser()
 parser.add_argument("info", type=str, help="EnsembleInfo (read-only)")

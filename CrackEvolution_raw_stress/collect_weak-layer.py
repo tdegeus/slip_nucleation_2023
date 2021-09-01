@@ -20,10 +20,11 @@ Options:
 """
 
 import os
+
 import docopt
+import GooseHDF5 as g5
 import h5py
 import numpy as np
-import GooseHDF5 as g5
 import shelephant
 import tqdm
 from FrictionQPotFEM.UniformSingleLayer2d import HybridSystem

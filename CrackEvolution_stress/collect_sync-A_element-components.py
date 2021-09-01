@@ -19,12 +19,13 @@ Options:
 
 import os
 import sys
-import docopt
+
 import click
-import h5py
-import numpy as np
+import docopt
 import GooseFEM as gf
 import GooseFEM.ParaView.HDF5 as pv
+import h5py
+import numpy as np
 
 # ==================================================================================================
 # compute center of mass

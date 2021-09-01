@@ -1,10 +1,11 @@
 import os
 import subprocess
+
+import GMatElastoPlasticQPot.Cartesian2d as GMat
+import GooseMPL as gplt
 import h5py
 import matplotlib.pyplot as plt
-import GooseMPL as gplt
 import numpy as np
-import GMatElastoPlasticQPot.Cartesian2d as GMat
 
 plt.style.use(["goose", "goose-latex"])
 

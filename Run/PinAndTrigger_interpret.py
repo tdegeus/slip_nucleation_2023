@@ -1,8 +1,9 @@
+import os
+import sys
+
 import GMatElastoPlasticQPot.Cartesian2d as GMat
 import h5py
 import numpy as np
-import os
-import sys
 import tqdm
 
 basename = os.path.splitext(os.path.basename(__file__))[0]

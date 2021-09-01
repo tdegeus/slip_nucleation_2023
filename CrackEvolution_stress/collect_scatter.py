@@ -16,11 +16,12 @@ Options:
 
 import os
 import sys
-import docopt
+
 import click
+import docopt
+import GMatElastoPlasticQPot.Cartesian2d as gmat
 import h5py
 import numpy as np
-import GMatElastoPlasticQPot.Cartesian2d as gmat
 import tqdm
 
 # ==================================================================================================

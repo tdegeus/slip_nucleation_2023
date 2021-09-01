@@ -13,11 +13,12 @@ Options:
         --version       Show version.
 """
 
-import h5py
-import subprocess
 import os
-import numpy as np
+import subprocess
+
 import docopt
+import h5py
+import numpy as np
 import yaml
 
 

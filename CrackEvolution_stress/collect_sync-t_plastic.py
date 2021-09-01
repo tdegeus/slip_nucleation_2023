@@ -17,11 +17,12 @@ Options:
 
 import os
 import sys
-import docopt
+
 import click
+import docopt
+import GooseFEM as gf
 import h5py
 import numpy as np
-import GooseFEM as gf
 
 # ==================================================================================================
 # compute center of mass

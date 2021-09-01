@@ -10,10 +10,11 @@ Usage:
 
 import os
 import subprocess
-import h5py
-import numpy as np
+
 import GooseFEM as gf
 import GooseFEM.ParaView.HDF5 as pv
+import h5py
+import numpy as np
 
 # ==================================================================================================
 # horizontal shift

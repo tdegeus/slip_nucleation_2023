@@ -1,12 +1,13 @@
 import argparse
+import itertools
+import os
+import sys
+
 import enstat.mean
 import GooseFEM
 import GooseHDF5 as g5
 import h5py
-import itertools
 import numpy as np
-import os
-import sys
 import tqdm
 from numpy.typing import ArrayLike
 

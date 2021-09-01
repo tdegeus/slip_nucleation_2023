@@ -1,11 +1,12 @@
 import argparse
+import os
+
 import FrictionQPotFEM.UniformSingleLayer2d as model
 import git
 import GMatElastoPlasticQPot.Cartesian2d as GMat
 import GooseFEM  # noqa: F401
 import h5py
 import numpy as np
-import os
 import QPot  # noqa: F401
 import setuptools_scm
 

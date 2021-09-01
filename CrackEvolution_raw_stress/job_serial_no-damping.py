@@ -1,8 +1,9 @@
 import os
 import subprocess
-import h5py
-import GooseSLURM as gs
+
 import GooseHDF5 as g5
+import GooseSLURM as gs
+import h5py
 
 dbase = "../../../data"
 nx = "nx=3^6x2"

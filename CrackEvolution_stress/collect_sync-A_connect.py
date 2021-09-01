@@ -17,11 +17,12 @@ Options:
 
 import os
 import sys
-import docopt
+
 import click
+import docopt
+import GooseEYE as eye
 import h5py
 import numpy as np
-import GooseEYE as eye
 
 # ==================================================================================================
 # get files

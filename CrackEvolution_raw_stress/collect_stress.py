@@ -16,16 +16,16 @@ Options:
 """
 
 import os
+
 import docopt
-import h5py
-import numpy as np
 import enstat.mean
 import GooseFEM as gf
+import h5py
+import numpy as np
 import shelephant
 import tqdm
 from FrictionQPotFEM.UniformSingleLayer2d import HybridSystem
 from setuptools_scm import get_version
-
 
 # https://en.wikipedia.org/wiki/Center_of_mass#Systems_with_periodic_boundary_conditions
 

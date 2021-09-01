@@ -1,6 +1,7 @@
-import subprocess
-import h5py
 import os
+import subprocess
+
+import h5py
 import tqdm
 from shelephant import YamlDump
 

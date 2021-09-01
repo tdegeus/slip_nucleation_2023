@@ -1,7 +1,8 @@
-import h5py
 import os
-import numpy as np
+
 import GooseSLURM as gs
+import h5py
+import numpy as np
 
 # --------------------------------------------------------------------------------------------------
 

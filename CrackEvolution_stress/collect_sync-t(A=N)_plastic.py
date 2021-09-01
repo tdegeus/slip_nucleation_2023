@@ -17,8 +17,9 @@ Options:
 
 import os
 import sys
-import docopt
+
 import click
+import docopt
 import h5py
 import numpy as np
 import tqdm

@@ -19,11 +19,12 @@ Options:
 """
 
 import os
+
 import docopt
-import h5py
-import numpy as np
 import enstat.mean
 import GooseFEM as gf
+import h5py
+import numpy as np
 import shelephant
 import tqdm
 from FrictionQPotFEM.UniformSingleLayer2d import HybridSystem

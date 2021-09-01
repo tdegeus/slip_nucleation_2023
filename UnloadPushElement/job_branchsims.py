@@ -1,12 +1,13 @@
 import os
+
 import h5py
 import numpy as np
 
 
 def check_stress(filename, inc):
 
-    import GooseFEM as fem
     import GMatElastoPlasticQPot as mat
+    import GooseFEM as fem
 
     with h5py.File(filename, "r") as data:
 

@@ -1,8 +1,9 @@
 import os
+import shutil
+
+import GooseSLURM
 import h5py
 import numpy as np
-import GooseSLURM
-import shutil
 
 dbase = os.path.relpath(
     os.path.normpath(os.path.join(os.path.dirname(__file__), "../../data/nx=3^6x2"))
