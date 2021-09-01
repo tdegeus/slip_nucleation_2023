@@ -36,6 +36,37 @@ def initsystem(data):
     return system
 
 
+def reset_epsy(system, data):
+    r"""
+    Reset yield strain history from file.
+
+    :param FrictionQPotFEM.UniformSingleLayer2d.System system: The system (modified: yield strains changed).
+    :param h5py.File data: Open simulation HDF5 archive (read-only).
+    """
+
+    e = data["/cusp/epsy"][...]
+    epsy = np.empty((e.shape[0], e.shape[1] + 1), dtype=e.dtype)
+    epsy[:, 0] = - e[:, 0]
+    epsy[:, 1:] = e
+
+    plastic = system.plastic()
+    N = plastic.size
+    nip = system.quad().nip()
+    material = system.material()
+    material_plastic = system.material_plastic()
+
+    assert epsy.shape[0] == N
+
+    for i, e in enumerate(plastic):
+        for q in range(nip):
+            for cusp in [
+                material.refCusp([e, q]),
+                material_plastic.refCusp([i, q]),
+            ]:
+                chunk = cusp.refQPotChunked()
+                chunk.set_y(epsy[i, :])
+
+
 def pushincrements(system, data, target_stress):
     r"""
     Get a list of increment from which the stress can be reached by elastic loading only.
@@ -117,10 +148,9 @@ def pushincrements(system, data, target_stress):
     return inc_system_ret, inc_push
 
 
-def pinsystem(system, target_element, target_A):
+def pinning(system, target_element, target_A):
     r"""
-    Pin down part of the system by converting blocks to being elastic:
-    having a single parabolic potential with the minimum equal to the current minimum.
+    Return pinning used in ``pinsystem``.
 
     :param FrictionQPotFEM.UniformSingleLayer2d.System system: The system (modified: yield strains changed).
     :param int target_element: The element to trigger.
@@ -135,7 +165,6 @@ def pinsystem(system, target_element, target_A):
     assert target_A <= N
     assert target_element <= N
 
-    idx = system.plastic_CurrentIndex()
     i = int(N - target_A / 2)
     pinned = np.ones((3 * N), dtype=bool)
     pinned[i : i + target_A] = False
@@ -143,6 +172,25 @@ def pinsystem(system, target_element, target_A):
     pinned = pinned[N : 2 * N]
     pinned = np.roll(pinned, target_element)
 
+    return pinned
+
+
+def pinsystem(system, target_element, target_A):
+    r"""
+    Pin down part of the system by converting blocks to being elastic:
+    having a single parabolic potential with the minimum equal to the current minimum.
+
+    :param FrictionQPotFEM.UniformSingleLayer2d.System system: The system (modified: yield strains changed).
+    :param int target_element: The element to trigger.
+    :param int target_A: Number of blocks to keep unpinned (``target_A / 2`` on both sides of ``target_element``).
+    :return: Per element: pinned (``True``) or not (``False``)
+    """
+
+    plastic = system.plastic()
+    N = plastic.size
+    nip = system.quad().nip()
+    pinned = pinning(system, target_element, target_A)
+    idx = system.plastic_CurrentIndex()
     material = system.material()
     material_plastic = system.material_plastic()
 
@@ -153,7 +201,6 @@ def pinsystem(system, target_element, target_A):
                     material.refCusp([e, q]),
                     material_plastic.refCusp([i, q]),
                 ]:
-                    # cusp = m.refCusp([e, q])
                     chunk = cusp.refQPotChunked()
                     y = chunk.y()
                     ymax = y[-1]  # get some scale
@@ -177,12 +224,7 @@ if __name__ == "__main__":
     assert os.path.isfile(os.path.realpath(args.file))
     assert os.path.realpath(args.file) != os.path.realpath(args.output)
 
-    print("file =", args.file)
-    print("output =", args.output)
-    print("stress =", args.stress)
-    print("incc =", args.incc)
-    print("element =", args.element)
-    print("size =", args.size)
+    print("starting:", args.output)
 
     root = git.Repo(os.path.dirname(__file__), search_parent_directories=True).working_tree_dir
     myversion = setuptools_scm.get_version(root=root)
@@ -232,7 +274,7 @@ if __name__ == "__main__":
         output["/disp/1"] = system.u()
         idx = system.plastic_CurrentIndex()[:, 0].astype(int)
 
-        print("niter =", niter)
+        print("done:", args.output, ", niter = ", niter)
 
         output["/meta/PinAndTrigger/file"] = args.file
         output["/meta/PinAndTrigger/version"] = myversion

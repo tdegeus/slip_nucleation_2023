@@ -20,7 +20,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("info", type=str, help="EnsembleInfo (read-only)")
 parser.add_argument("-n", "--group", type=int, default=100)
 parser.add_argument("-e", "--executable", type=str, default="python PinAndTrigger.py")
-parser.add_argument("-c", "--collection", type=str, default="Result of PinAndTrigger_collect.py")
+parser.add_argument("-c", "--collection", type=str, help="Result of PinAndTrigger_collect.py")
 args = parser.parse_args()
 assert os.path.isfile(os.path.realpath(args.info))
 

@@ -8,13 +8,20 @@ import GooseSLURM
 import h5py
 import numpy as np
 import os
+import sys
 
 parser = argparse.ArgumentParser()
-parser.add_argument("collection", type=str, help="Result of PinAndTrigger_collect.py for earlier ran simulations")
+parser.add_argument(
+    "collection",
+    type=str,
+    help="Result of PinAndTrigger_collect.py for earlier ran simulations"
+)
 parser.add_argument("-A", "--size", type=int, default=600, help="Size of the events to simulate")
 parser.add_argument("-n", "--group", type=int, default=50)
 parser.add_argument("-e", "--executable", type=str, default="python PinAndTrigger.py")
+
 args = parser.parse_args()
+
 assert os.path.isfile(os.path.realpath(args.collection))
 executable = args.executable
 A = args.size
@@ -23,6 +30,7 @@ commands = []
 
 with h5py.File(args.collection, "r") as data:
 
+    # read size of all currently ran simulations
     paths = list(g5.getpaths(data, root="/data", max_depth=6))
     paths = [path.replace("/...", "") for path in paths]
     a = np.array([int(data[g5.join(path, "A")][...]) for path in paths])
@@ -43,6 +51,9 @@ with h5py.File(args.collection, "r") as data:
         cmd = f"{executable} -f {file} -o {output} -s {stress:.8e} -i {incc:d} -e {element:d} -a {A:d}"
         commands += [cmd]
 
+if len(commands) == 0:
+    print("Noting to do")
+    sys.exit(0)
 
 slurm = """
 # print jobid

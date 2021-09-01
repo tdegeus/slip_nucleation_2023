@@ -10,7 +10,7 @@ import tqdm
 basename = os.path.splitext(os.path.basename(__file__))[0]
 
 parser = argparse.ArgumentParser()
-parser.add_argument("-A", "--min-A", type=int, help="Save events only with A > ...", default=200)
+parser.add_argument("-A", "--min-A", type=int, help="Save events only with A > ...", default=10)
 parser.add_argument("-o", "--output", type=str, help="Output file ('a')", default=basename + ".h5")
 parser.add_argument("-e", "--error", type=str, help="Store list of corrupted files", default=basename + ".yaml")
 parser.add_argument("files", type=str, nargs="*", help="Files to add")
