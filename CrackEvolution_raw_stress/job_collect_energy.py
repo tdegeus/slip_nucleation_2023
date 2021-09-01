@@ -13,14 +13,15 @@ conda activate code_collect_s6g1
 """
 
 fbase = "job_collect_energy"
+info = "../../../data/nx=3^6x2/EnsembleInfo.hdf5"
 cmd = [
-    r"python ../collect_energy.py --force -i ../../../data/nx=3\^6x2/EnsembleInfo.hdf5 -o energy_stress=0d6.hdf5 list_stress=0d6.yaml",
-    r"python ../collect_energy.py --force -i ../../../data/nx=3\^6x2/EnsembleInfo.hdf5 -o energy_stress=1d6.hdf5 list_stress=1d6.yaml",
-    r"python ../collect_energy.py --force -i ../../../data/nx=3\^6x2/EnsembleInfo.hdf5 -o energy_stress=2d6.hdf5 list_stress=2d6.yaml",
-    r"python ../collect_energy.py --force -i ../../../data/nx=3\^6x2/EnsembleInfo.hdf5 -o energy_stress=3d6.hdf5 list_stress=3d6.yaml",
-    r"python ../collect_energy.py --force -i ../../../data/nx=3\^6x2/EnsembleInfo.hdf5 -o energy_stress=4d6.hdf5 list_stress=4d6.yaml",
-    r"python ../collect_energy.py --force -i ../../../data/nx=3\^6x2/EnsembleInfo.hdf5 -o energy_stress=5d6.hdf5 list_stress=5d6.yaml",
-    r"python ../collect_energy.py --force -i ../../../data/nx=3\^6x2/EnsembleInfo.hdf5 -o energy_stress=6d6.hdf5 list_stress=6d6.yaml",
+    f"python ../collect_energy.py --force -i {info} -o energy_stress=0d6.hdf5 list_stress=0d6.yaml",
+    f"python ../collect_energy.py --force -i {info} -o energy_stress=1d6.hdf5 list_stress=1d6.yaml",
+    f"python ../collect_energy.py --force -i {info} -o energy_stress=2d6.hdf5 list_stress=2d6.yaml",
+    f"python ../collect_energy.py --force -i {info} -o energy_stress=3d6.hdf5 list_stress=3d6.yaml",
+    f"python ../collect_energy.py --force -i {info} -o energy_stress=4d6.hdf5 list_stress=4d6.yaml",
+    f"python ../collect_energy.py --force -i {info} -o energy_stress=5d6.hdf5 list_stress=5d6.yaml",
+    f"python ../collect_energy.py --force -i {info} -o energy_stress=6d6.hdf5 list_stress=6d6.yaml",
 ]
 
 for i, c in enumerate(cmd):

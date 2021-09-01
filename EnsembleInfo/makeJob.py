@@ -1,5 +1,5 @@
-# import libraries
-import os, subprocess
+import os
+import subprocess
 import GooseSLURM as gs
 
 # ==================================================================================================

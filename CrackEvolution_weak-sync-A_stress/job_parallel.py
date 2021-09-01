@@ -87,12 +87,16 @@ def get_runs(name, stress):
             }
         ]
 
-    lines = [
-        "./CrackEvolution_stress --file {file:s} --element {element:d} --incc {incc:d} --stress {stress:.8e} --output {output:s}".format(
-            **c
-        )
-        for c in commands
-    ]
+    fmt = (
+        "./CrackEvolution_stress "
+        "--file {file:s} "
+        "--element {element:d} "
+        "--incc {incc:d} "
+        "--stress {stress:.8e} "
+        "--output {output:s}"
+    )
+
+    lines = [fmt.format(**c) for c in commands]
 
     return lines
 

@@ -17,7 +17,8 @@ fi
 """
 
 fbase = "job_collect_weak-layer"
-cmd = r"python ../collect_weak-layer.py --force -i ../../../data/nx=3\^6x2/EnsembleInfo.hdf5 shelephant_dump.yaml weak"
+info = "../../../data/nx=3^6x2/EnsembleInfo.hdf5"
+cmd = f"python ../collect_weak-layer.py --force -i {info} shelephant_dump.yaml weak"
 
 sbatch = {
     "job-name": fbase,

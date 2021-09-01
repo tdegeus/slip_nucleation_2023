@@ -169,7 +169,7 @@ with h5py.File(output, "w") as out:
                 if t not in T:
                     continue
 
-                if f"/sync-t/element/{a:d}/sig_xx" not in data:
+                if f"/sync-t/element/{t:d}/sig_xx" not in data:
                     continue
 
                 # get the reference configuration

@@ -117,7 +117,6 @@ def main():
 
             coor = system.coor()
             conn = system.conn()
-            vector = system.vector()
             quad = system.quad()
             dV = quad.AsTensor(2, system.dV())
 
@@ -234,7 +233,7 @@ def main():
 
         try:
             version = get_version(root="..", relative_to=__file__)
-        except:
+        except:  # noqa: E722
             version = None
 
         if version:

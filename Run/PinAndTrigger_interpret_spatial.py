@@ -11,7 +11,7 @@ import tqdm
 from numpy.typing import ArrayLike
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
-import PinAndTrigger
+import PinAndTrigger  # noqa: E402
 
 
 def center_of_mass(x: ArrayLike, L: float) -> float:
@@ -77,10 +77,18 @@ def fill_avalanche(broken: ArrayLike):
     di = np.diff(i)
     mi = np.max(di)
     j = np.argwhere(di == mi).ravel()
-    ret[i[j[0]] : i[j[0] + 1]] = zero
-    ret[i[j[1]] + 1 : i[j[1] + 1]] = zero
 
-    return ret[N : 2 * N]
+    ii = i[j[0]]
+    jj = i[j[0] + 1]
+    ret[ii:jj] = zero
+
+    ii = i[j[1]] + 1
+    jj = i[j[1] + 1]
+    ret[ii:jj] = zero
+
+    ii = N
+    jj = 2 * N
+    return ret[ii:jj]
 
 
 def average(data: h5py.File, paths: list[str], sig0: float) -> dict:
@@ -117,7 +125,7 @@ def average(data: h5py.File, paths: list[str], sig0: float) -> dict:
                 system = PinAndTrigger.initsystem(mysim)
                 dV = system.quad().AsTensor(2, system.quad().dV())
                 plastic = system.plastic()
-                N = plastic.size
+                plastic.size
             else:
                 PinAndTrigger.reset_epsy(system, mysim)
 
@@ -126,17 +134,15 @@ def average(data: h5py.File, paths: list[str], sig0: float) -> dict:
         system.setU(data[path]["disp"]["0"][...])
         pinned = PinAndTrigger.pinsystem(system, e, a)
 
-        idx_n = system.plastic_CurrentIndex()[:, 0].astype(int)
         system.setU(data[path]["disp"]["1"][...])
-        idx = system.plastic_CurrentIndex()[:, 0].astype(int)
 
         # store stress
 
         Sig = system.Sig() / sig0
-        S = np.average(Sig, weights=dV, axis=(1,))
-        sig_xx.add_sample(S[:, 0, 0])
-        sig_xy.add_sample(S[:, 0, 1])
-        sig_yy.add_sample(S[:, 1, 1])
+        Sig = np.average(Sig, weights=dV, axis=(1,))
+        sig_xx.add_sample(Sig[:, 0, 0])
+        sig_xy.add_sample(Sig[:, 0, 1])
+        sig_yy.add_sample(Sig[:, 1, 1])
 
     pinned = PinAndTrigger.pinning(system, e, a)
     mesh = GooseFEM.Mesh.Quad4.FineLayer(system.coor(), system.conn())

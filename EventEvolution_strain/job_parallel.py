@@ -60,12 +60,15 @@ def get_runs():
             }
         ]
 
-    lines = [
-        "EventEvolution_strain --file {file:s} --element {element:d} --incc {incc:d} --output {output:s}".format(
-            **c
-        )
-        for c in commands
-    ]
+    fmt = (
+        "EventEvolution_strain "
+        "--file {file:s} "
+        "--element {element:d} "
+        "--incc {incc:d} "
+        "--output {output:s}"
+    )
+
+    lines = [fmt.format(**c) for c in commands]
 
     return lines
 

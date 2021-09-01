@@ -8,7 +8,9 @@ Usage:
 2.  Run this script using Python.
 """
 
-import os, subprocess, h5py
+import os
+import subprocess
+import h5py
 import numpy as np
 
 # ==================================================================================================

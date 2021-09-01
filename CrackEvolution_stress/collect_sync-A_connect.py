@@ -67,7 +67,9 @@ else:
 def getRenumIndex(old, new, N):
 
     idx = np.tile(np.arange(N), (3))
-    return idx[old + N - new : old + 2 * N - new]
+    ii = old + N - new
+    jj = old + 2 * N - new
+    return idx[ii:jj]
 
 
 # --------------------------------------------------------------------------------------------------
@@ -87,9 +89,9 @@ def compute_distance(cracked, active, clusters):
     sizes = clusters.sizes()
     centers = clusters.centers()
 
-    l = np.argmax(sizes[1:]) + 1
-    center = int(np.argwhere(centers == l).ravel())
-    size = sizes[l]
+    length = np.argmax(sizes[1:]) + 1
+    center = int(np.argwhere(centers == length).ravel())
+    size = sizes[length]
 
     renum = getRenumIndex(center, mid, nx)
 

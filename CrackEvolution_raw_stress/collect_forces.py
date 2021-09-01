@@ -221,7 +221,9 @@ def main():
                     # potential energy
                     Epot = np.average(system.Energy(), weights=dV, axis=1)
 
-                    # convert to element-vector, interpolate to the element's midpoint, extrapolate on regular mesh
+                    # convert to element-vector,
+                    # interpolate to the element's midpoint,
+                    # extrapolate on regular mesh
                     def take_interp(myvector):
                         return mapping.mapToRegular(
                             mid_quad.Interp_N_vector(

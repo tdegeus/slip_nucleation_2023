@@ -101,12 +101,16 @@ for stress_name, stress in zip(stress_names, stresses):
             }
         ]
 
-lines = [
-    "./Run --file {file:s} --element {element:d} --incc {incc:d} --stress {stress:.8e} --output {output:s}".format(
-        **c
-    )
-    for c in commands
-]
+fmt = (
+    "./Run "
+    "--file {file:s} "
+    "--element {element:d} "
+    "--incc {incc:d} "
+    "--stress {stress:.8e} "
+    "--output {output:s}"
+)
+
+lines = [fmt.format(**c) for c in commands]
 
 # --------------------------------------------------------------------------------------------------
 

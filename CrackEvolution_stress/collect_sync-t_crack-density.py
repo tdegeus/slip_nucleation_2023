@@ -23,8 +23,6 @@ import click
 import h5py
 import numpy as np
 
-import sys
-
 np.set_printoptions(threshold=sys.maxsize)
 
 # ==================================================================================================

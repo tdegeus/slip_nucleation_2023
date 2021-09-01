@@ -39,7 +39,7 @@ with h5py.File(args.output, "a") as output:
         try:
             with h5py.File(file, "r") as data:
                 pass
-        except:
+        except:  # noqa: E722
             corrupted += [file]
             continue
 

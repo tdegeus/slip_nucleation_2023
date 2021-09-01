@@ -19,20 +19,24 @@ def check_stress(filename, inc):
 
         material = mat.Cartesian2d.Array2d([conn.shape[0], quad.nip()])
 
-        I = np.zeros(material.shape(), dtype=np.int)
+        iden = np.zeros(material.shape(), dtype=np.int)
         idx = np.zeros(material.shape(), dtype=np.int)
         elem = data["/elastic/elem"][...]
-        I[elem, :] = 1
+        iden[elem, :] = 1
         idx[elem, :] = np.arange(len(elem)).reshape(-1, 1)
-        material.setElastic(I, idx, data["/elastic/K"][...], data["/elastic/G"][...])
+        material.setElastic(iden, idx, data["/elastic/K"][...], data["/elastic/G"][...])
 
-        I = np.zeros(material.shape(), dtype=np.int)
+        iden = np.zeros(material.shape(), dtype=np.int)
         idx = np.zeros(material.shape(), dtype=np.int)
         elem = data["/cusp/elem"][...]
-        I[elem, :] = 1
+        iden[elem, :] = 1
         idx[elem, :] = np.arange(len(elem)).reshape(-1, 1)
         material.setCusp(
-            I, idx, data["/cusp/K"][...], data["/cusp/G"][...], data["/cusp/epsy"][...]
+            iden,
+            idx,
+            data["/cusp/K"][...],
+            data["/cusp/G"][...],
+            data["/cusp/epsy"][...],
         )
 
         sig = []

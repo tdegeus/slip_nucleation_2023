@@ -86,8 +86,8 @@ def pushincrements(system, data, target_stress):
     incs = data["/stored"][...].astype(int)
     assert np.all(incs == np.arange(incs.size))
     assert kick.shape == incs.shape
-    assert np.all(kick[::2] == False)
-    assert np.all(kick[1::2] == True)
+    assert np.all(not kick[::2])
+    assert np.all(kick[1::2])
 
     A = np.zeros(incs.shape, dtype=int)
     Strain = np.zeros(incs.shape, dtype=float)
@@ -128,9 +128,10 @@ def pushincrements(system, data, target_stress):
     for i in range(inc_system.size - 1):
 
         # state after elastc loading
-        s = Stress[inc_system[i] + 1 : inc_system[i + 1] : 2]
-        a = A[inc_system[i] + 1 : inc_system[i + 1] : 2]
-        n = incs[inc_system[i] + 1 : inc_system[i + 1] : 2]
+        ii = inc_system[i] + 1
+        jj = inc_system[i + 1]
+        s = Stress[ii:jj:2]
+        n = incs[ii:jj:2]
 
         if not np.any(s > target_stress):
             continue
@@ -139,7 +140,7 @@ def pushincrements(system, data, target_stress):
         ipush = n[j] - 1
 
         assert Stress[ipush] <= target_stress
-        assert kick[ipush + 1] == False
+        assert not kick[ipush + 1]
 
         inc_push += [ipush]
         inc_system_ret += [n[0] - 1]
@@ -150,13 +151,18 @@ def pushincrements(system, data, target_stress):
     return inc_system_ret, inc_push
 
 
-def pinning(system, target_element, target_A):
+def pinning(system: model.System, target_element: int, target_A: int):
     r"""
     Return pinning used in ``pinsystem``.
 
-    :param FrictionQPotFEM.UniformSingleLayer2d.System system: The system (modified: yield strains changed).
-    :param int target_element: The element to trigger.
-    :param int target_A: Number of blocks to keep unpinned (``target_A / 2`` on both sides of ``target_element``).
+    :param system:
+        The system (modified: yield strains changed).
+
+    :param target_element:
+        The element to trigger.
+
+    :param target_A:
+        Number of blocks to keep unpinned (``target_A / 2`` on both sides of ``target_element``).
     :return: Per element: pinned (``True``) or not (``False``)
     """
 
@@ -168,22 +174,38 @@ def pinning(system, target_element, target_A):
 
     i = int(N - target_A / 2)
     pinned = np.ones((3 * N), dtype=bool)
-    pinned[i : i + target_A] = False
-    pinned[N + i : N + i + target_A] = False
-    pinned = pinned[N : 2 * N]
+
+    ii = i
+    jj = i + target_A
+    pinned[ii:jj] = False
+
+    ii = N + i
+    jj = N + i + target_A
+    pinned[ii:jj] = False
+
+    ii = N
+    jj = 2 * N
+    pinned = pinned[ii:jj]
+
     pinned = np.roll(pinned, target_element)
 
     return pinned
 
 
-def pinsystem(system, target_element, target_A):
+def pinsystem(system: model.System, target_element: int, target_A: int):
     r"""
     Pin down part of the system by converting blocks to being elastic:
     having a single parabolic potential with the minimum equal to the current minimum.
 
-    :param FrictionQPotFEM.UniformSingleLayer2d.System system: The system (modified: yield strains changed).
-    :param int target_element: The element to trigger.
-    :param int target_A: Number of blocks to keep unpinned (``target_A / 2`` on both sides of ``target_element``).
+    :param system:
+        The system (modified: yield strains changed).
+
+    :param target_element:
+        The element to trigger.
+
+    :param target_A:
+        Number of blocks to keep unpinned (``target_A / 2`` on both sides of ``target_element``).
+
     :return: Per element: pinned (``True``) or not (``False``)
     """
 
@@ -204,9 +226,9 @@ def pinsystem(system, target_element, target_A):
                     chunk = cusp.refQPotChunked()
                     y = chunk.y()
                     ymax = y[-1]  # get some scale
-                    y = y[
-                        int(idx[i, q]) : int(idx[i, q] + 2)
-                    ]  # slicing is up to not including
+                    ii = int(idx[i, q])
+                    jj = int(idx[i, q] + 2)  # slicing is up to not including
+                    y = y[ii:jj]
                     ymin = 0.5 * sum(y)  # current minimum
                     chunk.set_y([ymin - 2 * ymax, ymin + 2 * ymax])
 

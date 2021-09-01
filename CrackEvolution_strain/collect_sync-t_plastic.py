@@ -8,7 +8,9 @@ Usage:
 2.  Run this script using Python.
 """
 
-import os, subprocess, h5py
+import os
+import subprocess
+import h5py
 import numpy as np
 import GooseFEM as gf
 
@@ -21,7 +23,9 @@ def getRenumIndex(old, new, N):
 
     idx = np.tile(np.arange(N), (3))
 
-    return idx[old + N - new : old + 2 * N - new]
+    i = old + N - new
+    j = old + 2 * N - new
+    return idx[i:j]
 
 
 # ==================================================================================================
@@ -109,7 +113,7 @@ for file in files:
     with h5py.File(file, "r") as data:
 
         # get stored "A"
-        T = source["/sync-t/stored"][...]
+        T = data["/sync-t/stored"][...]
 
         # normalisation
         norm[T] += 1

@@ -69,12 +69,16 @@ for stress_name, stress_value in zip(Stress_names, Stress_values):
             }
         ]
 
-lines = [
-    "CrackEvolution_raw_stress --file {file:s} --element {element:d} --incc {incc:d} --stress {stress:.8e} --output {output:s}".format(
-        **c
-    )
-    for c in commands
-]
+fmt = (
+    "CrackEvolution_raw_stress "
+    "--file {file:s} "
+    "--element {element:d} "
+    "--incc {incc:d} "
+    "--stress {stress:.8e} "
+    "--output {output:s}"
+)
+
+lines = [fmt.format(**c) for c in commands]
 
 
 slurm = """

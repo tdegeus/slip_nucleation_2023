@@ -8,7 +8,7 @@ import tqdm
 basename = os.path.splitext(os.path.basename(__file__))[0]
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
-import PinAndTrigger
+import PinAndTrigger  # noqa: E402
 
 with h5py.File(basename + ".h5", "w") as output:
 
@@ -42,7 +42,7 @@ with h5py.File(basename + ".h5", "w") as output:
                             plastic = system.plastic()
 
                             system.setU(alias["disp"]["0"][...])
-                            PinAndTrigger.pinsystem(
+                            pinned = PinAndTrigger.pinsystem(
                                 system, int(element.split("=")[1]), int(A.split("=")[1])
                             )
 
@@ -54,7 +54,7 @@ with h5py.File(basename + ".h5", "w") as output:
 
                             sel = plastic[np.logical_not(pinned)]
                             Sig = system.Sig()
-                            ret_stress += [
+                            ret_stress_crack += [
                                 GMat.Sigd(np.average(Sig, weights=dV, axis=(0, 1)))
                             ]
                             ret_S += [np.sum(idx - idx_n)]

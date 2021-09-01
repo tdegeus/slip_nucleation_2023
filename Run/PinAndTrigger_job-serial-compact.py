@@ -89,7 +89,9 @@ fmt = str(int(np.ceil(np.log10(ngroup))))
 
 for group in range(ngroup):
 
-    c = commands[group * args.group : (group + 1) * args.group]
+    ii = group * args.group
+    jj = (group + 1) * args.group
+    c = commands[ii:jj]
     command = "\n".join(c)
     command = slurm.format(command)
 

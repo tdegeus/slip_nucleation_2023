@@ -62,12 +62,15 @@ def get_runs():
             }
         ]
 
-    lines = [
-        "EventEvolution_strain --file {file:s} --element {element:d} --incc {incc:d} --output {output:s}".format(
-            **c
-        )
-        for c in commands
-    ]
+    fmt = (
+        "EventEvolution_strain "
+        "--file {file:s} "
+        "--element {element:d} "
+        "--incc {incc:d} "
+        "--output {output:s}"
+    )
+
+    lines = [fmt.format(**c) for c in commands]
 
     return lines
 
@@ -103,7 +106,9 @@ fmt = str(int(np.ceil(np.log10(ngroup))))
 
 for group in range(ngroup):
 
-    c = commands[group * commands_per_group : (group + 1) * commands_per_group]
+    ii = group * commands_per_group
+    jj = (group + 1) * commands_per_group
+    c = commands[ii:jj]
     command = "\n".join(c)
     command = slurm.format(command)
 

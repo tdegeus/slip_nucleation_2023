@@ -42,7 +42,9 @@ fmt = str(int(np.ceil(np.log10(ngroup))))
 
 for group in range(ngroup):
 
-    f = files[group * files_per_group : (group + 1) * files_per_group]
+    ii = group * files_per_group
+    jj = (group + 1) * files_per_group
+    f = files[ii:jj]
     c = []
 
     for file in f:

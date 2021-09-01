@@ -87,8 +87,17 @@ for name, stress in zip(stress_names, stresses):
         if os.path.isfile(os.path.join(dbase, "EventEvolution", fname)):
             continue
 
+        fmt = (
+            "EventEvolution_stress "
+            "--file {file:s} "
+            "--element {element:d} "
+            "--incc {incc:d} "
+            "--stress {stress:.8e} "
+            "--output {output:s}"
+        )
+
         commands += [
-            "EventEvolution_stress --file {file:s} --element {element:d} --incc {incc:d} --stress {stress:.8e} --output {output:s}".format(
+            fmt.format(
                 file=os.path.join("Run", p_files[p_file[i]]),
                 element=p_elem[i],
                 incc=p_incc[i],
@@ -137,7 +146,9 @@ fmt = str(int(np.ceil(np.log10(ngroup))))
 
 for group in range(ngroup):
 
-    c = commands[group * args_group : (group + 1) * args_group]
+    ii = group * args_group
+    jj = (group + 1) * args_group
+    c = commands[ii:jj]
     command = "\n".join(c)
     command = slurm.format(command)
 

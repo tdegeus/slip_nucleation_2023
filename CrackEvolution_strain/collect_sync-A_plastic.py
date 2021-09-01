@@ -8,7 +8,9 @@ Usage:
 2.  Run this script using Python.
 """
 
-import os, subprocess, h5py
+import os
+import subprocess
+import h5py
 import numpy as np
 import GooseFEM as gf
 
@@ -21,7 +23,9 @@ def getRenumIndex(old, new, N):
 
     idx = np.tile(np.arange(N), (3))
 
-    return idx[old + N - new : old + 2 * N - new]
+    ii = old + N - new
+    jj = old + 2 * N - new
+    return idx[ii:jj]
 
 
 # ==================================================================================================
