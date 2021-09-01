@@ -4,8 +4,8 @@ import re
 import sys
 
 import FrictionQPotFEM.UniformSingleLayer2d as model
-import numpy as np
 import h5py
+import numpy as np
 import yaml
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
@@ -13,7 +13,12 @@ import PinAndTrigger  # noqa: E402
 
 
 def run_dynamics(
-    system: model.System, target_element: int, target_A: int, eps_kick: float, sig0: float, t0: float
+    system: model.System,
+    target_element: int,
+    target_A: int,
+    eps_kick: float,
+    sig0: float,
+    t0: float,
 ) -> dict:
     """
     Run the dynamics of an event, saving the state at the interface at every "A".
@@ -148,4 +153,3 @@ if __name__ == "__main__":
 
                 for key in ret:
                     output[f"/data/{path}/{key}"] = ret[key]
-
