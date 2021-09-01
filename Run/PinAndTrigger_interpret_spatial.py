@@ -1,6 +1,7 @@
 import argparse
 import itertools
 import os
+import re
 import sys
 
 import enstat.mean
@@ -201,11 +202,9 @@ if __name__ == "__main__":
         paths = np.array([path.split("data/")[1].split("/...")[0] for path in paths])
 
         # lists with stress/element/A of each realisation
-        stress = ["stress=" + path.split("stress=")[1].split("/")[0] for path in paths]
-        element = [
-            "element=" + path.split("element=")[1].split("/")[0] for path in paths
-        ]
-        a_target = [int(path.split("A=")[1].split("/")[0]) for path in paths]
+        stress = [re.split(r"(stress\=[0-9A-z]*)", path)[1] for path in paths]
+        element = [re.split(r"(element\=[0-9]*)", path)[1] for path in paths]
+        a_target = [int(re.split(r"(A\=)([0-9]*)", path)[2]) for path in paths]
         a_real = [int(data[g5.join("/data", path, "A")][...]) for path in paths]
         stress = np.array(stress)
         element = np.array(element)
