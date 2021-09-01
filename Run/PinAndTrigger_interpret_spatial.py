@@ -119,8 +119,8 @@ def average(data: h5py.File, paths: list[str], sig0: float) -> dict:
         # restore system
 
         origsim = str(data[path]["file"].asstr()[...])
-        e = int(path.split("element=")[1].split("/")[0])
-        a = int(path.split("A=")[1].split("/")[0])
+        e = int(re.split(r"(element=)([0-9]*)", path)[2])
+        a = int(re.split(r"(A=)([0-9]*)", path)[2])
 
         with h5py.File(origsim, "r") as mysim:
             if system is None:
