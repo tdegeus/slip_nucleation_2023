@@ -17,7 +17,6 @@ Options:
     -f, --force     Overwrite existing output-file.
     -h, --help      Print help.
 """
-
 import docopt
 import GooseHDF5 as g5
 import h5py

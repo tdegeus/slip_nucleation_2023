@@ -12,7 +12,6 @@ Options:
     -h, --help          Show help.
         --version       Show version.
 """
-
 import os
 import subprocess
 

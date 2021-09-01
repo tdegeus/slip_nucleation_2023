@@ -7,7 +7,6 @@ Usage:
 1.  Copy the relevant `EnsembleInfo.hdf5` to this folder.
 2.  Run this script using Python.
 """
-
 import os
 import subprocess
 

@@ -7,7 +7,6 @@ Afterwards, ``PinAndTrigger_job-serial-compact.py`` can be used to run for ``A <
 That function skips all events that are know to be too small, and therefore less time is waisted
 on computing small events.
 """
-
 import argparse
 import itertools
 import os

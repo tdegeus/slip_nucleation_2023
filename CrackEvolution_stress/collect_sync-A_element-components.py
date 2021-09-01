@@ -16,7 +16,6 @@ Options:
   -f, --force       Overwrite existing output-file.
   -h, --help        Print help.
 """
-
 import os
 import sys
 
