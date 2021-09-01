@@ -1,21 +1,16 @@
-import argparse
-import itertools
 import os
 import sys
 
-import enstat.mean
-import GooseFEM
-import GooseHDF5 as g5
-import h5py
-import numpy as np
-import tqdm
 import FrictionQPotFEM.UniformSingleLayer2d as model
-from numpy.typing import ArrayLike
+import numpy as np
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 import PinAndTrigger  # noqa: E402
 
-def run_dynamics(system: model.System, target_element: int, target_A: int) -> dict:
+
+def run_dynamics(
+    system: model.System, target_element: int, target_A: int, eps_kick: float
+) -> dict:
     """
     Run the dynamics of an event, saving the state at the interface at every "A".
 
@@ -28,6 +23,9 @@ def run_dynamics(system: model.System, target_element: int, target_A: int) -> di
 
     :param target_A:
         Number of blocks to keep unpinned (``target_A / 2`` on both sides of ``target_element``).
+
+    :param eps_kick:
+        Strain kick to use.
 
     :return:
         Dictionary with the following fields:
@@ -52,14 +50,14 @@ def run_dynamics(system: model.System, target_element: int, target_A: int) -> di
     a = 0
 
     ret = dict(
-        sig_xx = np.zeros((target_A, N), dtype=np.float64),
-        sig_xy = np.zeros((target_A, N), dtype=np.float64),
-        sig_yy = np.zeros((target_A, N), dtype=np.float64),
-        idx = np.zeros((target_A, N), dtype=np.uint64),
-        t = np.zeros(target_A, dtype=np.float64),
-        Sig_xx = np.zeros((target_A), dtype=np.float64),
-        Sig_xy = np.zeros((target_A), dtype=np.float64),
-        Sig_yy = np.zeros((target_A), dtype=np.float64),
+        sig_xx=np.zeros((target_A, N), dtype=np.float64),
+        sig_xy=np.zeros((target_A, N), dtype=np.float64),
+        sig_yy=np.zeros((target_A, N), dtype=np.float64),
+        idx=np.zeros((target_A, N), dtype=np.uint64),
+        t=np.zeros(target_A, dtype=np.float64),
+        Sig_xx=np.zeros((target_A), dtype=np.float64),
+        Sig_xy=np.zeros((target_A), dtype=np.float64),
+        Sig_yy=np.zeros((target_A), dtype=np.float64),
     )
 
     while True:
@@ -74,14 +72,14 @@ def run_dynamics(system: model.System, target_element: int, target_A: int) -> di
             plastic_sig = np.average(system.plastic_Sig(), weights=plastic_dV, axis=1)
 
             # store to output (broadcast if needed)
-            ret["sig_xx"][a_n: a, :] = plastic_sig[:, 0, 0].reshape(1, -1)
-            ret["sig_xy"][a_n: a, :] = plastic_sig[:, 0, 1].reshape(1, -1)
-            ret["sig_yy"][a_n: a, :] = plastic_sig[:, 1, 1].reshape(1, -1)
-            ret["idx"][a_n: a, :] = idx.reshape(1, -1)
-            ret["t"][a_n: a] = system.t()
-            ret["Sig_xx"][a_n: a] = sig[0, 0]
-            ret["Sig_xy"][a_n: a] = sig[0, 1]
-            ret["Sig_yy"][a_n: a] = sig[1, 1]
+            ret["sig_xx"][a_n:a, :] = plastic_sig[:, 0, 0].reshape(1, -1)
+            ret["sig_xy"][a_n:a, :] = plastic_sig[:, 0, 1].reshape(1, -1)
+            ret["sig_yy"][a_n:a, :] = plastic_sig[:, 1, 1].reshape(1, -1)
+            ret["idx"][a_n:a, :] = idx.reshape(1, -1)
+            ret["t"][a_n:a] = system.t()
+            ret["Sig_xx"][a_n:a] = sig[0, 0]
+            ret["Sig_xy"][a_n:a] = sig[0, 1]
+            ret["Sig_yy"][a_n:a] = sig[1, 1]
 
         if a >= target_A:
             break
@@ -92,7 +90,3 @@ def run_dynamics(system: model.System, target_element: int, target_A: int) -> di
     ret["idx"] = ret["idx"][:, np.logical_not(pinned)]
 
     return ret
-
-
-
-

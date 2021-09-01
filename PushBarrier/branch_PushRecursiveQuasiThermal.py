@@ -47,7 +47,7 @@ def is_completed(file):
             if "completed" in data:
                 return data["/completed"][...]
         return False
-    except:  # noqa: E722
+    except:
         return False
 
 

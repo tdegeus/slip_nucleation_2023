@@ -239,7 +239,7 @@ def main():
 
         try:
             version = get_version(root="..", relative_to=__file__)
-        except:  # noqa: E722
+        except:
             version = None
 
         if version:
