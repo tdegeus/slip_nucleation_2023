@@ -84,7 +84,6 @@ def compute_distance(cracked, active, clusters):
     else:
         mid = int((nx - 1) / 2)
 
-    labels = clusters.labels()
     sizes = clusters.sizes()
     centers = clusters.centers()
 

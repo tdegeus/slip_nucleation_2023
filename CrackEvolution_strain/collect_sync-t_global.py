@@ -10,7 +10,6 @@ Usage:
 
 import os, subprocess, h5py
 import numpy as np
-import GooseFEM as gf
 
 # ==================================================================================================
 # get all simulation files, split in ensembles

@@ -2,11 +2,11 @@ import argparse
 import FrictionQPotFEM.UniformSingleLayer2d as model
 import git
 import GMatElastoPlasticQPot.Cartesian2d as GMat
-import GooseFEM
+import GooseFEM  # noqa: F401
 import h5py
 import numpy as np
 import os
-import QPot
+import QPot  # noqa: F401
 import setuptools_scm
 
 
@@ -162,7 +162,6 @@ def pinning(system, target_element, target_A):
 
     plastic = system.plastic()
     N = plastic.size
-    nip = system.quad().nip()
 
     assert target_A <= N
     assert target_element <= N
@@ -189,7 +188,6 @@ def pinsystem(system, target_element, target_A):
     """
 
     plastic = system.plastic()
-    N = plastic.size
     nip = system.quad().nip()
     pinned = pinning(system, target_element, target_A)
     idx = system.plastic_CurrentIndex()

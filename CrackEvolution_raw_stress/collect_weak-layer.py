@@ -20,16 +20,13 @@ Options:
 """
 
 import os
-import sys
 import docopt
-import click
 import h5py
 import numpy as np
 import GooseHDF5 as g5
 import shelephant
 import tqdm
 from FrictionQPotFEM.UniformSingleLayer2d import HybridSystem
-import GooseFEM as gf
 from setuptools_scm import get_version
 
 myversion = get_version(root="..", relative_to=__file__)

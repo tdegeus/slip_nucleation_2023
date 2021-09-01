@@ -1,5 +1,4 @@
 import os
-import sys
 import subprocess
 import h5py
 import tqdm

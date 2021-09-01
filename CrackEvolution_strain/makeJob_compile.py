@@ -1,4 +1,5 @@
-import os, subprocess, h5py
+import h5py
+import os
 import numpy as np
 import GooseSLURM as gs
 

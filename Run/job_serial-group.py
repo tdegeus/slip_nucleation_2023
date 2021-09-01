@@ -1,6 +1,4 @@
 import os
-import subprocess
-import h5py
 import numpy as np
 import GooseSLURM
 import argparse

@@ -16,9 +16,7 @@ Options:
 """
 
 import os
-import sys
 import docopt
-import click
 import h5py
 import numpy as np
 import enstat.mean
@@ -117,17 +115,14 @@ def main():
             mid = int((N - N % 2) / 2)
             assert np.all(np.equal(plastic, data["/meta/plastic"][...]))
 
-            M = system.mass().Todiagonal()
             coor = system.coor()
             conn = system.conn()
             vector = system.vector()
             quad = system.quad()
             dV = quad.AsTensor(2, system.dV())
-            is_p = vector.dofs_is_p()
 
             mesh = gf.Mesh.Quad4.FineLayer(coor, conn)
             mapping = gf.Mesh.Quad4.Map.FineLayer2Regular(mesh)
-            regular = mapping.getRegularMesh()
             assert np.all(np.equal(plastic, mesh.elementsMiddleLayer()))
 
         break

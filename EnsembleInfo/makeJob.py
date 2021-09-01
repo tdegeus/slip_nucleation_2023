@@ -1,6 +1,5 @@
 # import libraries
 import os, subprocess
-import numpy as np
 import GooseSLURM as gs
 
 # ==================================================================================================

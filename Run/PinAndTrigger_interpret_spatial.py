@@ -1,6 +1,5 @@
 import argparse
 import enstat.mean
-import GMatElastoPlasticQPot.Cartesian2d as GMat
 import GooseFEM
 import GooseHDF5 as g5
 import h5py
@@ -119,7 +118,6 @@ def average(data: h5py.File, paths: list[str], sig0: float) -> dict:
                 dV = system.quad().AsTensor(2, system.quad().dV())
                 plastic = system.plastic()
                 N = plastic.size
-                mid = int((N - N % 2) / 2)
             else:
                 PinAndTrigger.reset_epsy(system, mysim)
 

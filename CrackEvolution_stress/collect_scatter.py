@@ -20,7 +20,6 @@ import docopt
 import click
 import h5py
 import numpy as np
-import GooseFEM as gf
 import GMatElastoPlasticQPot.Cartesian2d as gmat
 import tqdm
 

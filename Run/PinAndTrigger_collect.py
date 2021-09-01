@@ -4,7 +4,6 @@ import h5py
 import numpy as np
 import os
 import shelephant
-import sys
 import tqdm
 
 basename = os.path.splitext(os.path.basename(__file__))[0]

@@ -19,9 +19,7 @@ Options:
 """
 
 import os
-import sys
 import docopt
-import click
 import h5py
 import numpy as np
 import enstat.mean
@@ -125,7 +123,6 @@ def main():
 
             mesh = gf.Mesh.Quad4.FineLayer(coor, conn)
             mapping = gf.Mesh.Quad4.Map.FineLayer2Regular(mesh)
-            regular = mapping.getRegularMesh()
             assert np.all(np.equal(plastic, mesh.elementsMiddleLayer()))
 
             # midpoint integration

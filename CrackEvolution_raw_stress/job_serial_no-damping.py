@@ -1,7 +1,6 @@
 import os
 import subprocess
 import h5py
-import numpy as np
 import GooseSLURM as gs
 import GooseHDF5 as g5
 

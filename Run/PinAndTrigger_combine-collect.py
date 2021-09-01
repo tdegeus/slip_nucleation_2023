@@ -3,9 +3,7 @@ import GooseHDF5 as g5
 import h5py
 import numpy as np
 import os
-import shelephant
 import shutil
-import sys
 import tqdm
 
 basename = os.path.splitext(os.path.basename(__file__))[0]
