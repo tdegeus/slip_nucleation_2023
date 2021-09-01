@@ -1,9 +1,8 @@
-import os
-import subprocess
-import h5py
-import numpy as np
-import GooseSLURM
 import argparse
+import os
+
+import GooseSLURM
+import numpy as np
 
 parser = argparse.ArgumentParser()
 parser.add_argument("files", nargs="*", type=str)
@@ -39,7 +38,9 @@ fmt = str(int(np.ceil(np.log10(ngroup))))
 
 for group in range(ngroup):
 
-    c = commands[group * args.group : (group + 1) * args.group]
+    i = group * args.group
+    j = (group + 1) * args.group
+    c = commands[i:j]
     command = "\n".join(c)
     command = slurm.format(command)
 
@@ -56,4 +57,6 @@ for group in range(ngroup):
         "partition": "serial",
     }
 
-    open(jobname + ".slurm", "w").write(GooseSLURM.scripts.plain(command=command, **sbatch))
+    open(jobname + ".slurm", "w").write(
+        GooseSLURM.scripts.plain(command=command, **sbatch)
+    )

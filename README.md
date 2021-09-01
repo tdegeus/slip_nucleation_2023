@@ -68,7 +68,7 @@ Follow the evolution of an avalanches event by event. This code is similar to [C
 
 ## Environment
 
-For each code the environment can be entirely set using *Conda*. In particular, each code has a file `environment.yaml` which contains the necessary dependencies. 
+For each code the environment can be entirely set using *Conda*. In particular, each code has a file `environment.yaml` which contains the necessary dependencies.
 
 *   Create an environment based on the environment file:
 
@@ -77,13 +77,13 @@ For each code the environment can be entirely set using *Conda*. In particular, 
     ```
 
 *   Update an environment based on the environment file:
-    
+
     ```
     source activate NAME
     conda env update --file FILE
     ```
 
-    or 
+    or
 
     ```
     conda env update --name NAME --file FILE

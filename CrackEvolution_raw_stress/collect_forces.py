@@ -1,4 +1,4 @@
-r'''
+r"""
     Extract average force distribution. This involves:
     -   remapping to a regular mesh
     -   coarsening
@@ -16,23 +16,24 @@ Options:
     -i, --info=<N>      Path to EnsembleInfo. [default: EnsembleInfo.hdf5]
     -f, --force         Overwrite existing output-file.
     -h, --help          Print help.
-'''
-
+"""
 import os
-import sys
+
 import docopt
-import click
-import h5py
-import numpy as np
 import enstat.mean
 import GooseFEM as gf
+import h5py
+import numpy as np
 import shelephant
 import tqdm
 from FrictionQPotFEM.UniformSingleLayer2d import HybridSystem
 from setuptools_scm import get_version
 
+myversion = get_version(root="..", relative_to=__file__)
+
 
 # https://en.wikipedia.org/wiki/Center_of_mass#Systems_with_periodic_boundary_conditions
+
 
 def center_of_mass(x, L):
 
@@ -59,23 +60,26 @@ def renumber(x, L):
 
 def LoadSystem(filename, uuid):
 
-    with h5py.File(filename, 'r') as data:
+    with h5py.File(filename, "r") as data:
 
         assert uuid == data["/uuid"].asstr()[...]
 
         system = HybridSystem(
-            data['coor'][...],
-            data['conn'][...],
-            data['dofs'][...],
-            data['dofsP'][...],
-            data['/elastic/elem'][...],
-            data['/cusp/elem'][...])
+            data["coor"][...],
+            data["conn"][...],
+            data["dofs"][...],
+            data["dofsP"][...],
+            data["/elastic/elem"][...],
+            data["/cusp/elem"][...],
+        )
 
-        system.setMassMatrix(data['/rho'][...])
-        system.setDampingMatrix(data['/damping/alpha'][...])
-        system.setElastic(data['/elastic/K'][...], data['/elastic/G'][...])
-        system.setPlastic(data['/cusp/K'][...], data['/cusp/G'][...], data['/cusp/epsy'][...])
-        system.setDt(data['/run/dt'][...])
+        system.setMassMatrix(data["/rho"][...])
+        system.setDampingMatrix(data["/damping/alpha"][...])
+        system.setElastic(data["/elastic/K"][...], data["/elastic/G"][...])
+        system.setPlastic(
+            data["/cusp/K"][...], data["/cusp/G"][...], data["/cusp/epsy"][...]
+        )
+        system.setDt(data["/run/dt"][...])
 
         return system
 
@@ -84,31 +88,31 @@ def main():
 
     args = docopt.docopt(__doc__)
 
-    source = args['<files.yaml>']
-    key = list(filter(None, args['--key'].split('/')))
+    source = args["<files.yaml>"]
+    key = list(filter(None, args["--key"].split("/")))
     files = shelephant.YamlGetItem(source, key)
     assert len(files) > 0
-    info = args['--info']
-    output = args['--output']
+    info = args["--info"]
+    output = args["--output"]
     source_dir = os.path.dirname(info)
 
     shelephant.CheckAllIsFile(files + [info])
-    shelephant.OverWrite(output, args['--force'])
+    shelephant.OverWrite(output, args["--force"])
 
     # Define mapping (same for all input)
 
     for file in files:
 
-        with h5py.File(file, 'r') as data:
+        with h5py.File(file, "r") as data:
 
             idnum = data["/meta/id"][...]
             uuid = data["/meta/uuid"].asstr()[...]
-            idname = "id={0:03d}.hdf5".format(idnum)
+            idname = f"id={idnum:03d}.hdf5"
 
             system = LoadSystem(os.path.join(source_dir, idname), uuid)
             plastic = system.plastic()
             N = plastic.size
-            assert np.all(np.equal(plastic, data['/meta/plastic'][...]))
+            assert np.all(np.equal(plastic, data["/meta/plastic"][...]))
 
             M = system.mass().Todiagonal()
             coor = system.coor()
@@ -119,20 +123,21 @@ def main():
 
             mesh = gf.Mesh.Quad4.FineLayer(coor, conn)
             mapping = gf.Mesh.Quad4.Map.FineLayer2Regular(mesh)
-            regular = mapping.getRegularMesh()
             assert np.all(np.equal(plastic, mesh.elementsMiddleLayer()))
 
             # midpoint integration
             mid_quad = gf.Element.Quad4.Quadrature(
                 vector.AsElement(coor),
                 gf.Element.Quad4.MidPoint.xi(),
-                gf.Element.Quad4.MidPoint.w())
+                gf.Element.Quad4.MidPoint.w(),
+            )
 
             # nodal quadrature
             nodal_quad = gf.Element.Quad4.Quadrature(
                 vector.AsElement(coor),
                 gf.Element.Quad4.Nodal.xi(),
-                gf.Element.Quad4.Nodal.w())
+                gf.Element.Quad4.Nodal.w(),
+            )
             dVs = nodal_quad.dV()
 
             # get nodal volume: per dimension, with periodicity applied
@@ -152,24 +157,24 @@ def main():
 
     # Ensemble average
 
-    with h5py.File(output, 'w') as out:
+    with h5py.File(output, "w") as out:
 
-        out['/coarse/nelx'] = coarse.nelx()
-        out['/coarse/nely'] = coarse.nely()
-        out['/coarse/Lx'] = coarse.nelx() * 6 * coarse.h()
-        out['/coarse/Ly'] = coarse.nely() * 3 * coarse.h()
-        out['/mesh/h'] = mesh.h()
-        out['/mesh/nelx'] = mesh.nelx()
-        out['/mesh/nely'] = mesh.nely()
-        out['/mesh/N'] = N
+        out["/coarse/nelx"] = coarse.nelx()
+        out["/coarse/nely"] = coarse.nely()
+        out["/coarse/Lx"] = coarse.nelx() * 6 * coarse.h()
+        out["/coarse/Ly"] = coarse.nely() * 3 * coarse.h()
+        out["/mesh/h"] = mesh.h()
+        out["/mesh/nelx"] = mesh.nelx()
+        out["/mesh/nely"] = mesh.nely()
+        out["/mesh/N"] = N
 
         for ifile, file in enumerate(tqdm.tqdm(files)):
 
-            with h5py.File(file, 'r') as data:
+            with h5py.File(file, "r") as data:
 
                 idnum = data["/meta/id"][...]
                 uuid = data["/meta/uuid"].asstr()[...]
-                idname = "id={0:03d}.hdf5".format(idnum)
+                idname = f"id={idnum:03d}.hdf5"
                 system = LoadSystem(os.path.join(source_dir, idname), uuid)
                 stored = data["/sync-A/stored"][...]
                 iiter = data["/sync-A/global/iiter"][...]
@@ -186,7 +191,7 @@ def main():
                     m_v = [enstat.mean.StaticNd() for A in m_A]
                     m_S = [enstat.mean.StaticNd() for A in m_A]
 
-                system.setU(data["/sync-A/{0:d}/u".format(np.min(stored))][...])
+                system.setU(data[f"/sync-A/{np.min(stored):d}/u"][...])
                 idx0 = system.plastic_CurrentIndex()[:, 0]
 
                 for i, A in enumerate(tqdm.tqdm(m_A)):
@@ -194,8 +199,8 @@ def main():
                     if A not in stored:
                         continue
 
-                    system.setU(data["/sync-A/{0:d}/u".format(A)][...])
-                    system.setV(data["/sync-A/{0:d}/v".format(A)][...])
+                    system.setU(data[f"/sync-A/{A:d}/u"][...])
+                    system.setV(data[f"/sync-A/{A:d}/v"][...])
                     idx = system.plastic_CurrentIndex()[:, 0]
 
                     # nodal forces (apply reaction for to "fmaterial")
@@ -216,13 +221,22 @@ def main():
                     # potential energy
                     Epot = np.average(system.Energy(), weights=dV, axis=1)
 
-                    # convert to element-vector, interpolate to the element's midpoint, extrapolate on regular mesh
-                    fmaterial = mapping.mapToRegular(mid_quad.Interp_N_vector(vector.AsElement(fmaterial)).reshape(-1, 2))
-                    fdamp = mapping.mapToRegular(mid_quad.Interp_N_vector(vector.AsElement(fdamp)).reshape(-1, 2))
-                    fres = mapping.mapToRegular(mid_quad.Interp_N_vector(vector.AsElement(fres)).reshape(-1, 2))
-                    Ekin = mapping.mapToRegular(mid_quad.Interp_N_vector(vector.AsElement(Ekin)).reshape(-1, 2))
+                    # convert to element-vector,
+                    # interpolate to the element's midpoint,
+                    # extrapolate on regular mesh
+                    def take_interp(myvector):
+                        return mapping.mapToRegular(
+                            mid_quad.Interp_N_vector(
+                                vector.AsElement(myvector)
+                            ).reshape(-1, 2)
+                        )
+
+                    fmaterial = take_interp(fmaterial)
+                    fdamp = take_interp(fdamp)
+                    fres = take_interp(fres)
+                    Ekin = take_interp(Ekin)
                     Epot = mapping.mapToRegular(Epot)
-                    v = mapping.mapToRegular(mid_quad.Interp_N_vector(vector.AsElement(system.v())).reshape(-1, 2))
+                    v = take_interp(system.v())
 
                     # element numbers such that the crack is aligned
                     renum = renumber(np.argwhere(idx0 != idx).ravel(), N)
@@ -238,12 +252,17 @@ def main():
                     S = (idx.astype(np.int64) - idx0.astype(np.int64))[renum]
 
                     # coarsen by taking element average, take vector norm, reshape to grid
-                    fmaterial = np.linalg.norm(refine.meanToCoarse(fmaterial), axis=1).reshape(coarse.nely(), -1)
-                    fdamp = np.linalg.norm(refine.meanToCoarse(fdamp), axis=1).reshape(coarse.nely(), -1)
-                    fres = np.linalg.norm(refine.meanToCoarse(fres), axis=1).reshape(coarse.nely(), -1)
-                    Ekin = np.linalg.norm(refine.meanToCoarse(Ekin), axis=1).reshape(coarse.nely(), -1)
+                    def take_norm(myvector):
+                        return np.linalg.norm(myvector, axis=1).reshape(
+                            coarse.nely(), -1
+                        )
+
+                    fmaterial = take_norm(refine.meanToCoarse(fmaterial))
+                    fdamp = take_norm(refine.meanToCoarse(fdamp))
+                    fres = take_norm(refine.meanToCoarse(fres))
+                    Ekin = take_norm(refine.meanToCoarse(Ekin))
                     Epot = refine.meanToCoarse(Epot).reshape(coarse.nely(), -1)
-                    v = np.linalg.norm(refine.meanToCoarse(v), axis=1).reshape(coarse.nely(), -1)
+                    v = take_norm(refine.meanToCoarse(v))
                     S = np.mean(S.reshape(-1, 6), axis=1)
 
                     m_fmaterial[i].add_sample(fmaterial)
@@ -255,22 +274,25 @@ def main():
                     m_S[i].add_sample(S)
                     m_t[i].add_sample(iiter[A])
 
-        out['/stored'] = m_A
+        out["/stored"] = m_A
 
         for i, A in enumerate(m_A):
 
-            out['/{0:d}/fmaterial'.format(A)] = m_fmaterial[i].mean()
-            out['/{0:d}/fdamp'.format(A)] = m_fdamp[i].mean()
-            out['/{0:d}/fres'.format(A)] = m_fres[i].mean()
-            out['/{0:d}/Ekin'.format(A)] = m_Ekin[i].mean()
-            out['/{0:d}/Epot'.format(A)] = m_Epot[i].mean()
-            out['/{0:d}/v'.format(A)] = m_v[i].mean()
-            out['/{0:d}/S'.format(A)] = m_S[i].mean()
-            out['/{0:d}/iiter'.format(A)] = m_t[i].mean()
+            out[f"/{A:d}/fmaterial"] = m_fmaterial[i].mean()
+            out[f"/{A:d}/fdamp"] = m_fdamp[i].mean()
+            out[f"/{A:d}/fres"] = m_fres[i].mean()
+            out[f"/{A:d}/Ekin"] = m_Ekin[i].mean()
+            out[f"/{A:d}/Epot"] = m_Epot[i].mean()
+            out[f"/{A:d}/v"] = m_v[i].mean()
+            out[f"/{A:d}/S"] = m_S[i].mean()
+            out[f"/{A:d}/iiter"] = m_t[i].mean()
 
-        if "/meta/versions/CrackEvolution_raw_stress" not in data and "/git/run" in data:
-            out["/meta/versions/CrackEvolution_raw_stress"] = data["/git/run"][...]
-        out["/meta/versions/collect_forces.py"] = get_version(root='..', relative_to=__file__)
+        ver = "/meta/versions/CrackEvolution_raw_stress"
+        if ver not in data and "/git/run" in data:
+            out[ver] = data["/git/run"][...]
+
+        out["/meta/versions/collect_forces.py"] = myversion
+
 
 if __name__ == "__main__":
 

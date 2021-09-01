@@ -1,22 +1,24 @@
 r"""
 Run events small than pre-run events. This avoid rerunning small events.
 """
-
 import argparse
+import os
+import sys
+
 import GooseHDF5 as g5
 import GooseSLURM
 import h5py
 import numpy as np
-import os
-import sys
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "collection",
     type=str,
-    help="Result of PinAndTrigger_collect.py for earlier ran simulations"
+    help="Result of PinAndTrigger_collect.py for earlier ran simulations",
 )
-parser.add_argument("-A", "--size", type=int, default=600, help="Size of the events to simulate")
+parser.add_argument(
+    "-A", "--size", type=int, default=600, help="Size of the events to simulate"
+)
 parser.add_argument("-n", "--group", type=int, default=50)
 parser.add_argument("-e", "--executable", type=str, default="python PinAndTrigger.py")
 
@@ -87,11 +89,15 @@ fmt = str(int(np.ceil(np.log10(ngroup))))
 
 for group in range(ngroup):
 
-    c = commands[group * args.group : (group + 1) * args.group]
+    ii = group * args.group
+    jj = (group + 1) * args.group
+    c = commands[ii:jj]
     command = "\n".join(c)
     command = slurm.format(command)
 
-    jobname = ("{0:s}-{1:0" + fmt + "d}").format(args.executable.replace(" ", "_"), group)
+    jobname = ("{0:s}-{1:0" + fmt + "d}").format(
+        args.executable.replace(" ", "_"), group
+    )
 
     sbatch = {
         "job-name": "velocity_" + jobname,
@@ -104,4 +110,6 @@ for group in range(ngroup):
         "partition": "serial",
     }
 
-    open(jobname + ".slurm", "w").write(GooseSLURM.scripts.plain(command=command, **sbatch))
+    open(jobname + ".slurm", "w").write(
+        GooseSLURM.scripts.plain(command=command, **sbatch)
+    )

@@ -32,11 +32,10 @@ if [ -d "${mydir}" ]; then
     rm -r "${mydir}"
 fi
 
-cmake -B"${mydir}" -DCMAKE_INSTALL_PREFIX:PATH="${CONDA_PREFIX}" 
+cmake -B"${mydir}" -DCMAKE_INSTALL_PREFIX:PATH="${CONDA_PREFIX}"
 cd "${mydir}"
 echo "*" > .gitignore
 make
 make install
 cd ..
 rm -r "${mydir}"
-  

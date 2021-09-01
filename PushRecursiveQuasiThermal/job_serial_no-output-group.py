@@ -1,20 +1,25 @@
-
-import sys
 import os
-import re
 import subprocess
-import h5py
+
 import GooseSLURM as gs
 import numpy as np
 
 # ----
 
-files = sorted(list(filter(None, subprocess.check_output(
-    "find . -iname 'id*.hdf5'", shell=True).decode('utf-8').split('\n'))))
+files = sorted(
+    list(
+        filter(
+            None,
+            subprocess.check_output("find . -iname 'id*.hdf5'", shell=True)
+            .decode("utf-8")
+            .split("\n"),
+        )
+    )
+)
 
 # ----
 
-slurm = '''
+slurm = """
 # for safety set the number of cores
 export OMP_NUM_THREADS=1
 
@@ -30,7 +35,7 @@ else
 fi
 
 {0:s}
-'''
+"""
 
 files_per_group = 10
 ngroup = int(np.ceil(len(files) / files_per_group))
@@ -38,28 +43,30 @@ fmt = str(int(np.ceil(np.log10(ngroup))))
 
 for group in range(ngroup):
 
-    f = files[group * files_per_group: (group + 1) * files_per_group]
+    ii = group * files_per_group
+    jj = (group + 1) * files_per_group
+    f = files[ii:jj]
     c = []
 
     for file in f:
         basename = os.path.splitext(os.path.normpath(file))[0]
-        c += ['PushRecursiveQuasiThermal "{0:s}"'.format(file)]
+        c += [f'PushRecursiveQuasiThermal "{file:s}"']
 
-    command = '\n'.join(c)
+    command = "\n".join(c)
     command = slurm.format(command)
 
-    jobname = ('PushRecursiveQuasiThermal-{0:0' + fmt + 'd}').format(group)
+    jobname = ("PushRecursiveQuasiThermal-{0:0" + fmt + "d}").format(group)
 
     sbatch = {
-        'job-name': jobname,
-        'out': jobname + '.out',
-        'nodes': 1,
-        'ntasks': 1,
-        'cpus-per-task': 1,
-        'time': '12h',
-        'account': 'pcsl',
-        'partition': 'serial',
-        'mem' : '8G',
+        "job-name": jobname,
+        "out": jobname + ".out",
+        "nodes": 1,
+        "ntasks": 1,
+        "cpus-per-task": 1,
+        "time": "12h",
+        "account": "pcsl",
+        "partition": "serial",
+        "mem": "8G",
     }
 
-    open(jobname + '.slurm', 'w').write(gs.scripts.plain(command=command, **sbatch))
+    open(jobname + ".slurm", "w").write(gs.scripts.plain(command=command, **sbatch))

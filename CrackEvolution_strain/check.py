@@ -1,49 +1,60 @@
-import sys, os, re, subprocess, shutil, h5py
+import subprocess
 
+import h5py
 import numpy as np
 
 # --------------------------------------------------------------------------------------------------
 
+
 def check(data):
 
-  if 'completed' not in data['meta']:
-    print(data.filename, 'Error: "/meta/completed" not found.')
-    return
+    if "completed" not in data["meta"]:
+        print(data.filename, 'Error: "/meta/completed" not found.')
+        return
 
-  if 'sync-t' not in data:
-    print(data.filename, 'Error: "/sync-t/..." not found.')
-    return
+    if "sync-t" not in data:
+        print(data.filename, 'Error: "/sync-t/..." not found.')
+        return
 
-  inc = data['/sync-A/stored'][...]
+    inc = data["/sync-A/stored"][...]
 
-  idx0 = data['/sync-A/plastic/{0:d}/idx'.format(np.min(inc))][...]
-  idx  = data['/sync-A/plastic/{0:d}/idx'.format(np.max(inc))][...]
+    idx0 = data[f"/sync-A/plastic/{np.min(inc):d}/idx"][...]
+    idx = data[f"/sync-A/plastic/{np.max(inc):d}/idx"][...]
 
-  if np.sum(idx0 != idx) != len(idx):
-    print(data.filename, 'Error: "/sync-A/..." not system spanning.')
-    return
+    if np.sum(idx0 != idx) != len(idx):
+        print(data.filename, 'Error: "/sync-A/..." not system spanning.')
+        return
 
-  inc = data['/sync-t/stored'][...]
+    inc = data["/sync-t/stored"][...]
 
-  idx = data['/sync-t/plastic/{0:d}/idx'.format(np.max(inc))][...]
+    idx = data[f"/sync-t/plastic/{np.max(inc):d}/idx"][...]
 
-  if np.sum(idx0 != idx) != len(idx):
-    print(data.filename, 'Error: "/sync-t/..." not system spanning.')
-    return
+    if np.sum(idx0 != idx) != len(idx):
+        print(data.filename, 'Error: "/sync-t/..." not system spanning.')
+        return
 
-  print(data.filename)
+    print(data.filename)
+
 
 # --------------------------------------------------------------------------------------------------
 
-files = sorted(list(filter(None, subprocess.check_output("find . -iname '*id*.hdf5'",shell=True).decode('utf-8').split('\n'))))
+files = sorted(
+    list(
+        filter(
+            None,
+            subprocess.check_output("find . -iname '*id*.hdf5'", shell=True)
+            .decode("utf-8")
+            .split("\n"),
+        )
+    )
+)
 
 # --------------------------------------------------------------------------------------------------
 
 for file in files:
 
-  data = h5py.File(file, 'r')
+    data = h5py.File(file, "r")
 
-  check(data)
+    check(data)
 
-  data.close()
-
+    data.close()

@@ -1,4 +1,4 @@
-r'''
+r"""
     Get stress and yield index across the weak layer.
     Common practice::
 
@@ -17,70 +17,74 @@ Options:
     -i, --info=<N>  Path to EnsembleInfo (same directory as simulations). [default: EnsembleInfo.hdf5]
     -f, --force     Overwrite existing output-file.
     -h, --help      Print help.
-'''
-
+"""
 import os
-import sys
+
 import docopt
-import click
+import GooseHDF5 as g5
 import h5py
 import numpy as np
-import GooseHDF5 as g5
 import shelephant
 import tqdm
 from FrictionQPotFEM.UniformSingleLayer2d import HybridSystem
-import GooseFEM as gf
 from setuptools_scm import get_version
+
+myversion = get_version(root="..", relative_to=__file__)
 
 
 def LoadSystem(filename, uuid):
 
-    with h5py.File(filename, 'r') as data:
+    with h5py.File(filename, "r") as data:
 
         assert uuid == data["/uuid"].asstr()[...]
 
         system = HybridSystem(
-            data['coor'][...],
-            data['conn'][...],
-            data['dofs'][...],
-            data['dofsP'][...],
-            data['/elastic/elem'][...],
-            data['/cusp/elem'][...])
+            data["coor"][...],
+            data["conn"][...],
+            data["dofs"][...],
+            data["dofsP"][...],
+            data["/elastic/elem"][...],
+            data["/cusp/elem"][...],
+        )
 
-        system.setMassMatrix(data['/rho'][...])
-        system.setDampingMatrix(data['/damping/alpha'][...])
-        system.setElastic(data['/elastic/K'][...], data['/elastic/G'][...])
-        system.setPlastic(data['/cusp/K'][...], data['/cusp/G'][...], data['/cusp/epsy'][...])
-        system.setDt(data['/run/dt'][...])
+        system.setMassMatrix(data["/rho"][...])
+        system.setDampingMatrix(data["/damping/alpha"][...])
+        system.setElastic(data["/elastic/K"][...], data["/elastic/G"][...])
+        system.setPlastic(
+            data["/cusp/K"][...], data["/cusp/G"][...], data["/cusp/epsy"][...]
+        )
+        system.setDt(data["/run/dt"][...])
 
         return system
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
 
     args = docopt.docopt(__doc__)
 
-    source = args['<files.yaml>']
-    key = list(filter(None, args['--key'].split('/')))
+    source = args["<files.yaml>"]
+    key = list(filter(None, args["--key"].split("/")))
     sources = shelephant.YamlGetItem(source, key)
-    root = args['<output-root>']
+    root = args["<output-root>"]
     destinations = shelephant.PrefixPaths(root, sources)
-    info = args['--info']
+    info = args["--info"]
     source_dir = os.path.dirname(info)
 
     shelephant.CheckAllIsFile(sources)
-    shelephant.OverWrite(destinations, force=args['--force'])
-    shelephant.MakeDirs(shelephant.DirNames(destinations), force=args['--force'])
+    shelephant.OverWrite(destinations, force=args["--force"])
+    shelephant.MakeDirs(shelephant.DirNames(destinations), force=args["--force"])
 
-    for ifile, (source, destination) in enumerate(zip(tqdm.tqdm(sources), destinations)):
+    for ifile, (source, destination) in enumerate(
+        zip(tqdm.tqdm(sources), destinations)
+    ):
 
-        with h5py.File(destination, 'w') as out:
+        with h5py.File(destination, "w") as out:
 
-            with h5py.File(source, 'r') as data:
+            with h5py.File(source, "r") as data:
 
                 idnum = data["/meta/id"][...]
                 uuid = data["/meta/uuid"].asstr()[...]
-                idname = "id={0:03d}.hdf5".format(idnum)
+                idname = f"id={idnum:03d}.hdf5"
 
                 system = LoadSystem(os.path.join(source_dir, idname), uuid)
 
@@ -101,7 +105,7 @@ if __name__ == '__main__':
 
                 for a in A:
 
-                    system.setU(data["/sync-A/{0:d}/u".format(a)][...])
+                    system.setU(data[f"/sync-A/{a:d}/u"][...])
 
                     Sig = np.average(system.Sig(), weights=dV, axis=(0, 1))
                     sig_xx[a] = Sig[0, 0]
@@ -109,10 +113,12 @@ if __name__ == '__main__':
                     sig_yy[a] = Sig[1, 1]
 
                     Sig = np.average(system.plastic_Sig(), weights=dV_plastic, axis=1)
-                    out["/sync-A/plastic/{0:d}/sig_xx".format(a)] = Sig[:, 0, 0]
-                    out["/sync-A/plastic/{0:d}/sig_xy".format(a)] = Sig[:, 0, 1]
-                    out["/sync-A/plastic/{0:d}/sig_yy".format(a)] = Sig[:, 1, 1]
-                    out["/sync-A/plastic/{0:d}/idx".format(a)] = system.plastic_CurrentIndex()[:, 0]
+                    out[f"/sync-A/plastic/{a:d}/sig_xx"] = Sig[:, 0, 0]
+                    out[f"/sync-A/plastic/{a:d}/sig_xy"] = Sig[:, 0, 1]
+                    out[f"/sync-A/plastic/{a:d}/sig_yy"] = Sig[:, 1, 1]
+
+                    idx = system.plastic_CurrentIndex()[:, 0]
+                    out[f"/sync-A/plastic/{a:d}/idx"] = idx
 
                 out["/sync-A/global/sig_xx"] = sig_xx
                 out["/sync-A/global/sig_xy"] = sig_xy
@@ -127,7 +133,7 @@ if __name__ == '__main__':
 
                 for i, t in enumerate(T):
 
-                    system.setU(data["/sync-t/{0:d}/u".format(t)][...])
+                    system.setU(data[f"/sync-t/{t:d}/u"][...])
 
                     Sig = np.average(system.Sig(), weights=dV, axis=(0, 1))
                     sig_xx[i] = Sig[0, 0]
@@ -135,18 +141,21 @@ if __name__ == '__main__':
                     sig_yy[i] = Sig[1, 1]
 
                     Sig = np.average(system.plastic_Sig(), weights=dV_plastic, axis=1)
-                    out["/sync-t/plastic/{0:d}/sig_xx".format(t)] = Sig[:, 0, 0]
-                    out["/sync-t/plastic/{0:d}/sig_xy".format(t)] = Sig[:, 0, 1]
-                    out["/sync-t/plastic/{0:d}/sig_yy".format(t)] = Sig[:, 1, 1]
-                    out["/sync-t/plastic/{0:d}/idx".format(t)] = system.plastic_CurrentIndex()[:, 0]
+                    out[f"/sync-t/plastic/{t:d}/sig_xx"] = Sig[:, 0, 0]
+                    out[f"/sync-t/plastic/{t:d}/sig_xy"] = Sig[:, 0, 1]
+                    out[f"/sync-t/plastic/{t:d}/sig_yy"] = Sig[:, 1, 1]
 
+                    idx = system.plastic_CurrentIndex()[:, 0]
+                    out[f"/sync-t/plastic/{t:d}/idx"] = idx
 
                 out["/sync-t/global/sig_xx"] = sig_xx
                 out["/sync-t/global/sig_xy"] = sig_xy
                 out["/sync-t/global/sig_yy"] = sig_yy
 
                 g5.copydatasets(data, out, list(g5.getdatasets(data, "/meta")))
-                if "/meta/versions/CrackEvolution_raw_stress" not in data:
-                    out["/meta/versions/CrackEvolution_raw_stress"] = data["/git/run"][...]
-                out["/meta/versions/collect_weak-layer.py"] = get_version(root='..', relative_to=__file__)
 
+                ver = "/meta/versions/CrackEvolution_raw_stress"
+                if ver not in data:
+                    out[ver] = data["/git/run"][...]
+
+                out["/meta/versions/collect_weak-layer.py"] = myversion

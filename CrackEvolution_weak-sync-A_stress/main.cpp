@@ -11,16 +11,13 @@
 #include <xtensor/xstrides.hpp>
 #include <xtensor/xview.hpp>
 
-
 #ifndef GIT_COMMIT_HASH
 #define GIT_COMMIT_HASH "?"
 #endif
 
-
 namespace GF = GooseFEM;
 namespace QD = GooseFEM::Element::Quad4;
 namespace GM = GMatElastoPlasticQPot::Cartesian2d;
-
 
 #define MYASSERT(expr) MYASSERT_IMPL(expr, __FILE__, __LINE__)
 #define MYASSERT_IMPL(expr, file, line) \
@@ -30,11 +27,9 @@ namespace GM = GMatElastoPlasticQPot::Cartesian2d;
             ": assertion failed (" #expr ") \n\t"); \
     }
 
-
 class Main {
 
 private:
-
     // input/output file
     H5Easy::File m_file;
 
@@ -74,8 +69,8 @@ private:
     double m_dt;
 
     // event-driven settings
-    size_t m_inc = 0;                 // current increment
-    double m_deps_kick;               // equivalent strain increment
+    size_t m_inc = 0; // current increment
+    double m_deps_kick; // equivalent strain increment
     xt::xtensor<size_t, 1> m_plastic; // plastic elements
 
     // nodal displacements, velocities, and accelerations (current and last time-step)
@@ -101,7 +96,6 @@ private:
     xt::xtensor<double, 4> m_Sig;
 
 public:
-
     Main(const std::string& fname) : m_file(fname, H5Easy::File::ReadOnly)
     {
         readMesh();
@@ -113,7 +107,6 @@ public:
     }
 
 public:
-
     void readParameters()
     {
         m_dt = H5Easy::load<double>(m_file, "/run/dt");
@@ -122,7 +115,6 @@ public:
     }
 
 public:
-
     void readMesh()
     {
         m_conn = H5Easy::load<decltype(m_conn)>(m_file, "/conn");
@@ -160,7 +152,6 @@ public:
     }
 
 public:
-
     void setMass()
     {
         m_M = GF::MatrixDiagonalPartitioned(m_conn, m_dofs, m_iip);
@@ -183,7 +174,6 @@ public:
     }
 
 public:
-
     void setDamping()
     {
         m_D = GF::MatrixDiagonal(m_conn, m_dofs);
@@ -206,7 +196,6 @@ public:
     }
 
 public:
-
     void setMaterial()
     {
         m_material = GM::Array<2>({m_nelem, m_nip});
@@ -251,15 +240,16 @@ public:
         MYASSERT(xt::mean(k)() == k(0, 0));
         MYASSERT(xt::mean(g)() == g(0, 0));
 
-        if (xt::any(xt::equal(m_material.type(), GMatElastoPlasticQPot::Cartesian2d::Type::Unset))) {
+        if (xt::any(
+                xt::equal(m_material.type(), GMatElastoPlasticQPot::Cartesian2d::Type::Unset))) {
             throw std::runtime_error("Please set all points");
         }
 
-        m_plastic = xt::sort(xt::flatten_indices(xt::argwhere(xt::amin(m_material.isPlastic(), {1}))));
+        m_plastic =
+            xt::sort(xt::flatten_indices(xt::argwhere(xt::amin(m_material.isPlastic(), {1}))));
     }
 
 public:
-
     void timeStep()
     {
         // history
@@ -330,7 +320,6 @@ public:
     }
 
 public:
-
     void computeStrainStress()
     {
         m_vector.asElement(m_u, m_ue);
@@ -340,7 +329,6 @@ public:
     }
 
 public:
-
     std::tuple<xt::xtensor<size_t, 1>, xt::xtensor<size_t, 1>> getIncPush(double stress)
     {
         // integration point volume
@@ -485,7 +473,6 @@ public:
     }
 
 public:
-
     void moveForwardToFixedStress(double stress)
     {
         // store current minima (for sanity check)
@@ -540,15 +527,15 @@ public:
         // check that no yielding took place (sanity check)
         if (xt::any(xt::not_equal(idx, idx_n))) {
             throw std::runtime_error(fmt::format(
-                "fname = '{0:s}', stress = {1:16.8e}, inc = {2:d}: Yielding took place where it shouldn't.\n",
+                "fname = '{0:s}', stress = {1:16.8e}, inc = {2:d}: Yielding took place where it "
+                "shouldn't.\n",
                 m_file.getName(),
                 stress,
                 m_inc));
-    }
+        }
     }
 
 public:
-
     void triggerElement(size_t element)
     {
         // convert plastic-element to element number
@@ -600,7 +587,6 @@ public:
     }
 
 public:
-
     void run(double stress, size_t element, size_t inc_c, const std::string& output, size_t A_step)
     {
         // extract a list with increments at which to start elastic loading
@@ -678,11 +664,15 @@ public:
                     }
 
                     xt::xtensor<double, 3> Sig_elem = xt::average(m_Sig, dV, {1});
-                    xt::xtensor<double, 1> Sig_plas_xx = xt::view(Sig_elem, xt::keep(m_plastic), 0, 0);
-                    xt::xtensor<double, 1> Sig_plas_xy = xt::view(Sig_elem, xt::keep(m_plastic), 0, 1);
-                    xt::xtensor<double, 1> Sig_plas_yy = xt::view(Sig_elem, xt::keep(m_plastic), 1, 1);
+                    xt::xtensor<double, 1> Sig_plas_xx =
+                        xt::view(Sig_elem, xt::keep(m_plastic), 0, 0);
+                    xt::xtensor<double, 1> Sig_plas_xy =
+                        xt::view(Sig_elem, xt::keep(m_plastic), 0, 1);
+                    xt::xtensor<double, 1> Sig_plas_yy =
+                        xt::view(Sig_elem, xt::keep(m_plastic), 1, 1);
 
-                    xt::xtensor_fixed<double, xt::xshape<2, 2>> Sig_bar = xt::average(m_Sig, dV, {0, 1});
+                    xt::xtensor_fixed<double, xt::xshape<2, 2>> Sig_bar =
+                        xt::average(m_Sig, dV, {0, 1});
 
                     H5Easy::dump(data, "/sync-A/stored", A, {A_istore});
                     H5Easy::dump(data, "/sync-A/global/iiter", iiter, {A});
@@ -722,9 +712,7 @@ public:
         H5Easy::dump(data, "/meta/dt", m_dt);
         H5Easy::dump(data, "/meta/plastic", m_plastic);
     }
-
 };
-
 
 static const char USAGE[] =
     R"(Run
@@ -747,7 +735,6 @@ Options:
 
 (c) Tom de Geus
 )";
-
 
 int main(int argc, const char** argv)
 {

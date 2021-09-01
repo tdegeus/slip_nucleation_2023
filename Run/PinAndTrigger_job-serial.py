@@ -7,20 +7,22 @@ Afterwards, ``PinAndTrigger_job-serial-compact.py`` can be used to run for ``A <
 That function skips all events that are know to be too small, and therefore less time is waisted
 on computing small events.
 """
-
 import argparse
+import itertools
+import os
+
 import GooseHDF5 as g5
 import GooseSLURM
 import h5py
-import itertools
 import numpy as np
-import os
 
 parser = argparse.ArgumentParser()
 parser.add_argument("info", type=str, help="EnsembleInfo (read-only)")
 parser.add_argument("-n", "--group", type=int, default=100)
 parser.add_argument("-e", "--executable", type=str, default="python PinAndTrigger.py")
-parser.add_argument("-c", "--collection", type=str, help="Result of PinAndTrigger_collect.py")
+parser.add_argument(
+    "-c", "--collection", type=str, help="Result of PinAndTrigger_collect.py"
+)
 args = parser.parse_args()
 assert os.path.isfile(os.path.realpath(args.info))
 
@@ -64,7 +66,9 @@ with h5py.File(args.info, "r") as data:
 
     commands = []
 
-    for file, (stress, stress_name) in itertools.product(files, zip(stresses, stress_names)):
+    for file, (stress, stress_name) in itertools.product(
+        files, zip(stresses, stress_names)
+    ):
 
         simid = file.replace(".hdf5", "")
 
@@ -82,11 +86,15 @@ with h5py.File(args.info, "r") as data:
 
         for element, A, incc in itertools.product([0, int(N / 2)], [1200], trigger):
 
-            root = f"/data/{stress_name}/A={A:d}/{simid}/incc={incc:d}/element={element:d}"
+            root = (
+                f"/data/{stress_name}/A={A:d}/{simid}/incc={incc:d}/element={element:d}"
+            )
             if root in paths:
                 continue
 
-            output = f"{stress_name}_A={A:d}_{simid}_incc={incc:d}_element={element:d}.hdf5"
+            output = (
+                f"{stress_name}_A={A:d}_{simid}_incc={incc:d}_element={element:d}.hdf5"
+            )
             cmd = f"{executable} -f {file} -o {output} -s {stress:.8e} -i {incc:d} -e {element:d} -a {A:d}"
             commands += [cmd]
 
@@ -123,11 +131,15 @@ fmt = str(int(np.ceil(np.log10(ngroup))))
 
 for group in range(ngroup):
 
-    c = commands[group * args.group : (group + 1) * args.group]
+    ii = group * args.group
+    jj = (group + 1) * args.group
+    c = commands[ii:jj]
     command = "\n".join(c)
     command = slurm.format(command)
 
-    jobname = ("{0:s}-{1:0" + fmt + "d}").format(args.executable.replace(" ", "_"), group)
+    jobname = ("{0:s}-{1:0" + fmt + "d}").format(
+        args.executable.replace(" ", "_"), group
+    )
 
     sbatch = {
         "job-name": "velocity_" + jobname,
@@ -140,4 +152,6 @@ for group in range(ngroup):
         "partition": "serial",
     }
 
-    open(jobname + ".slurm", "w").write(GooseSLURM.scripts.plain(command=command, **sbatch))
+    open(jobname + ".slurm", "w").write(
+        GooseSLURM.scripts.plain(command=command, **sbatch)
+    )

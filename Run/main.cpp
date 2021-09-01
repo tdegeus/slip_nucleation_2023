@@ -1,10 +1,10 @@
 #include <FrictionQPotFEM/UniformSingleLayer2d.h>
 #include <GMatElastoPlasticQPot/Cartesian2d.h>
 #include <GooseFEM/GooseFEM.h>
-#include <highfive/H5Easy.hpp>
-#include <fmt/core.h>
 #include <cpppath.h>
 #include <docopt/docopt.h>
+#include <fmt/core.h>
+#include <highfive/H5Easy.hpp>
 
 #define MYASSERT(expr) MYASSERT_IMPL(expr, __FILE__, __LINE__)
 #define MYASSERT_IMPL(expr, file, line) \
@@ -28,7 +28,6 @@ void DumpWithDescription(
     H5Easy::dumpAttribute(file, path, "desc", description);
 }
 
-
 static const char USAGE[] =
     R"(Run
 
@@ -45,12 +44,9 @@ Options:
 (c) Tom de Geus
 )";
 
-
-
 class Main : public FQF::System {
 
 private:
-
     H5Easy::File m_file;
     GooseFEM::Iterate::StopList m_stop = GooseFEM::Iterate::StopList(20);
     size_t m_inc = 0;
@@ -59,7 +55,6 @@ private:
     double m_deps_kick;
 
 public:
-
     Main(const std::string& fname) : m_file(fname, H5Easy::File::ReadWrite)
     {
         this->init(
@@ -88,11 +83,12 @@ public:
     }
 
 public:
-
     void run()
     {
         if (m_file.exist("/meta/Run/version")) {
-            DumpWithDescription(m_file, "/meta/Run/version",
+            DumpWithDescription(
+                m_file,
+                "/meta/Run/version",
                 std::string(MYVERSION),
                 "Code version at compile-time.");
         }
@@ -117,16 +113,22 @@ public:
             H5Easy::dump(m_file, "/t", 0.0, {0});
             H5Easy::dump(m_file, fmt::format("/disp/{0:d}", m_inc), m_u);
 
-            H5Easy::dumpAttribute(m_file, "/stored", "desc",
-                std::string("List of increments in '/disp/{0:d}'"));
+            H5Easy::dumpAttribute(
+                m_file, "/stored", "desc", std::string("List of increments in '/disp/{0:d}'"));
 
-            H5Easy::dumpAttribute(m_file, "/kick", "desc",
-                std::string("Per increment: triggered by kick or not"));
+            H5Easy::dumpAttribute(
+                m_file, "/kick", "desc", std::string("Per increment: triggered by kick or not"));
 
-            H5Easy::dumpAttribute(m_file, "/t", "desc",
+            H5Easy::dumpAttribute(
+                m_file,
+                "/t",
+                "desc",
                 std::string("Per increment: time at the end of the increment"));
 
-            H5Easy::dumpAttribute(m_file, fmt::format("/disp/{0:d}", m_inc), "desc",
+            H5Easy::dumpAttribute(
+                m_file,
+                fmt::format("/disp/{0:d}", m_inc),
+                "desc",
                 std::string("Displacement at the end of the increment."));
         }
 
@@ -135,7 +137,8 @@ public:
             this->addSimpleShearEventDriven(m_deps_kick, m_kick);
 
             if (!m_material.checkYieldBoundRight()) {
-                DumpWithDescription(m_file, "/meta/Run/completed", 1, "Signal that this program finished.");
+                DumpWithDescription(
+                    m_file, "/meta/Run/completed", 1, "Signal that this program finished.");
                 fmt::print("'{0:s}': Completed\n", m_file.getName());
                 return;
             }
@@ -150,7 +153,8 @@ public:
                     }
 
                     if (!m_material.checkYieldBoundRight()) {
-                        DumpWithDescription(m_file, "/meta/Run/completed", 1, "Signal that this program finished.");
+                        DumpWithDescription(
+                            m_file, "/meta/Run/completed", 1, "Signal that this program finished.");
                         fmt::print("'{0:s}': Completed\n", m_file.getName());
                         return;
                     }
@@ -178,7 +182,6 @@ public:
         }
     }
 };
-
 
 int main(int argc, const char** argv)
 {

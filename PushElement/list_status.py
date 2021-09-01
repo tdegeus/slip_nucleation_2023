@@ -1,4 +1,4 @@
-'''list_status
+"""list_status
     List the status of simulations.
 
 Usage:
@@ -11,84 +11,94 @@ Options:
     -o, --output=N      Output file [default: list_status.yaml]
     -h, --help          Show help.
         --version       Show version.
-'''
-
-import h5py
-import subprocess
+"""
 import os
-import numpy as np
+import subprocess
+
 import docopt
+import h5py
+import numpy as np
 import yaml
 
 
 def eventIsCompleted(filename):
-    with h5py.File(filename, 'r') as data:
-        if 'meta' not in data:
+    with h5py.File(filename, "r") as data:
+        if "meta" not in data:
             return False
-        if 'completed' not in data['meta']:
+        if "completed" not in data["meta"]:
             return False
-        if 'corrupt' in data['meta']:
-            return not int(data['/meta/corrupt'][...])
-        return int(data['/meta/completed'][...])
+        if "corrupt" in data["meta"]:
+            return not int(data["/meta/corrupt"][...])
+        return int(data["/meta/completed"][...])
 
 
 def isCompleted(filename):
-    with h5py.File(filename, 'r') as data:
-        if 'completed' not in data:
+    with h5py.File(filename, "r") as data:
+        if "completed" not in data:
             return False
-        return int(data['completed'][...])
+        return int(data["completed"][...])
 
 
 def hasRun(filename):
-    with h5py.File(filename, 'r') as data:
-        if 'stored' in data:
-            if data['stored'].size > 0:
+    with h5py.File(filename, "r") as data:
+        if "stored" in data:
+            if data["stored"].size > 0:
                 return True
     return False
 
 
 def getStored(filename):
-    with h5py.File(filename, 'r') as data:
-        if 'stored' not in data:
+    with h5py.File(filename, "r") as data:
+        if "stored" not in data:
             return []
-        return data['stored'][1:]
+        return data["stored"][1:]
 
 
 def getOnDisk(eventfiles):
-    stored = [int(file.split('_push=')[1].split('.hdf5')[0]) for file in eventfiles]
+    stored = [int(file.split("_push=")[1].split(".hdf5")[0]) for file in eventfiles]
     return np.sort(np.array(stored))
 
 
 def toPushName(basename, push):
-    return basename.replace('.hdf5', '') + '_push={0:d}.hdf5'.format(push)
+    return basename.replace(".hdf5", "") + f"_push={push:d}.hdf5"
 
 
-args = docopt.docopt(__doc__, version='universal')
+args = docopt.docopt(__doc__, version="universal")
 
 output = {
-    'dirname' : os.path.abspath(args['<dirname>']),
-    'completed_base' : [],
-    'completed_event' : [],
-    'partial_base' : [],
-    'partial_event' : [],
-    'cut' : [],
-    'error' : [],
-    'new' : [],
+    "dirname": os.path.abspath(args["<dirname>"]),
+    "completed_base": [],
+    "completed_event": [],
+    "partial_base": [],
+    "partial_event": [],
+    "cut": [],
+    "error": [],
+    "new": [],
 }
 
-files = sorted(list(filter(None, subprocess.check_output(
-    "find {0:s} -iname 'id*.hdf5'".format(args['<dirname>']), shell=True).decode('utf-8').split('\n'))))
+files = sorted(
+    list(
+        filter(
+            None,
+            subprocess.check_output(
+                "find {:s} -iname 'id*.hdf5'".format(args["<dirname>"]), shell=True
+            )
+            .decode("utf-8")
+            .split("\n"),
+        )
+    )
+)
 
 files = [os.path.relpath(file) for file in files]
 
-basefiles = {file: [] for file in files if len(file.split('push')) == 1}
-eventfiles = [file for file in files if len(file.split('push')) > 1]
-output['cut'] = [file for file in eventfiles if not eventIsCompleted(file)]
-eventfiles = [file for file in eventfiles if file not in output['cut']]
+basefiles = {file: [] for file in files if len(file.split("push")) == 1}
+eventfiles = [file for file in files if len(file.split("push")) > 1]
+output["cut"] = [file for file in eventfiles if not eventIsCompleted(file)]
+eventfiles = [file for file in eventfiles if file not in output["cut"]]
 
 for file in eventfiles:
-    basename = file.split('_push')[0]
-    basefiles[basename + '.hdf5'] += [file]
+    basename = file.split("_push")[0]
+    basefiles[basename + ".hdf5"] += [file]
 
 for file in basefiles:
 
@@ -100,18 +110,17 @@ for file in basefiles:
         completed = isCompleted(file) == 200
 
         if completed and np.array_equal(ondisk, stored):
-            output['completed_base'] += [file]
-            output['completed_event'] += basefiles[file]
+            output["completed_base"] += [file]
+            output["completed_event"] += basefiles[file]
         elif not completed and np.all(np.isin(stored, ondisk)):
-            output['partial_base'] += [file]
-            output['partial_event'] += basefiles[file]
+            output["partial_base"] += [file]
+            output["partial_event"] += basefiles[file]
         else:
-            output['error'] += [file] + basefiles[file]
+            output["error"] += [file] + basefiles[file]
 
     else:
 
-        output['new'] += [file] + basefiles[file]
+        output["new"] += [file] + basefiles[file]
 
-with open(args['--output'], 'w') as file:
+with open(args["--output"], "w") as file:
     documents = yaml.dump(output, file)
-

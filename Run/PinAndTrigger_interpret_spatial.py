@@ -1,18 +1,18 @@
 import argparse
+import itertools
+import os
+import sys
+
 import enstat.mean
-import GMatElastoPlasticQPot.Cartesian2d as GMat
 import GooseFEM
 import GooseHDF5 as g5
 import h5py
-import itertools
 import numpy as np
-import os
-import sys
 import tqdm
 from numpy.typing import ArrayLike
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
-import PinAndTrigger
+import PinAndTrigger  # noqa: E402
 
 
 def center_of_mass(x: ArrayLike, L: float) -> float:
@@ -78,10 +78,18 @@ def fill_avalanche(broken: ArrayLike):
     di = np.diff(i)
     mi = np.max(di)
     j = np.argwhere(di == mi).ravel()
-    ret[i[j[0]]: i[j[0] + 1]] = zero
-    ret[i[j[1]] + 1: i[j[1] + 1]] = zero
 
-    return ret[N: 2 * N]
+    ii = i[j[0]]
+    jj = i[j[0] + 1]
+    ret[ii:jj] = zero
+
+    ii = i[j[1]] + 1
+    jj = i[j[1] + 1]
+    ret[ii:jj] = zero
+
+    ii = N
+    jj = 2 * N
+    return ret[ii:jj]
 
 
 def average(data: h5py.File, paths: list[str], sig0: float) -> dict:
@@ -118,8 +126,7 @@ def average(data: h5py.File, paths: list[str], sig0: float) -> dict:
                 system = PinAndTrigger.initsystem(mysim)
                 dV = system.quad().AsTensor(2, system.quad().dV())
                 plastic = system.plastic()
-                N = plastic.size
-                mid = int((N - N % 2) / 2)
+                plastic.size
             else:
                 PinAndTrigger.reset_epsy(system, mysim)
 
@@ -128,17 +135,15 @@ def average(data: h5py.File, paths: list[str], sig0: float) -> dict:
         system.setU(data[path]["disp"]["0"][...])
         pinned = PinAndTrigger.pinsystem(system, e, a)
 
-        idx_n = system.plastic_CurrentIndex()[:, 0].astype(int)
         system.setU(data[path]["disp"]["1"][...])
-        idx = system.plastic_CurrentIndex()[:, 0].astype(int)
 
         # store stress
 
         Sig = system.Sig() / sig0
-        S = np.average(Sig, weights=dV, axis=(1,))
-        sig_xx.add_sample(S[:, 0, 0])
-        sig_xy.add_sample(S[:, 0, 1])
-        sig_yy.add_sample(S[:, 1, 1])
+        Sig = np.average(Sig, weights=dV, axis=(1,))
+        sig_xx.add_sample(Sig[:, 0, 0])
+        sig_xy.add_sample(Sig[:, 0, 1])
+        sig_yy.add_sample(Sig[:, 1, 1])
 
     pinned = PinAndTrigger.pinning(system, e, a)
     mesh = GooseFEM.Mesh.Quad4.FineLayer(system.coor(), system.conn())
@@ -149,11 +154,19 @@ def average(data: h5py.File, paths: list[str], sig0: float) -> dict:
 
     is_plastic = np.zeros((system.conn().shape[0]), dtype=bool)
     is_plastic[plastic] = True
-    is_plastic = mapping.mapToRegular(is_plastic)[elmat[:, renum].ravel()].reshape(elmat.shape)
+    is_plastic = mapping.mapToRegular(is_plastic)[elmat[:, renum].ravel()].reshape(
+        elmat.shape
+    )
 
-    sig_xx = mapping.mapToRegular(sig_xx.mean())[elmat[:, renum].ravel()].reshape(elmat.shape)
-    sig_xy = mapping.mapToRegular(sig_xy.mean())[elmat[:, renum].ravel()].reshape(elmat.shape)
-    sig_yy = mapping.mapToRegular(sig_yy.mean())[elmat[:, renum].ravel()].reshape(elmat.shape)
+    sig_xx = mapping.mapToRegular(sig_xx.mean())[elmat[:, renum].ravel()].reshape(
+        elmat.shape
+    )
+    sig_xy = mapping.mapToRegular(sig_xy.mean())[elmat[:, renum].ravel()].reshape(
+        elmat.shape
+    )
+    sig_yy = mapping.mapToRegular(sig_yy.mean())[elmat[:, renum].ravel()].reshape(
+        elmat.shape
+    )
 
     return dict(
         sig_xx=sig_xx,
@@ -163,15 +176,18 @@ def average(data: h5py.File, paths: list[str], sig0: float) -> dict:
     )
 
 
-
 if __name__ == "__main__":
 
     basename = os.path.splitext(os.path.basename(__file__))[0]
 
     parser = argparse.ArgumentParser()
     parser.add_argument("file", type=str, help="Input file ('r')")
-    parser.add_argument("-o", "--output", type=str, default=f"{basename}.h5", help="Output file ('w')")
-    parser.add_argument("-i", "--info", type=str, default="EnsembleInfo.h5", help="Read normalisation")
+    parser.add_argument(
+        "-o", "--output", type=str, default=f"{basename}.h5", help="Output file ('w')"
+    )
+    parser.add_argument(
+        "-i", "--info", type=str, default="EnsembleInfo.h5", help="Read normalisation"
+    )
     args = parser.parse_args()
     assert os.path.isfile(os.path.realpath(args.file))
     assert os.path.isfile(os.path.realpath(args.info))
@@ -188,14 +204,22 @@ if __name__ == "__main__":
         Stress = list(g5.getpaths(data, root="data", max_depth=1))
         paths = list(g5.getpaths(data, root="data", max_depth=5))
 
-        Element = np.unique(["element=" + path.split("element=")[1].split("/...")[0] for path in paths])
+        Element = np.unique(
+            ["element=" + path.split("element=")[1].split("/...")[0] for path in paths]
+        )
         Stress = np.array([path.split("data/")[1].split("/...")[0] for path in Stress])
         paths = np.array([path.split("data/")[1].split("/...")[0] for path in paths])
 
-        stress = np.array(["stress=" + path.split("stress=")[1].split("/")[0] for path in paths])
-        element = np.array(["element=" + path.split("element=")[1].split("/")[0] for path in paths])
+        stress = np.array(
+            ["stress=" + path.split("stress=")[1].split("/")[0] for path in paths]
+        )
+        element = np.array(
+            ["element=" + path.split("element=")[1].split("/")[0] for path in paths]
+        )
         a_target = np.array([int(path.split("A=")[1].split("/")[0]) for path in paths])
-        a_real = np.array([int(data[g5.join("/data", path, "A")][...]) for path in paths])
+        a_real = np.array(
+            [int(data[g5.join("/data", path, "A")][...]) for path in paths]
+        )
 
         A_target = np.unique(a_target)
 
@@ -207,7 +231,12 @@ if __name__ == "__main__":
 
             for e in Element:
 
-                subset = paths[(a_real > a - 10) * (a_real < a + 10) * (element == e) * (stress == s)]
+                subset = paths[
+                    (a_real > a - 10)
+                    * (a_real < a + 10)
+                    * (element == e)
+                    * (stress == s)
+                ]
                 ret = average(data, [g5.join("/data", path) for path in subset], sig0)
                 sig_xx.add_sample(ret["sig_xx"])
                 sig_xy.add_sample(ret["sig_xy"])

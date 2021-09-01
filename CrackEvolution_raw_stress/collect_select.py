@@ -1,4 +1,4 @@
-r'''
+r"""
     Select part of the data for future processing.
     Common practice::
 
@@ -16,25 +16,23 @@ Options:
     -k, --key=N     Path in the YAML-file, separated by "/". [default: /]
     -f, --force     Overwrite existing output-file.
     -h, --help      Print help.
-'''
-
-import os
-import sys
+"""
 import docopt
-import click
+import GooseHDF5 as g5
 import h5py
 import numpy as np
-import GooseHDF5 as g5
 import shelephant
 import tqdm
 from setuptools_scm import get_version
 
+myversion = get_version(root="..", relative_to=__file__)
+
 args = docopt.docopt(__doc__)
 
-source = args['<files.yaml>']
-key = list(filter(None, args['--key'].split('/')))
+source = args["<files.yaml>"]
+key = list(filter(None, args["--key"].split("/")))
 sources = shelephant.YamlGetItem(source, key)
-root = args['<output-root>']
+root = args["<output-root>"]
 destinations = shelephant.PrefixPaths(root, sources)
 
 shelephant.CheckAllIsFile(sources)
@@ -43,9 +41,9 @@ shelephant.MakeDirs(shelephant.DirNames(destinations))
 
 for source, destination in zip(tqdm.tqdm(sources), destinations):
 
-    with h5py.File(destination, 'w') as out:
+    with h5py.File(destination, "w") as out:
 
-        with h5py.File(source, 'r') as data:
+        with h5py.File(source, "r") as data:
 
             plastic = data["/meta/plastic"][...]
             N = len(plastic)
@@ -57,8 +55,8 @@ for source, destination in zip(tqdm.tqdm(sources), destinations):
             out["/sync-A/global/iiter"] = data["/sync-A/global/iiter"][...]
 
             for a in A:
-                out["/sync-A/{0:d}/u".format(a)] = data["/sync-A/{0:d}/u".format(a)][...]
-                out["/sync-A/{0:d}/v".format(a)] = data["/sync-A/{0:d}/v".format(a)][...]
+                out[f"/sync-A/{a:d}/u"] = data[f"/sync-A/{a:d}/u"][...]
+                out[f"/sync-A/{a:d}/v"] = data[f"/sync-A/{a:d}/v"][...]
 
             T = np.sort(data["/sync-t/stored"][...])[::100]
 
@@ -66,9 +64,9 @@ for source, destination in zip(tqdm.tqdm(sources), destinations):
             out["/sync-t/global/iiter"] = data["/sync-t/global/iiter"][...][T]
 
             for t in T:
-                out["/sync-t/{0:d}/u".format(t)] = data["/sync-t/{0:d}/u".format(t)][...]
-                out["/sync-t/{0:d}/v".format(t)] = data["/sync-t/{0:d}/v".format(t)][...]
+                out[f"/sync-t/{t:d}/u"] = data[f"/sync-t/{t:d}/u"][...]
+                out[f"/sync-t/{t:d}/v"] = data[f"/sync-t/{t:d}/v"][...]
 
             g5.copydatasets(data, out, list(g5.getdatasets(data, "/meta")))
             out["/meta/versions/CrackEvolution_raw_stress"] = data["/git/run"][...]
-            out["/meta/versions/collect_select.py"] = get_version(root='..', relative_to=__file__)
+            out["/meta/versions/collect_select.py"] = myversion

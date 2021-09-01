@@ -1,12 +1,13 @@
 import argparse
+import os
+
 import FrictionQPotFEM.UniformSingleLayer2d as model
 import git
 import GMatElastoPlasticQPot.Cartesian2d as GMat
-import GooseFEM
+import GooseFEM  # noqa: F401
 import h5py
 import numpy as np
-import os
-import QPot
+import QPot  # noqa: F401
 import setuptools_scm
 
 
@@ -30,7 +31,9 @@ def initsystem(data):
     system.setMassMatrix(data["/rho"][...])
     system.setDampingMatrix(data["/damping/alpha"][...])
     system.setElastic(data["/elastic/K"][...], data["/elastic/G"][...])
-    system.setPlastic(data["/cusp/K"][...], data["/cusp/G"][...], data["/cusp/epsy"][...])
+    system.setPlastic(
+        data["/cusp/K"][...], data["/cusp/G"][...], data["/cusp/epsy"][...]
+    )
     system.setDt(data["/run/dt"][...])
 
     return system
@@ -46,7 +49,7 @@ def reset_epsy(system, data):
 
     e = data["/cusp/epsy"][...]
     epsy = np.empty((e.shape[0], e.shape[1] + 1), dtype=e.dtype)
-    epsy[:, 0] = - e[:, 0]
+    epsy[:, 0] = -e[:, 0]
     epsy[:, 1:] = e
 
     plastic = system.plastic()
@@ -84,8 +87,8 @@ def pushincrements(system, data, target_stress):
     incs = data["/stored"][...].astype(int)
     assert np.all(incs == np.arange(incs.size))
     assert kick.shape == incs.shape
-    assert np.all(kick[::2] == False)
-    assert np.all(kick[1::2] == True)
+    assert np.all(not kick[::2])
+    assert np.all(kick[1::2])
 
     A = np.zeros(incs.shape, dtype=int)
     Strain = np.zeros(incs.shape, dtype=float)
@@ -126,9 +129,10 @@ def pushincrements(system, data, target_stress):
     for i in range(inc_system.size - 1):
 
         # state after elastc loading
-        s = Stress[inc_system[i] + 1 : inc_system[i + 1] : 2]
-        a = A[inc_system[i] + 1 : inc_system[i + 1] : 2]
-        n = incs[inc_system[i] + 1 : inc_system[i + 1] : 2]
+        ii = inc_system[i] + 1
+        jj = inc_system[i + 1]
+        s = Stress[ii:jj:2]
+        n = incs[ii:jj:2]
 
         if not np.any(s > target_stress):
             continue
@@ -137,7 +141,7 @@ def pushincrements(system, data, target_stress):
         ipush = n[j] - 1
 
         assert Stress[ipush] <= target_stress
-        assert kick[ipush + 1] == False
+        assert not kick[ipush + 1]
 
         inc_push += [ipush]
         inc_system_ret += [n[0] - 1]
@@ -148,46 +152,65 @@ def pushincrements(system, data, target_stress):
     return inc_system_ret, inc_push
 
 
-def pinning(system, target_element, target_A):
+def pinning(system: model.System, target_element: int, target_A: int):
     r"""
     Return pinning used in ``pinsystem``.
 
-    :param FrictionQPotFEM.UniformSingleLayer2d.System system: The system (modified: yield strains changed).
-    :param int target_element: The element to trigger.
-    :param int target_A: Number of blocks to keep unpinned (``target_A / 2`` on both sides of ``target_element``).
+    :param system:
+        The system (modified: yield strains changed).
+
+    :param target_element:
+        The element to trigger.
+
+    :param target_A:
+        Number of blocks to keep unpinned (``target_A / 2`` on both sides of ``target_element``).
     :return: Per element: pinned (``True``) or not (``False``)
     """
 
     plastic = system.plastic()
     N = plastic.size
-    nip = system.quad().nip()
 
     assert target_A <= N
     assert target_element <= N
 
     i = int(N - target_A / 2)
     pinned = np.ones((3 * N), dtype=bool)
-    pinned[i : i + target_A] = False
-    pinned[N + i : N + i + target_A] = False
-    pinned = pinned[N : 2 * N]
+
+    ii = i
+    jj = i + target_A
+    pinned[ii:jj] = False
+
+    ii = N + i
+    jj = N + i + target_A
+    pinned[ii:jj] = False
+
+    ii = N
+    jj = 2 * N
+    pinned = pinned[ii:jj]
+
     pinned = np.roll(pinned, target_element)
 
     return pinned
 
 
-def pinsystem(system, target_element, target_A):
+def pinsystem(system: model.System, target_element: int, target_A: int):
     r"""
     Pin down part of the system by converting blocks to being elastic:
     having a single parabolic potential with the minimum equal to the current minimum.
 
-    :param FrictionQPotFEM.UniformSingleLayer2d.System system: The system (modified: yield strains changed).
-    :param int target_element: The element to trigger.
-    :param int target_A: Number of blocks to keep unpinned (``target_A / 2`` on both sides of ``target_element``).
+    :param system:
+        The system (modified: yield strains changed).
+
+    :param target_element:
+        The element to trigger.
+
+    :param target_A:
+        Number of blocks to keep unpinned (``target_A / 2`` on both sides of ``target_element``).
+
     :return: Per element: pinned (``True``) or not (``False``)
     """
 
     plastic = system.plastic()
-    N = plastic.size
     nip = system.quad().nip()
     pinned = pinning(system, target_element, target_A)
     idx = system.plastic_CurrentIndex()
@@ -204,7 +227,9 @@ def pinsystem(system, target_element, target_A):
                     chunk = cusp.refQPotChunked()
                     y = chunk.y()
                     ymax = y[-1]  # get some scale
-                    y = y[int(idx[i, q]) : int(idx[i, q] + 2)]  # slicing is up to not including
+                    ii = int(idx[i, q])
+                    jj = int(idx[i, q] + 2)  # slicing is up to not including
+                    y = y[ii:jj]
                     ymin = 0.5 * sum(y)  # current minimum
                     chunk.set_y([ymin - 2 * ymax, ymin + 2 * ymax])
 
@@ -214,19 +239,29 @@ def pinsystem(system, target_element, target_A):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("-f", "--file", type=str, help="Filename of simulation file (read-only)")
-    parser.add_argument("-o", "--output", type=str, help="Filename of output file (overwritten)")
+    parser.add_argument(
+        "-f", "--file", type=str, help="Filename of simulation file (read-only)"
+    )
+    parser.add_argument(
+        "-o", "--output", type=str, help="Filename of output file (overwritten)"
+    )
     parser.add_argument("-s", "--stress", type=float, help="Stress as which to trigger")
-    parser.add_argument("-i", "--incc", type=int, help="Increment number of last system-spanning event")
+    parser.add_argument(
+        "-i", "--incc", type=int, help="Increment number of last system-spanning event"
+    )
     parser.add_argument("-e", "--element", type=int, help="Element to push")
-    parser.add_argument("-a", "--size", type=int, help="Number of elements to keep unpinned")
+    parser.add_argument(
+        "-a", "--size", type=int, help="Number of elements to keep unpinned"
+    )
     args = parser.parse_args()
     assert os.path.isfile(os.path.realpath(args.file))
     assert os.path.realpath(args.file) != os.path.realpath(args.output)
 
     print("starting:", args.output)
 
-    root = git.Repo(os.path.dirname(__file__), search_parent_directories=True).working_tree_dir
+    root = git.Repo(
+        os.path.dirname(__file__), search_parent_directories=True
+    ).working_tree_dir
     myversion = setuptools_scm.get_version(root=root)
 
     target_stress = args.stress
@@ -247,7 +282,9 @@ if __name__ == "__main__":
         # (*) Reload specific increment based on target stress and system-spanning increment
 
         assert target_inc_system in inc_system
-        i = np.argmax((target_inc_system == inc_system) * (target_inc_system <= inc_push))
+        i = np.argmax(
+            (target_inc_system == inc_system) * (target_inc_system <= inc_push)
+        )
         inc = inc_push[i]
         assert target_inc_system == inc_system[i]
 
@@ -278,7 +315,9 @@ if __name__ == "__main__":
 
         output["/meta/PinAndTrigger/file"] = args.file
         output["/meta/PinAndTrigger/version"] = myversion
-        output["/meta/PinAndTrigger/version_dependencies"] = model.version_dependencies()
+        output[
+            "/meta/PinAndTrigger/version_dependencies"
+        ] = model.version_dependencies()
         output["/meta/PinAndTrigger/target_stress"] = target_stress
         output["/meta/PinAndTrigger/target_inc_system"] = target_inc_system
         output["/meta/PinAndTrigger/target_A"] = target_A
