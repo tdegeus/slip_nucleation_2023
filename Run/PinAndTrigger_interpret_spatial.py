@@ -145,6 +145,8 @@ def average(data: h5py.File, paths: list[str], sig0: float) -> dict:
         sig_xy.add_sample(Sig[:, 0, 1])
         sig_yy.add_sample(Sig[:, 1, 1])
 
+    assert system is not None
+
     pinned = PinAndTrigger.pinning(system, e, a)
     mesh = GooseFEM.Mesh.Quad4.FineLayer(system.coor(), system.conn())
     mapping = GooseFEM.Mesh.Quad4.Map.FineLayer2Regular(mesh)
@@ -158,20 +160,13 @@ def average(data: h5py.File, paths: list[str], sig0: float) -> dict:
         elmat.shape
     )
 
-    sig_xx = mapping.mapToRegular(sig_xx.mean())[elmat[:, renum].ravel()].reshape(
-        elmat.shape
-    )
-    sig_xy = mapping.mapToRegular(sig_xy.mean())[elmat[:, renum].ravel()].reshape(
-        elmat.shape
-    )
-    sig_yy = mapping.mapToRegular(sig_yy.mean())[elmat[:, renum].ravel()].reshape(
-        elmat.shape
-    )
+    def to_regular(field):
+        return mapping.mapToRegular(field)[elmat[:, renum].ravel()].reshape(elmat.shape)
 
     return dict(
-        sig_xx=sig_xx,
-        sig_xy=sig_xy,
-        sig_yy=sig_yy,
+        sig_xx=to_regular(sig_xx.mean()),
+        sig_xy=to_regular(sig_xy.mean()),
+        sig_yy=to_regular(sig_yy.mean()),
         is_plastic=is_plastic,
     )
 
@@ -201,26 +196,25 @@ if __name__ == "__main__":
 
     with h5py.File(args.file, "r") as data:
 
-        Stress = list(g5.getpaths(data, root="data", max_depth=1))
+        # list with realisations
         paths = list(g5.getpaths(data, root="data", max_depth=5))
-
-        Element = np.unique(
-            ["element=" + path.split("element=")[1].split("/...")[0] for path in paths]
-        )
-        Stress = np.array([path.split("data/")[1].split("/...")[0] for path in Stress])
         paths = np.array([path.split("data/")[1].split("/...")[0] for path in paths])
 
-        stress = np.array(
-            ["stress=" + path.split("stress=")[1].split("/")[0] for path in paths]
-        )
-        element = np.array(
-            ["element=" + path.split("element=")[1].split("/")[0] for path in paths]
-        )
-        a_target = np.array([int(path.split("A=")[1].split("/")[0]) for path in paths])
-        a_real = np.array(
-            [int(data[g5.join("/data", path, "A")][...]) for path in paths]
-        )
+        # lists with stress/element/A of each realisation
+        stress = ["stress=" + path.split("stress=")[1].split("/")[0] for path in paths]
+        element = [
+            "element=" + path.split("element=")[1].split("/")[0] for path in paths
+        ]
+        a_target = [int(path.split("A=")[1].split("/")[0]) for path in paths]
+        a_real = [int(data[g5.join("/data", path, "A")][...]) for path in paths]
+        stress = np.array(stress)
+        element = np.array(element)
+        a_target = np.array(a_target)
+        a_real = np.array(a_real)
 
+        # lists with possible stress/element/A identifiers (unique)
+        Stress = np.unique(stress)
+        Element = np.unique(element)
         A_target = np.unique(a_target)
 
         for a, s in itertools.product(A_target, Stress):
@@ -237,7 +231,9 @@ if __name__ == "__main__":
                     * (element == e)
                     * (stress == s)
                 ]
+
                 ret = average(data, [g5.join("/data", path) for path in subset], sig0)
+
                 sig_xx.add_sample(ret["sig_xx"])
                 sig_xy.add_sample(ret["sig_xy"])
                 sig_yy.add_sample(ret["sig_yy"])
