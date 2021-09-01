@@ -1,10 +1,10 @@
 #include <FrictionQPotFEM/UniformSingleLayer2d.h>
 #include <GMatElastoPlasticQPot/Cartesian2d.h>
 #include <GooseFEM/GooseFEM.h>
-#include <highfive/H5Easy.hpp>
-#include <fmt/core.h>
 #include <cpppath.h>
 #include <docopt/docopt.h>
+#include <fmt/core.h>
+#include <highfive/H5Easy.hpp>
 
 #define MYASSERT(expr) MYASSERT_IMPL(expr, __FILE__, __LINE__)
 #define MYASSERT_IMPL(expr, file, line) \
@@ -16,7 +16,6 @@
 
 namespace FQF = FrictionQPotFEM::UniformSingleLayer2d;
 namespace GM = GMatElastoPlasticQPot::Cartesian2d;
-
 
 static const char USAGE[] =
     R"(EnsembleInfo
@@ -75,38 +74,34 @@ Options:
 (c) Tom de Geus
 )";
 
-
 struct Data {
-    std::string uuid;                    // unique identifier
-    double dt;                           // time-step
-    double G;                            // homogeneous shear modulus
-    double rho;                          // homogeneous mass density
-    size_t N;                            // number of plastic elements (along the weak layer)
-    size_t steadystate;                  // increment number at which the steady-state begins
-    bool has_steadystate;                // signal if a steady-state has been found
-    xt::xtensor<size_t, 1> incs;         // increment numbers of the output
-    xt::xtensor<size_t, 1> inc_system;   // per inc: the increment of the last system-spanning event
-    xt::xtensor<double, 1> sig_system;   // per inc: eq. stress of the last system-spanning event
-    xt::xtensor<double, 1> eps_system;   // per inc: eq. strain of the last system-spanning event
-    xt::xtensor<size_t, 1> kick;         // per inc: kick or not (false == elastic loading)
-    xt::xtensor<size_t, 1> S;            // per inc: avalanche size
-    xt::xtensor<size_t, 1> A;            // per inc: avalanche area
-    xt::xtensor<size_t, 1> xi;           // per inc: avalanche spatial extensor
-    xt::xtensor<double, 1> depsp;        // per inc: plastic strain increment
+    std::string uuid; // unique identifier
+    double dt; // time-step
+    double G; // homogeneous shear modulus
+    double rho; // homogeneous mass density
+    size_t N; // number of plastic elements (along the weak layer)
+    size_t steadystate; // increment number at which the steady-state begins
+    bool has_steadystate; // signal if a steady-state has been found
+    xt::xtensor<size_t, 1> incs; // increment numbers of the output
+    xt::xtensor<size_t, 1> inc_system; // per inc: the increment of the last system-spanning event
+    xt::xtensor<double, 1> sig_system; // per inc: eq. stress of the last system-spanning event
+    xt::xtensor<double, 1> eps_system; // per inc: eq. strain of the last system-spanning event
+    xt::xtensor<size_t, 1> kick; // per inc: kick or not (false == elastic loading)
+    xt::xtensor<size_t, 1> S; // per inc: avalanche size
+    xt::xtensor<size_t, 1> A; // per inc: avalanche area
+    xt::xtensor<size_t, 1> xi; // per inc: avalanche spatial extensor
+    xt::xtensor<double, 1> depsp; // per inc: plastic strain increment
     xt::xtensor<double, 1> dt_avalanche; // per inc: duration of activity
-    xt::xtensor<double, 1> epsd;         // per inc: eq. strain
-    xt::xtensor<double, 1> sigd;         // per inc: eq. stress
+    xt::xtensor<double, 1> epsd; // per inc: eq. strain
+    xt::xtensor<double, 1> sigd; // per inc: eq. stress
 };
-
 
 class Main : public FQF::System {
 
 private:
-
     H5Easy::File m_file;
 
 public:
-
     Main(const std::string& fname) : m_file(fname, H5Easy::File::ReadWrite)
     {
         this->init(
@@ -133,7 +128,6 @@ public:
     }
 
 public:
-
     Data run()
     {
         Data data;
@@ -171,8 +165,10 @@ public:
             xt::xtensor<int, 1> idx = xt::view(this->plastic_CurrentIndex(), xt::all(), 0);
             auto epsp = xt::view(this->plastic_Epsp(), xt::all(), 0);
 
-            xt::xtensor_fixed<double, xt::xshape<2, 2>> Epsbar = xt::average(this->Eps(), dV, {0, 1});
-            xt::xtensor_fixed<double, xt::xshape<2, 2>> Sigbar = xt::average(this->Sig(), dV, {0, 1});
+            xt::xtensor_fixed<double, xt::xshape<2, 2>> Epsbar =
+                xt::average(this->Eps(), dV, {0, 1});
+            xt::xtensor_fixed<double, xt::xshape<2, 2>> Sigbar =
+                xt::average(this->Sig(), dV, {0, 1});
 
             epsd(inc) = GM::Epsd(Epsbar)();
             sigd(inc) = GM::Sigd(Sigbar)();
@@ -181,7 +177,8 @@ public:
             S(inc) = xt::sum(idx - idx_n)();
             A(inc) = xt::sum(xt::not_equal(idx, idx_n))();
 
-            xt::xtensor<size_t, 1> icell = xt::flatten_indices(xt::argwhere(xt::not_equal(idx_n, idx)));
+            xt::xtensor<size_t, 1> icell =
+                xt::flatten_indices(xt::argwhere(xt::not_equal(idx_n, idx)));
 
             if (icell.size() > 0) {
                 xt::xtensor<size_t, 1> rep = {icell(0) + N};
@@ -257,9 +254,7 @@ public:
 
         return data;
     }
-
 };
-
 
 int main(int argc, const char** argv)
 {
@@ -393,85 +388,84 @@ int main(int argc, const char** argv)
         }
 
         // ensemble after loading
-        load_incs = xt::concatenate(xt::xtuple(load_incs,
-            xt::view(data.incs, xt::range(steadystate, ni, 2))));
+        load_incs = xt::concatenate(
+            xt::xtuple(load_incs, xt::view(data.incs, xt::range(steadystate, ni, 2))));
 
-        load_kick = xt::concatenate(xt::xtuple(load_kick,
-            xt::view(data.kick, xt::range(steadystate, ni, 2))));
+        load_kick = xt::concatenate(
+            xt::xtuple(load_kick, xt::view(data.kick, xt::range(steadystate, ni, 2))));
 
-        load_inc_system = xt::concatenate(xt::xtuple(load_inc_system,
-            xt::view(data.inc_system, xt::range(steadystate, ni, 2))));
+        load_inc_system = xt::concatenate(
+            xt::xtuple(load_inc_system, xt::view(data.inc_system, xt::range(steadystate, ni, 2))));
 
-        load_eps_system = xt::concatenate(xt::xtuple(load_eps_system,
-            xt::view(data.eps_system, xt::range(steadystate, ni, 2))));
+        load_eps_system = xt::concatenate(
+            xt::xtuple(load_eps_system, xt::view(data.eps_system, xt::range(steadystate, ni, 2))));
 
-        load_sig_system = xt::concatenate(xt::xtuple(load_sig_system,
-            xt::view(data.sig_system, xt::range(steadystate, ni, 2))));
+        load_sig_system = xt::concatenate(
+            xt::xtuple(load_sig_system, xt::view(data.sig_system, xt::range(steadystate, ni, 2))));
 
-        load_S = xt::concatenate(xt::xtuple(load_S,
-            xt::view(data.S, xt::range(steadystate, ni, 2))));
+        load_S =
+            xt::concatenate(xt::xtuple(load_S, xt::view(data.S, xt::range(steadystate, ni, 2))));
 
-        load_A = xt::concatenate(xt::xtuple(load_A,
-            xt::view(data.A, xt::range(steadystate, ni, 2))));
+        load_A =
+            xt::concatenate(xt::xtuple(load_A, xt::view(data.A, xt::range(steadystate, ni, 2))));
 
-        load_xi = xt::concatenate(xt::xtuple(load_xi,
-            xt::view(data.xi, xt::range(steadystate, ni, 2))));
+        load_xi =
+            xt::concatenate(xt::xtuple(load_xi, xt::view(data.xi, xt::range(steadystate, ni, 2))));
 
-        load_depsp = xt::concatenate(xt::xtuple(load_depsp,
-            xt::view(data.depsp, xt::range(steadystate, ni, 2))));
+        load_depsp = xt::concatenate(
+            xt::xtuple(load_depsp, xt::view(data.depsp, xt::range(steadystate, ni, 2))));
 
-        load_dt_avalanche = xt::concatenate(xt::xtuple(load_dt_avalanche,
-            xt::view(data.dt_avalanche, xt::range(steadystate, ni, 2))));
+        load_dt_avalanche = xt::concatenate(xt::xtuple(
+            load_dt_avalanche, xt::view(data.dt_avalanche, xt::range(steadystate, ni, 2))));
 
-        load_epsd = xt::concatenate(xt::xtuple(load_epsd,
-            xt::view(data.epsd, xt::range(steadystate, ni, 2))));
+        load_epsd = xt::concatenate(
+            xt::xtuple(load_epsd, xt::view(data.epsd, xt::range(steadystate, ni, 2))));
 
-        load_sigd = xt::concatenate(xt::xtuple(load_sigd,
-            xt::view(data.sigd, xt::range(steadystate, ni, 2))));
+        load_sigd = xt::concatenate(
+            xt::xtuple(load_sigd, xt::view(data.sigd, xt::range(steadystate, ni, 2))));
 
         // ensemble after avalanche
-        aval_incs = xt::concatenate(xt::xtuple(aval_incs,
-            xt::view(data.incs, xt::range(steadystate + 1, ni, 2))));
+        aval_incs = xt::concatenate(
+            xt::xtuple(aval_incs, xt::view(data.incs, xt::range(steadystate + 1, ni, 2))));
 
-        aval_kick = xt::concatenate(xt::xtuple(aval_kick,
-            xt::view(data.kick, xt::range(steadystate + 1, ni, 2))));
+        aval_kick = xt::concatenate(
+            xt::xtuple(aval_kick, xt::view(data.kick, xt::range(steadystate + 1, ni, 2))));
 
-        aval_inc_system = xt::concatenate(xt::xtuple(aval_inc_system,
-            xt::view(data.inc_system, xt::range(steadystate + 1, ni, 2))));
+        aval_inc_system = xt::concatenate(xt::xtuple(
+            aval_inc_system, xt::view(data.inc_system, xt::range(steadystate + 1, ni, 2))));
 
-        aval_eps_system = xt::concatenate(xt::xtuple(aval_eps_system,
-            xt::view(data.eps_system, xt::range(steadystate + 1, ni, 2))));
+        aval_eps_system = xt::concatenate(xt::xtuple(
+            aval_eps_system, xt::view(data.eps_system, xt::range(steadystate + 1, ni, 2))));
 
-        aval_sig_system = xt::concatenate(xt::xtuple(aval_sig_system,
-            xt::view(data.sig_system, xt::range(steadystate + 1, ni, 2))));
+        aval_sig_system = xt::concatenate(xt::xtuple(
+            aval_sig_system, xt::view(data.sig_system, xt::range(steadystate + 1, ni, 2))));
 
-        aval_S = xt::concatenate(xt::xtuple(aval_S,
-            xt::view(data.S, xt::range(steadystate + 1, ni, 2))));
+        aval_S = xt::concatenate(
+            xt::xtuple(aval_S, xt::view(data.S, xt::range(steadystate + 1, ni, 2))));
 
-        aval_A = xt::concatenate(xt::xtuple(aval_A,
-            xt::view(data.A, xt::range(steadystate + 1, ni, 2))));
+        aval_A = xt::concatenate(
+            xt::xtuple(aval_A, xt::view(data.A, xt::range(steadystate + 1, ni, 2))));
 
-        aval_xi = xt::concatenate(xt::xtuple(aval_xi,
-            xt::view(data.xi, xt::range(steadystate + 1, ni, 2))));
+        aval_xi = xt::concatenate(
+            xt::xtuple(aval_xi, xt::view(data.xi, xt::range(steadystate + 1, ni, 2))));
 
-        aval_depsp = xt::concatenate(xt::xtuple(aval_depsp,
-            xt::view(data.depsp, xt::range(steadystate + 1, ni, 2))));
+        aval_depsp = xt::concatenate(
+            xt::xtuple(aval_depsp, xt::view(data.depsp, xt::range(steadystate + 1, ni, 2))));
 
-        aval_dt_avalanche = xt::concatenate(xt::xtuple(aval_dt_avalanche,
-            xt::view(data.dt_avalanche, xt::range(steadystate + 1, ni, 2))));
+        aval_dt_avalanche = xt::concatenate(xt::xtuple(
+            aval_dt_avalanche, xt::view(data.dt_avalanche, xt::range(steadystate + 1, ni, 2))));
 
-        aval_epsd = xt::concatenate(xt::xtuple(aval_epsd,
-            xt::view(data.epsd, xt::range(steadystate + 1, ni, 2))));
+        aval_epsd = xt::concatenate(
+            xt::xtuple(aval_epsd, xt::view(data.epsd, xt::range(steadystate + 1, ni, 2))));
 
-        aval_sigd = xt::concatenate(xt::xtuple(aval_sigd,
-            xt::view(data.sigd, xt::range(steadystate + 1, ni, 2))));
+        aval_sigd = xt::concatenate(
+            xt::xtuple(aval_sigd, xt::view(data.sigd, xt::range(steadystate + 1, ni, 2))));
 
+        load_sim =
+            xt::concatenate(xt::xtuple(load_sim, i * xt::ones<size_t>({(ni - steadystate) / 2})));
 
-        load_sim = xt::concatenate(xt::xtuple(load_sim,
-            i * xt::ones<size_t>({(ni - steadystate) / 2})));
-
-        aval_sim = xt::concatenate(xt::xtuple(aval_sim,
-            i * xt::ones<size_t>({(ni - steadystate) / 2})));
+        aval_sim =
+            xt::concatenate(xt::xtuple(aval_sim, i * xt::ones<size_t>({(ni - steadystate) / 2})));
 
         size_t n = load_incs.size();
 

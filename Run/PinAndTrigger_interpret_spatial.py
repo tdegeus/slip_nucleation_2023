@@ -78,10 +78,10 @@ def fill_avalanche(broken: ArrayLike):
     di = np.diff(i)
     mi = np.max(di)
     j = np.argwhere(di == mi).ravel()
-    ret[i[j[0]]: i[j[0] + 1]] = zero
-    ret[i[j[1]] + 1: i[j[1] + 1]] = zero
+    ret[i[j[0]] : i[j[0] + 1]] = zero
+    ret[i[j[1]] + 1 : i[j[1] + 1]] = zero
 
-    return ret[N: 2 * N]
+    return ret[N : 2 * N]
 
 
 def average(data: h5py.File, paths: list[str], sig0: float) -> dict:
@@ -149,11 +149,19 @@ def average(data: h5py.File, paths: list[str], sig0: float) -> dict:
 
     is_plastic = np.zeros((system.conn().shape[0]), dtype=bool)
     is_plastic[plastic] = True
-    is_plastic = mapping.mapToRegular(is_plastic)[elmat[:, renum].ravel()].reshape(elmat.shape)
+    is_plastic = mapping.mapToRegular(is_plastic)[elmat[:, renum].ravel()].reshape(
+        elmat.shape
+    )
 
-    sig_xx = mapping.mapToRegular(sig_xx.mean())[elmat[:, renum].ravel()].reshape(elmat.shape)
-    sig_xy = mapping.mapToRegular(sig_xy.mean())[elmat[:, renum].ravel()].reshape(elmat.shape)
-    sig_yy = mapping.mapToRegular(sig_yy.mean())[elmat[:, renum].ravel()].reshape(elmat.shape)
+    sig_xx = mapping.mapToRegular(sig_xx.mean())[elmat[:, renum].ravel()].reshape(
+        elmat.shape
+    )
+    sig_xy = mapping.mapToRegular(sig_xy.mean())[elmat[:, renum].ravel()].reshape(
+        elmat.shape
+    )
+    sig_yy = mapping.mapToRegular(sig_yy.mean())[elmat[:, renum].ravel()].reshape(
+        elmat.shape
+    )
 
     return dict(
         sig_xx=sig_xx,
@@ -163,15 +171,18 @@ def average(data: h5py.File, paths: list[str], sig0: float) -> dict:
     )
 
 
-
 if __name__ == "__main__":
 
     basename = os.path.splitext(os.path.basename(__file__))[0]
 
     parser = argparse.ArgumentParser()
     parser.add_argument("file", type=str, help="Input file ('r')")
-    parser.add_argument("-o", "--output", type=str, default=f"{basename}.h5", help="Output file ('w')")
-    parser.add_argument("-i", "--info", type=str, default="EnsembleInfo.h5", help="Read normalisation")
+    parser.add_argument(
+        "-o", "--output", type=str, default=f"{basename}.h5", help="Output file ('w')"
+    )
+    parser.add_argument(
+        "-i", "--info", type=str, default="EnsembleInfo.h5", help="Read normalisation"
+    )
     args = parser.parse_args()
     assert os.path.isfile(os.path.realpath(args.file))
     assert os.path.isfile(os.path.realpath(args.info))
@@ -188,14 +199,22 @@ if __name__ == "__main__":
         Stress = list(g5.getpaths(data, root="data", max_depth=1))
         paths = list(g5.getpaths(data, root="data", max_depth=5))
 
-        Element = np.unique(["element=" + path.split("element=")[1].split("/...")[0] for path in paths])
+        Element = np.unique(
+            ["element=" + path.split("element=")[1].split("/...")[0] for path in paths]
+        )
         Stress = np.array([path.split("data/")[1].split("/...")[0] for path in Stress])
         paths = np.array([path.split("data/")[1].split("/...")[0] for path in paths])
 
-        stress = np.array(["stress=" + path.split("stress=")[1].split("/")[0] for path in paths])
-        element = np.array(["element=" + path.split("element=")[1].split("/")[0] for path in paths])
+        stress = np.array(
+            ["stress=" + path.split("stress=")[1].split("/")[0] for path in paths]
+        )
+        element = np.array(
+            ["element=" + path.split("element=")[1].split("/")[0] for path in paths]
+        )
         a_target = np.array([int(path.split("A=")[1].split("/")[0]) for path in paths])
-        a_real = np.array([int(data[g5.join("/data", path, "A")][...]) for path in paths])
+        a_real = np.array(
+            [int(data[g5.join("/data", path, "A")][...]) for path in paths]
+        )
 
         A_target = np.unique(a_target)
 
@@ -207,7 +226,12 @@ if __name__ == "__main__":
 
             for e in Element:
 
-                subset = paths[(a_real > a - 10) * (a_real < a + 10) * (element == e) * (stress == s)]
+                subset = paths[
+                    (a_real > a - 10)
+                    * (a_real < a + 10)
+                    * (element == e)
+                    * (stress == s)
+                ]
                 ret = average(data, [g5.join("/data", path) for path in subset], sig0)
                 sig_xx.add_sample(ret["sig_xx"])
                 sig_xy.add_sample(ret["sig_xy"])

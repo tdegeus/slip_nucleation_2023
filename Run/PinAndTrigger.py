@@ -30,7 +30,9 @@ def initsystem(data):
     system.setMassMatrix(data["/rho"][...])
     system.setDampingMatrix(data["/damping/alpha"][...])
     system.setElastic(data["/elastic/K"][...], data["/elastic/G"][...])
-    system.setPlastic(data["/cusp/K"][...], data["/cusp/G"][...], data["/cusp/epsy"][...])
+    system.setPlastic(
+        data["/cusp/K"][...], data["/cusp/G"][...], data["/cusp/epsy"][...]
+    )
     system.setDt(data["/run/dt"][...])
 
     return system
@@ -46,7 +48,7 @@ def reset_epsy(system, data):
 
     e = data["/cusp/epsy"][...]
     epsy = np.empty((e.shape[0], e.shape[1] + 1), dtype=e.dtype)
-    epsy[:, 0] = - e[:, 0]
+    epsy[:, 0] = -e[:, 0]
     epsy[:, 1:] = e
 
     plastic = system.plastic()
@@ -204,7 +206,9 @@ def pinsystem(system, target_element, target_A):
                     chunk = cusp.refQPotChunked()
                     y = chunk.y()
                     ymax = y[-1]  # get some scale
-                    y = y[int(idx[i, q]) : int(idx[i, q] + 2)]  # slicing is up to not including
+                    y = y[
+                        int(idx[i, q]) : int(idx[i, q] + 2)
+                    ]  # slicing is up to not including
                     ymin = 0.5 * sum(y)  # current minimum
                     chunk.set_y([ymin - 2 * ymax, ymin + 2 * ymax])
 
@@ -214,19 +218,29 @@ def pinsystem(system, target_element, target_A):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("-f", "--file", type=str, help="Filename of simulation file (read-only)")
-    parser.add_argument("-o", "--output", type=str, help="Filename of output file (overwritten)")
+    parser.add_argument(
+        "-f", "--file", type=str, help="Filename of simulation file (read-only)"
+    )
+    parser.add_argument(
+        "-o", "--output", type=str, help="Filename of output file (overwritten)"
+    )
     parser.add_argument("-s", "--stress", type=float, help="Stress as which to trigger")
-    parser.add_argument("-i", "--incc", type=int, help="Increment number of last system-spanning event")
+    parser.add_argument(
+        "-i", "--incc", type=int, help="Increment number of last system-spanning event"
+    )
     parser.add_argument("-e", "--element", type=int, help="Element to push")
-    parser.add_argument("-a", "--size", type=int, help="Number of elements to keep unpinned")
+    parser.add_argument(
+        "-a", "--size", type=int, help="Number of elements to keep unpinned"
+    )
     args = parser.parse_args()
     assert os.path.isfile(os.path.realpath(args.file))
     assert os.path.realpath(args.file) != os.path.realpath(args.output)
 
     print("starting:", args.output)
 
-    root = git.Repo(os.path.dirname(__file__), search_parent_directories=True).working_tree_dir
+    root = git.Repo(
+        os.path.dirname(__file__), search_parent_directories=True
+    ).working_tree_dir
     myversion = setuptools_scm.get_version(root=root)
 
     target_stress = args.stress
@@ -247,7 +261,9 @@ if __name__ == "__main__":
         # (*) Reload specific increment based on target stress and system-spanning increment
 
         assert target_inc_system in inc_system
-        i = np.argmax((target_inc_system == inc_system) * (target_inc_system <= inc_push))
+        i = np.argmax(
+            (target_inc_system == inc_system) * (target_inc_system <= inc_push)
+        )
         inc = inc_push[i]
         assert target_inc_system == inc_system[i]
 
@@ -278,7 +294,9 @@ if __name__ == "__main__":
 
         output["/meta/PinAndTrigger/file"] = args.file
         output["/meta/PinAndTrigger/version"] = myversion
-        output["/meta/PinAndTrigger/version_dependencies"] = model.version_dependencies()
+        output[
+            "/meta/PinAndTrigger/version_dependencies"
+        ] = model.version_dependencies()
         output["/meta/PinAndTrigger/target_stress"] = target_stress
         output["/meta/PinAndTrigger/target_inc_system"] = target_inc_system
         output["/meta/PinAndTrigger/target_A"] = target_A

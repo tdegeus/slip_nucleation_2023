@@ -1,10 +1,10 @@
 #include <FrictionQPotFEM/UniformSingleLayer2d.h>
 #include <GMatElastoPlasticQPot/Cartesian2d.h>
 #include <GooseFEM/GooseFEM.h>
-#include <highfive/H5Easy.hpp>
-#include <fmt/core.h>
 #include <cpppath.h>
 #include <docopt/docopt.h>
+#include <fmt/core.h>
+#include <highfive/H5Easy.hpp>
 #include <xtensor/xindex_view.hpp>
 
 #define MYASSERT(expr) MYASSERT_IMPL(expr, __FILE__, __LINE__)
@@ -17,7 +17,6 @@
 
 namespace FQF = FrictionQPotFEM::UniformSingleLayer2d;
 namespace GM = GMatElastoPlasticQPot::Cartesian2d;
-
 
 static const char USAGE[] =
     R"(CrackEvolution_raw_stress
@@ -49,18 +48,15 @@ Options:
 (c) Tom de Geus
 )";
 
-
 class Main : public FQF::System {
 
 private:
-
     H5Easy::File m_file;
     GooseFEM::Iterate::StopList m_stop = GooseFEM::Iterate::StopList(20);
     size_t m_inc;
     double m_deps_kick;
 
 public:
-
     Main(const std::string& fname) : m_file(fname, H5Easy::File::ReadOnly)
     {
         this->init(
@@ -89,7 +85,6 @@ public:
     }
 
 public:
-
     std::tuple<xt::xtensor<size_t, 1>, xt::xtensor<size_t, 1>> getIncPush(double stress)
     {
         auto dV = m_quad.AsTensor<2>(m_quad.dV());
@@ -124,8 +119,11 @@ public:
             auto idx = xt::view(this->plastic_CurrentIndex(), xt::all(), 0);
 
             // - macroscopic strain/stress tensor
-            xt::xtensor_fixed<double, xt::xshape<2, 2>> Epsbar = xt::average(this->Eps(), dV, {0, 1});
-            xt::xtensor_fixed<double, xt::xshape<2, 2>> Sigbar = xt::average(this->Sig(), dV, {0, 1});
+            xt::xtensor_fixed<double, xt::xshape<2, 2>> Epsbar =
+                xt::average(this->Eps(), dV, {0, 1});
+
+            xt::xtensor_fixed<double, xt::xshape<2, 2>> Sigbar =
+                xt::average(this->Sig(), dV, {0, 1});
 
             // - macroscopic equivalent strain/stress
             epsd(inc) = GM::Epsd(Epsbar)();
@@ -222,9 +220,8 @@ public:
     }
 
 public:
-
-    void run(
-        double stress,
+    void
+    run(double stress,
         size_t element,
         size_t inc_c,
         const std::string& output,
@@ -349,9 +346,7 @@ public:
         H5Easy::dump(data, "/meta/dt", m_dt);
         H5Easy::dump(data, "/meta/plastic", this->plastic());
     }
-
 };
-
 
 int main(int argc, const char** argv)
 {

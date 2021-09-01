@@ -1,11 +1,11 @@
 
 #include <FrictionQPotFEM/UniformSingleLayer2d.h>
 #include <GooseFEM/GooseFEM.h>
-#include <highfive/H5Easy.hpp>
-#include <fmt/core.h>
 #include <cpppath.h>
-#include <docopt/docopt.h>
 #include <cstdio>
+#include <docopt/docopt.h>
+#include <fmt/core.h>
+#include <highfive/H5Easy.hpp>
 
 #ifndef GIT_COMMIT_HASH
 #define GIT_COMMIT_HASH "?"
@@ -36,7 +36,6 @@ inline void dump_check(H5Easy::File& file, const std::string& key, const T& data
 class Main : public FQF::System {
 
 public:
-
     Main(const std::string& fname) : m_file(fname, H5Easy::File::ReadWrite)
     {
         this->init(
@@ -66,30 +65,27 @@ public:
     }
 
 public:
-
     size_t inc()
     {
         return m_inc;
     }
 
 public:
-
     void restore_last_stored()
     {
-        m_inc = H5Easy::load<size_t>(m_file, "/stored", {H5Easy::getSize(m_file, "/stored") - size_t(1)});
+        m_inc = H5Easy::load<size_t>(
+            m_file, "/stored", {H5Easy::getSize(m_file, "/stored") - size_t(1)});
         m_t = H5Easy::load<decltype(m_t)>(m_file, "/t", {m_inc});
         this->setU(H5Easy::load<decltype(m_u)>(m_file, fmt::format("/disp/{0:d}", m_inc)));
     }
 
 public:
-
     void write_completed()
     {
         H5Easy::dump(m_file, "/completed", 1);
     }
 
 public:
-
     // return +1 : have to pass events by shearing right
     // return -1 : have to pass events by shearing left
     // return 0 : stress can be reached elastically
@@ -125,7 +121,6 @@ public:
     }
 
 public:
-
     size_t run_two_event_driven_steps()
     {
         this->restore_last_stored();
@@ -133,7 +128,7 @@ public:
         std::vector<int> kicks = {0, 1};
         size_t niter = 0;
 
-        for (auto& kick: kicks) {
+        for (auto& kick : kicks) {
             this->addSimpleShearEventDriven(m_deps_kick, kick, -1.0);
 
             if (kick) {
@@ -159,16 +154,16 @@ public:
     }
 
 public:
-
     int run_push(const std::string& outfilename, double target_stress)
     {
         auto dV_plas = m_quad_plas.AsTensor<2>(m_quad_plas.dV());
 
         this->restore_last_stored();
 
-        MYASSERT(std::abs(
-            GM::Sigd<xt::xtensor<double, 2>>(xt::average(this->Sig(), m_dV, {0, 1}))() -
-            H5Easy::load<double>(m_file, "/sigd", {m_inc})) < 1e-8);
+        MYASSERT(
+            std::abs(
+                GM::Sigd<xt::xtensor<double, 2>>(xt::average(this->Sig(), m_dV, {0, 1}))() -
+                H5Easy::load<double>(m_file, "/sigd", {m_inc})) < 1e-8);
 
         bool target_stress_exact = this->how_to_reach_stress(target_stress) == 0;
 
@@ -180,19 +175,20 @@ public:
 
         H5Easy::File data(outfilename, H5Easy::File::Overwrite);
 
-        int S = 0;              // avalanche size (maximum size since beginning)
-        size_t A = 0;           // current avalanche area (maximum size since beginning)
-        size_t t_step = 500;    // interval at which to store a global snapshot
-        size_t ioverview = 0;   // storage index
-        size_t ievent = 0;      // storage index
-        bool last = false;      // == true when equilibrium is reached -> store equilibrium configuration
-        bool attribute = true;  // signal to store attribute
-        bool event = false;     // == true every time a yielding event took place -> write "/event/*"
+        int S = 0; // avalanche size (maximum size since beginning)
+        size_t A = 0; // current avalanche area (maximum size since beginning)
+        size_t t_step = 500; // interval at which to store a global snapshot
+        size_t ioverview = 0; // storage index
+        size_t ievent = 0; // storage index
+        bool last = false; // == true when equilibrium is reached -> store equilibrium configuration
+        bool attribute = true; // signal to store attribute
+        bool event = false; // == true every time a yielding event took place -> write "/event/*"
         xt::xtensor<int, 1> idx_last = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
         xt::xtensor<int, 1> idx_n = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
         xt::xtensor<int, 1> idx = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
         xt::xtensor<double, 2> Sig_bar = xt::average(m_Sig, m_dV, {0, 1}); // only shape matters
-        xt::xtensor<double, 3> Sig_elem = xt::average(m_Sig_plas, dV_plas, {1}); // only shape matters
+        xt::xtensor<double, 3> Sig_elem =
+            xt::average(m_Sig_plas, dV_plas, {1}); // only shape matters
         xt::xtensor<double, 2> Sig_plas = xt::empty<double>({3ul, m_N});
         xt::xtensor<double, 1> sig_weak = xt::empty<double>({3ul});
         xt::xtensor<double, 1> sig_crack = xt::empty<double>({3ul});
@@ -241,7 +237,8 @@ public:
             }
 
             if (save_event) {
-                xt::xtensor<size_t, 1> r = xt::flatten_indices(xt::argwhere(xt::not_equal(idx, idx_last)));
+                xt::xtensor<size_t, 1> r =
+                    xt::flatten_indices(xt::argwhere(xt::not_equal(idx, idx_last)));
                 for (size_t i = 0; i < r.size(); ++i) {
                     H5Easy::dump(data, "/event/step", idx(r(i)) - idx_last(r(i)), {ievent});
                     H5Easy::dump(data, "/event/r", r(i), {ievent});
@@ -317,7 +314,8 @@ public:
 
         size_t push = 0;
         if (m_file.exist("/push/stored")) {
-            push = H5Easy::load<size_t>(m_file, "/push/stored", {H5Easy::getSize(m_file, "/push/stored") - size_t(1)});
+            push = H5Easy::load<size_t>(
+                m_file, "/push/stored", {H5Easy::getSize(m_file, "/push/stored") - size_t(1)});
             push++;
         }
 
@@ -354,20 +352,17 @@ public:
     }
 
 public:
-
     xt::xtensor<double, 1> get_target_stresses()
     {
         return H5Easy::load<xt::xtensor<double, 1>>(m_file, "/push/stresses");
     }
 
 private:
-
     H5Easy::File m_file;
     GooseFEM::Iterate::StopList m_stop = GooseFEM::Iterate::StopList(20);
     size_t m_inc;
     double m_deps_kick;
     xt::xtensor<double, 4> m_dV;
-
 };
 
 static const char USAGE[] =
@@ -415,11 +410,13 @@ int main(int argc, const char** argv)
                 sim.run_two_event_driven_steps();
             }
             else if (dir > 0) {
-                fmt::print("Positive loading would be needed, triggering at current state {0:s}\n", input);
+                fmt::print(
+                    "Positive loading would be needed, triggering at current state {0:s}\n", input);
                 break;
             }
             if (u == 8) {
-                throw std::runtime_error("Target stress not found within max. number of unloading steps");
+                throw std::runtime_error(
+                    "Target stress not found within max. number of unloading steps");
             }
         }
         // trigger and run

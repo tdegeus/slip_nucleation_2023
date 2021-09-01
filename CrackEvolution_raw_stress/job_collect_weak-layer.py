@@ -1,7 +1,6 @@
-
 import GooseSLURM as gs
 
-slurm = '''
+slurm = """
 # for safety set the number of cores
 export OMP_NUM_THREADS=1
 
@@ -15,20 +14,23 @@ elif [[ "${{SYS_TYPE}}" == *s6g1* ]]; then
 fi
 
 {command:s}
-'''
+"""
 
 fbase = "job_collect_weak-layer"
-cmd = 'python ../collect_weak-layer.py --force -i ../../../data/nx=3\^6x2/EnsembleInfo.hdf5 shelephant_dump.yaml weak'
+cmd = r"python ../collect_weak-layer.py --force -i ../../../data/nx=3\^6x2/EnsembleInfo.hdf5 shelephant_dump.yaml weak"
 
 sbatch = {
-    'job-name': fbase,
-    'out': fbase + '.out',
-    'nodes': 1,
-    'ntasks': 1,
-    'cpus-per-task': 1,
-    'time': '10h',
-    'account': 'pcsl',
-    'partition': 'serial',
-    'mem': '8G'}
+    "job-name": fbase,
+    "out": fbase + ".out",
+    "nodes": 1,
+    "ntasks": 1,
+    "cpus-per-task": 1,
+    "time": "10h",
+    "account": "pcsl",
+    "partition": "serial",
+    "mem": "8G",
+}
 
-open(fbase + '.slurm', 'w').write(gs.scripts.plain(command=slurm.format(command=cmd), **sbatch))
+open(fbase + ".slurm", "w").write(
+    gs.scripts.plain(command=slurm.format(command=cmd), **sbatch)
+)

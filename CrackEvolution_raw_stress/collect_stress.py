@@ -1,4 +1,4 @@
-r'''
+r"""
     Collect stress distribution.
 
 Usage:
@@ -13,7 +13,7 @@ Options:
     -i, --info=<N>      Path to EnsembleInfo. [default: EnsembleInfo.hdf5]
     -f, --force         Overwrite existing output-file.
     -h, --help          Print help.
-'''
+"""
 
 import os
 import sys
@@ -30,6 +30,7 @@ from setuptools_scm import get_version
 
 
 # https://en.wikipedia.org/wiki/Center_of_mass#Systems_with_periodic_boundary_conditions
+
 
 def center_of_mass(x, L):
 
@@ -56,23 +57,26 @@ def renumber(x, L):
 
 def LoadSystem(filename, uuid):
 
-    with h5py.File(filename, 'r') as data:
+    with h5py.File(filename, "r") as data:
 
         assert uuid == data["/uuid"].asstr()[...]
 
         system = HybridSystem(
-            data['coor'][...],
-            data['conn'][...],
-            data['dofs'][...],
-            data['dofsP'][...],
-            data['/elastic/elem'][...],
-            data['/cusp/elem'][...])
+            data["coor"][...],
+            data["conn"][...],
+            data["dofs"][...],
+            data["dofsP"][...],
+            data["/elastic/elem"][...],
+            data["/cusp/elem"][...],
+        )
 
-        system.setMassMatrix(data['/rho'][...])
-        system.setDampingMatrix(data['/damping/alpha'][...])
-        system.setElastic(data['/elastic/K'][...], data['/elastic/G'][...])
-        system.setPlastic(data['/cusp/K'][...], data['/cusp/G'][...], data['/cusp/epsy'][...])
-        system.setDt(data['/run/dt'][...])
+        system.setMassMatrix(data["/rho"][...])
+        system.setDampingMatrix(data["/damping/alpha"][...])
+        system.setElastic(data["/elastic/K"][...], data["/elastic/G"][...])
+        system.setPlastic(
+            data["/cusp/K"][...], data["/cusp/G"][...], data["/cusp/epsy"][...]
+        )
+        system.setDt(data["/run/dt"][...])
 
         return system
 
@@ -81,16 +85,16 @@ def main():
 
     args = docopt.docopt(__doc__)
 
-    source = args['<files.yaml>']
-    key = list(filter(None, args['--key'].split('/')))
+    source = args["<files.yaml>"]
+    key = list(filter(None, args["--key"].split("/")))
     files = shelephant.yaml.read_item(source, key)
     assert len(files) > 0
-    info = args['--info']
-    output = args['--output']
+    info = args["--info"]
+    output = args["--output"]
     source_dir = os.path.dirname(info)
 
     shelephant.path.check_allisfile(files + [info])
-    shelephant.path.overwrite(output, args['--force'])
+    shelephant.path.overwrite(output, args["--force"])
 
     # Read normalisation
 
@@ -101,17 +105,17 @@ def main():
 
     for file in files:
 
-        with h5py.File(file, 'r') as data:
+        with h5py.File(file, "r") as data:
 
             idnum = data["/meta/id"][...]
             uuid = data["/meta/uuid"].asstr()[...]
-            idname = "id={0:03d}.hdf5".format(idnum)
+            idname = f"id={idnum:03d}.hdf5"
 
             system = LoadSystem(os.path.join(source_dir, idname), uuid)
             plastic = system.plastic()
             N = plastic.size
             mid = int((N - N % 2) / 2)
-            assert np.all(np.equal(plastic, data['/meta/plastic'][...]))
+            assert np.all(np.equal(plastic, data["/meta/plastic"][...]))
 
             M = system.mass().Todiagonal()
             coor = system.coor()
@@ -136,34 +140,35 @@ def main():
 
     # Ensemble average
 
-    with h5py.File(output, 'w') as out:
+    with h5py.File(output, "w") as out:
 
-        out['/coarse/nelx'] = coarse.nelx()
-        out['/coarse/nely'] = coarse.nely()
-        out['/coarse/Lx'] = coarse.nelx() * 6 * coarse.h()
-        out['/coarse/Ly'] = coarse.nely() * 3 * coarse.h()
-        out['/center/nely'] = fine.nely()
-        out['/center/h'] = fine.h()
-        out['/mesh/h'] = mesh.h()
-        out['/mesh/nelx'] = mesh.nelx()
-        out['/mesh/nely'] = mesh.nely()
-        out['/mesh/N'] = N
+        out["/coarse/nelx"] = coarse.nelx()
+        out["/coarse/nely"] = coarse.nely()
+        out["/coarse/Lx"] = coarse.nelx() * 6 * coarse.h()
+        out["/coarse/Ly"] = coarse.nely() * 3 * coarse.h()
+        out["/center/nely"] = fine.nely()
+        out["/center/h"] = fine.h()
+        out["/mesh/h"] = mesh.h()
+        out["/mesh/nelx"] = mesh.nelx()
+        out["/mesh/nely"] = mesh.nely()
+        out["/mesh/N"] = N
 
         for ifile, file in enumerate(tqdm.tqdm(files)):
 
-            with h5py.File(file, 'r') as data:
+            with h5py.File(file, "r") as data:
 
                 idnum = data["/meta/id"][...]
                 uuid = data["/meta/uuid"].asstr()[...]
-                idname = "id={0:03d}.hdf5".format(idnum)
+                idname = f"id={idnum:03d}.hdf5"
                 system = LoadSystem(os.path.join(source_dir, idname), uuid)
                 iiter = data["/sync-A/global/iiter"][...]
 
+                ver = "/meta/versions/CrackEvolution_raw_stress"
                 if ifile == 0:
-                    if "/meta/versions/CrackEvolution_raw_stress" not in data:
-                        out["/meta/versions/CrackEvolution_raw_stress"] = data["/git/run"][...]
+                    if ver not in data:
+                        out[ver] = data["/git/run"][...]
                     else:
-                        out["/meta/versions/CrackEvolution_raw_stress"] = data["/meta/versions/CrackEvolution_raw_stress"][...]
+                        out[ver] = data[ver][...]
 
                 # ensemble average different "A"
 
@@ -179,7 +184,7 @@ def main():
                     m_t = [enstat.mean.Scalar() for A in m_A]
 
                 stored = data["/sync-A/stored"][...]
-                system.setU(data["/sync-A/{0:d}/u".format(np.min(stored))][...])
+                system.setU(data[f"/sync-A/{np.min(stored):d}/u"][...])
                 idx0 = system.plastic_CurrentIndex()[:, 0]
 
                 for i, A in enumerate(tqdm.tqdm(m_A)):
@@ -187,7 +192,7 @@ def main():
                     if A not in stored:
                         continue
 
-                    system.setU(data["/sync-A/{0:d}/u".format(A)][...])
+                    system.setU(data[f"/sync-A/{A:d}/u"][...])
                     Sig = np.average(system.Sig(), weights=dV, axis=1)
                     idx = system.plastic_CurrentIndex()[:, 0]
                     renum = renumber(np.argwhere(idx0 != idx).ravel(), N)
@@ -198,9 +203,15 @@ def main():
                     sig_xy = mapping.mapToRegular(Sig[:, 0, 1])[get] / sig0
                     sig_yy = mapping.mapToRegular(Sig[:, 1, 1])[get] / sig0
 
-                    m_c_sig_xx[i].add_sample(refine.meanToCoarse(sig_xx).reshape(coarse.nely(), -1))
-                    m_c_sig_xy[i].add_sample(refine.meanToCoarse(sig_xy).reshape(coarse.nely(), -1))
-                    m_c_sig_yy[i].add_sample(refine.meanToCoarse(sig_yy).reshape(coarse.nely(), -1))
+                    m_c_sig_xx[i].add_sample(
+                        refine.meanToCoarse(sig_xx).reshape(coarse.nely(), -1)
+                    )
+                    m_c_sig_xy[i].add_sample(
+                        refine.meanToCoarse(sig_xy).reshape(coarse.nely(), -1)
+                    )
+                    m_c_sig_yy[i].add_sample(
+                        refine.meanToCoarse(sig_yy).reshape(coarse.nely(), -1)
+                    )
 
                     m_i_sig_xx[i].add_sample(sig_xx[select])
                     m_i_sig_xy[i].add_sample(sig_xy[select])
@@ -213,26 +224,27 @@ def main():
 
         # store
 
-        out['/stored'] = m_A
+        out["/stored"] = m_A
 
         for i, A in enumerate(m_A):
 
-            out['/{0:d}/center/sig_xx'.format(A)] = m_i_sig_xx[i].mean()
-            out['/{0:d}/center/sig_xy'.format(A)] = m_i_sig_xy[i].mean()
-            out['/{0:d}/center/sig_yy'.format(A)] = m_i_sig_yy[i].mean()
-            out['/{0:d}/coarse/sig_xx'.format(A)] = m_c_sig_xx[i].mean()
-            out['/{0:d}/coarse/sig_xy'.format(A)] = m_c_sig_xy[i].mean()
-            out['/{0:d}/coarse/sig_yy'.format(A)] = m_c_sig_yy[i].mean()
-            out['/{0:d}/coarse/S'.format(A)] = m_c_S[i].mean()
-            out['/{0:d}/iiter'.format(A)] = m_t[i].mean()
+            out[f"/{A:d}/center/sig_xx"] = m_i_sig_xx[i].mean()
+            out[f"/{A:d}/center/sig_xy"] = m_i_sig_xy[i].mean()
+            out[f"/{A:d}/center/sig_yy"] = m_i_sig_yy[i].mean()
+            out[f"/{A:d}/coarse/sig_xx"] = m_c_sig_xx[i].mean()
+            out[f"/{A:d}/coarse/sig_xy"] = m_c_sig_xy[i].mean()
+            out[f"/{A:d}/coarse/sig_yy"] = m_c_sig_yy[i].mean()
+            out[f"/{A:d}/coarse/S"] = m_c_S[i].mean()
+            out[f"/{A:d}/iiter"] = m_t[i].mean()
 
         try:
-            version = get_version(root='..', relative_to=__file__)
+            version = get_version(root="..", relative_to=__file__)
         except:
             version = None
 
         if version:
             out["/meta/versions/collect_stress.py"] = version
+
 
 if __name__ == "__main__":
 

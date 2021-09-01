@@ -1,68 +1,79 @@
-
 import os, subprocess, h5py
 import numpy as np
 import GooseSLURM as gs
 
-dbase = '../../../data/nx=3^6x2'
-nx = 'nx=3^6x2'
-N = (3**6) * 2
+dbase = "../../../data/nx=3^6x2"
+nx = "nx=3^6x2"
+N = (3 ** 6) * 2
 
 # --------------------------------------------------------------------------------------------------
+
 
 def get_runs():
 
     commands = []
 
-    with h5py.File(os.path.join(dbase, 'AvalancheAfterPush_strain=00d10.hdf5'), 'r') as data:
+    with h5py.File(
+        os.path.join(dbase, "AvalancheAfterPush_strain=00d10.hdf5"), "r"
+    ) as data:
 
-        p_files = data['files'  ].asstr()[...]
-        p_file  = data['file'   ][...]
-        p_elem  = data['element'][...]
-        p_A     = data['A'      ][...]
-        p_S     = data['S'      ][...]
-        p_sig   = data['sigd0'  ][...]
-        p_sigc  = data['sig_c'  ][...]
-        p_incc  = data['inc_c'  ][...]
+        p_files = data["files"].asstr()[...]
+        p_file = data["file"][...]
+        p_elem = data["element"][...]
+        p_A = data["A"][...]
+        p_S = data["S"][...]
+        p_sig = data["sigd0"][...]
+        p_sigc = data["sig_c"][...]
+        p_incc = data["inc_c"][...]
 
     idx = np.argwhere(p_S > 1).ravel()
 
     p_file = p_file[idx]
     p_elem = p_elem[idx]
-    p_A    = p_A   [idx]
-    p_S    = p_S   [idx]
-    p_sig  = p_sig [idx]
+    p_A = p_A[idx]
+    p_S = p_S[idx]
+    p_sig = p_sig[idx]
     p_sigc = p_sigc[idx]
     p_incc = p_incc[idx]
 
     idx = np.argsort(p_sig)
 
-    full_dir = os.path.join(dbase, 'EventEvolution_strain=0')
+    full_dir = os.path.join(dbase, "EventEvolution_strain=0")
 
     for i in idx:
 
-        fname = '{id:s}_elem={element:04d}_incc={incc:03d}.hdf5'.format(
-            element = p_elem[i],
-            incc = p_incc[i],
-            id = p_files[p_file[i]].replace('.hdf5', ''))
+        fname = "{id:s}_elem={element:04d}_incc={incc:03d}.hdf5".format(
+            element=p_elem[i],
+            incc=p_incc[i],
+            id=p_files[p_file[i]].replace(".hdf5", ""),
+        )
 
         if os.path.isfile(os.path.join(full_dir, fname)):
-            print('Skipping')
+            print("Skipping")
             continue
 
-        commands += [{
-            'file'   : os.path.join(dbase, p_files[p_file[i]]),
-            'element': p_elem[i],
-            'incc'   : p_incc[i],
-            'output' : fname,
-        }]
+        commands += [
+            {
+                "file": os.path.join(dbase, p_files[p_file[i]]),
+                "element": p_elem[i],
+                "incc": p_incc[i],
+                "output": fname,
+            }
+        ]
 
-    lines = ['EventEvolution_strain --file {file:s} --element {element:d} --incc {incc:d} --output {output:s}'.format(**c) for c in commands]
+    lines = [
+        "EventEvolution_strain --file {file:s} --element {element:d} --incc {incc:d} --output {output:s}".format(
+            **c
+        )
+        for c in commands
+    ]
 
     return lines
 
+
 # --------------------------------------------------------------------------------------------------
 
-slurm = '''
+slurm = """
 # for safety set the number of cores
 export OMP_NUM_THREADS=1
 
@@ -80,7 +91,7 @@ else
 fi
 
 {0:s}
-'''
+"""
 
 # --------------------------------------------------------------------------------------------------
 
@@ -91,21 +102,21 @@ fmt = str(int(np.ceil(np.log10(ngroup))))
 
 for group in range(ngroup):
 
-    c = commands[group * commands_per_group: (group + 1) * commands_per_group]
-    command = '\n'.join(c)
+    c = commands[group * commands_per_group : (group + 1) * commands_per_group]
+    command = "\n".join(c)
     command = slurm.format(command)
 
-    jobname = ('EventEvolution_strain-{0:0' + fmt + 'd}').format(group)
+    jobname = ("EventEvolution_strain-{0:0" + fmt + "d}").format(group)
 
     sbatch = {
-        'job-name': jobname,
-        'out': jobname + '.out',
-        'nodes': 1,
-        'ntasks': 1,
-        'cpus-per-task': 1,
-        'time': '12h',
-        'account': 'pcsl',
-        'partition': 'serial',
+        "job-name": jobname,
+        "out": jobname + ".out",
+        "nodes": 1,
+        "ntasks": 1,
+        "cpus-per-task": 1,
+        "time": "12h",
+        "account": "pcsl",
+        "partition": "serial",
     }
 
-    open(jobname + '.slurm', 'w').write(gs.scripts.plain(command=command, **sbatch))
+    open(jobname + ".slurm", "w").write(gs.scripts.plain(command=command, **sbatch))

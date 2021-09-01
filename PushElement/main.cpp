@@ -2,12 +2,12 @@
 #include <FrictionQPotFEM/UniformSingleLayer2d.h>
 #include <GMatElastoPlasticQPot/Cartesian2d.h>
 #include <GooseFEM/GooseFEM.h>
-#include <highfive/H5Easy.hpp>
-#include <fmt/core.h>
 #include <cpppath.h>
-#include <docopt/docopt.h>
 #include <cstdio>
 #include <ctime>
+#include <docopt/docopt.h>
+#include <fmt/core.h>
+#include <highfive/H5Easy.hpp>
 #include <xtensor/xrandom.hpp>
 
 #define MYASSERT(expr) MYASSERT_IMPL(expr, __FILE__, __LINE__)
@@ -20,7 +20,6 @@
 
 namespace FQF = FrictionQPotFEM::UniformSingleLayer2d;
 namespace GM = GMatElastoPlasticQPot::Cartesian2d;
-
 
 static const char USAGE[] =
     R"(PushElement
@@ -42,7 +41,6 @@ Options:
 (c) Tom de Geus
 )";
 
-
 template <class T>
 inline void dump_check(H5Easy::File& file, const std::string& key, const T& data)
 {
@@ -54,18 +52,15 @@ inline void dump_check(H5Easy::File& file, const std::string& key, const T& data
     }
 }
 
-
 class Main : public FQF::System {
 
 private:
-
     H5Easy::File m_file;
     GooseFEM::Iterate::StopList m_stop = GooseFEM::Iterate::StopList(20);
     size_t m_inc;
     double m_deps_kick;
 
 public:
-
     Main(const std::string& fname) : m_file(fname, H5Easy::File::ReadWrite)
     {
         this->init(
@@ -94,30 +89,27 @@ public:
     }
 
 public:
-
     size_t inc()
     {
         return m_inc;
     }
 
 public:
-
     void restore_last_stored()
     {
-        m_inc = H5Easy::load<size_t>(m_file, "/stored", {H5Easy::getSize(m_file, "/stored") - size_t(1)});
+        m_inc = H5Easy::load<size_t>(
+            m_file, "/stored", {H5Easy::getSize(m_file, "/stored") - size_t(1)});
         m_t = H5Easy::load<decltype(m_t)>(m_file, "/t", {m_inc});
         this->setU(H5Easy::load<decltype(m_u)>(m_file, fmt::format("/disp/{0:d}", m_inc)));
     }
 
 public:
-
     void write_completed(size_t nstep)
     {
         H5Easy::dump(m_file, "/completed", nstep, H5Easy::DumpMode::Overwrite);
     }
 
 public:
-
     int run_push(const std::string& outfilename)
     {
         auto dV = m_quad.AsTensor<2>(m_quad.dV());
@@ -128,21 +120,22 @@ public:
 
         H5Easy::File data(outfilename, H5Easy::File::Overwrite);
 
-        int S = 0;              // avalanche size (maximum size since beginning)
-        size_t A = 0;           // current avalanche area (maximum size since beginning)
-        size_t t_step = 500;    // interval at which to store a global snapshot
-        size_t ioverview = 0;   // storage index
-        size_t ievent = 0;      // storage index
-        bool last = false;      // == true when equilibrium is reached -> store equilibrium configuration
-        bool attribute = true;  // signal to store attribute
-        bool event = false;     // == true every time a yielding event took place -> write "/event/*"
+        int S = 0; // avalanche size (maximum size since beginning)
+        size_t A = 0; // current avalanche area (maximum size since beginning)
+        size_t t_step = 500; // interval at which to store a global snapshot
+        size_t ioverview = 0; // storage index
+        size_t ievent = 0; // storage index
+        bool last = false; // == true when equilibrium is reached -> store equilibrium configuration
+        bool attribute = true; // signal to store attribute
+        bool event = false; // == true every time a yielding event took place -> write "/event/*"
         size_t iiter_last = 0;
         size_t A_last = 0;
         xt::xtensor<int, 1> idx_last = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
         xt::xtensor<int, 1> idx_n = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
         xt::xtensor<int, 1> idx = xt::view(m_material_plas.CurrentIndex(), xt::all(), 0);
         xt::xtensor<double, 2> Sig_bar = xt::average(m_Sig, dV, {0, 1}); // only shape matters
-        xt::xtensor<double, 3> Sig_elem = xt::average(m_Sig_plas, dV_plas, {1}); // only shape matters
+        xt::xtensor<double, 3> Sig_elem =
+            xt::average(m_Sig_plas, dV_plas, {1}); // only shape matters
         xt::xtensor<double, 2> Sig_plas = xt::empty<double>({3ul, m_N});
         xt::xtensor<double, 1> sig_weak = xt::empty<double>({3ul});
         xt::xtensor<double, 1> sig_crack = xt::empty<double>({3ul});
@@ -150,7 +143,12 @@ public:
         xt::xtensor<double, 2> yielded_broadcast = xt::empty<double>({3ul, m_N});
         MYASSERT(xt::allclose(GM::Sigd(Sig_bar)(), H5Easy::load<double>(m_file, "/sigd", {m_inc})));
 
-        xt::xtensor<size_t, 1> random = xt::random::randint({1,}, 0, static_cast<int>(m_N));
+        xt::xtensor<size_t, 1> random = xt::random::randint(
+            {
+                1,
+            },
+            0,
+            static_cast<int>(m_N));
         size_t trigger_element = random(0);
         this->triggerElementWithLocalSimpleShear(m_deps_kick, trigger_element, false);
 
@@ -210,7 +208,8 @@ public:
             }
 
             if (save_event) {
-                xt::xtensor<size_t, 1> r = xt::flatten_indices(xt::argwhere(xt::not_equal(idx, idx_last)));
+                xt::xtensor<size_t, 1> r =
+                    xt::flatten_indices(xt::argwhere(xt::not_equal(idx, idx_last)));
                 for (size_t i = 0; i < r.size(); ++i) {
                     H5Easy::dump(data, "/event/step", idx(r(i)) - idx_last(r(i)), {ievent});
                     H5Easy::dump(data, "/event/r", r(i), {ievent});
@@ -313,7 +312,6 @@ public:
         return 0;
     }
 };
-
 
 int main(int argc, const char** argv)
 {

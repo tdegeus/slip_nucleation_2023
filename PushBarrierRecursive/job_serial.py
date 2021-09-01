@@ -1,4 +1,3 @@
-
 import sys
 import os
 import re
@@ -8,12 +7,20 @@ import GooseSLURM as gs
 
 # ----
 
-files = sorted(list(filter(None, subprocess.check_output(
-    "find . -iname 'id*.hdf5'", shell=True).decode('utf-8').split('\n'))))
+files = sorted(
+    list(
+        filter(
+            None,
+            subprocess.check_output("find . -iname 'id*.hdf5'", shell=True)
+            .decode("utf-8")
+            .split("\n"),
+        )
+    )
+)
 
 # ----
 
-slurm = '''
+slurm = """
 # for safety set the number of cores
 export OMP_NUM_THREADS=1
 
@@ -30,25 +37,27 @@ else
 fi
 
 {0:s}
-'''
+"""
 
 for file in files:
 
     basename = os.path.splitext(file)[0]
 
-    command = 'PushBarrierRecursive "{0:s}" "{1:s}"'.format(file, basename)
+    command = f'PushBarrierRecursive "{file:s}" "{basename:s}"'
     command = slurm.format(command)
 
     sbatch = {
-        'job-name': basename,
-        'out': basename + '.out',
-        'nodes': 1,
-        'ntasks': 1,
-        'cpus-per-task': 1,
-        'time': '24h',
-        'account': 'pcsl',
-        'partition': 'serial',
-        'mem' : '8G',
+        "job-name": basename,
+        "out": basename + ".out",
+        "nodes": 1,
+        "ntasks": 1,
+        "cpus-per-task": 1,
+        "time": "24h",
+        "account": "pcsl",
+        "partition": "serial",
+        "mem": "8G",
     }
 
-    open(basename + '.slurm', 'w').write(gs.scripts.plain(command=slurm.format(command), **sbatch))
+    open(basename + ".slurm", "w").write(
+        gs.scripts.plain(command=slurm.format(command), **sbatch)
+    )

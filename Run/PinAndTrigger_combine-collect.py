@@ -11,7 +11,9 @@ import tqdm
 basename = os.path.splitext(os.path.basename(__file__))[0]
 
 parser = argparse.ArgumentParser()
-parser.add_argument("-o", "--output", type=str, help="Output file (appended)", default=basename + ".h5")
+parser.add_argument(
+    "-o", "--output", type=str, help="Output file (appended)", default=basename + ".h5"
+)
 parser.add_argument("files", type=str, nargs="*", help="Files to add")
 args = parser.parse_args()
 assert np.all([os.path.isfile(os.path.realpath(file)) for file in args.files])
