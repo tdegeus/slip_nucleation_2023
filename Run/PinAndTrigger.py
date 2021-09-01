@@ -11,12 +11,12 @@ import QPot  # noqa: F401
 import setuptools_scm
 
 
-def initsystem(data):
+def initsystem(data: h5py.File) -> model.System:
     r"""
     Read system from file.
 
-    :param h5py.File data: Open simulation HDF5 archive (read-only).
-    :return: FrictionQPotFEM.UniformSingleLayer2d.System
+    :param data: Open simulation HDF5 archive (read-only).
+    :return: The initialised system.
     """
 
     system = model.System(
@@ -39,12 +39,12 @@ def initsystem(data):
     return system
 
 
-def reset_epsy(system, data):
+def reset_epsy(system: model.System, data: h5py.File):
     r"""
     Reset yield strain history from file.
 
-    :param FrictionQPotFEM.UniformSingleLayer2d.System system: The system (modified: yield strains changed).
-    :param h5py.File data: Open simulation HDF5 archive (read-only).
+    :param system: The system (modified: yield strains changed).
+    :param data: Open simulation HDF5 archive (read-only).
     """
 
     e = data["/cusp/epsy"][...]
@@ -70,13 +70,15 @@ def reset_epsy(system, data):
                 chunk.set_y(epsy[i, :])
 
 
-def pushincrements(system, data, target_stress):
+def pushincrements(
+    system: model.System, data: h5py.File, target_stress: float
+) -> (np.ndarray, np.ndarray):
     r"""
     Get a list of increment from which the stress can be reached by elastic loading only.
 
-    :param FrictionQPotFEM.UniformSingleLayer2d.System system: The system (modified: all increments visited).
-    :param h5py.File data: Open simulation HDF5 archive (read-only).
-    :param float target_stress: The stress at which to push (in real units).
+    :param system: The system (modified: all increments visited).
+    :param data: Open simulation HDF5 archive (read-only).
+    :param target_stress: The stress at which to push (in real units).
     :return:
         ``inc_system`` List of system spanning avalanches.
         ``inc_push`` List of increment from which the stress can be reached by elastic loading only.
@@ -152,7 +154,7 @@ def pushincrements(system, data, target_stress):
     return inc_system_ret, inc_push
 
 
-def pinning(system: model.System, target_element: int, target_A: int):
+def pinning(system: model.System, target_element: int, target_A: int) -> np.ndarray:
     r"""
     Return pinning used in ``pinsystem``.
 
@@ -164,6 +166,7 @@ def pinning(system: model.System, target_element: int, target_A: int):
 
     :param target_A:
         Number of blocks to keep unpinned (``target_A / 2`` on both sides of ``target_element``).
+
     :return: Per element: pinned (``True``) or not (``False``)
     """
 
@@ -193,7 +196,7 @@ def pinning(system: model.System, target_element: int, target_A: int):
     return pinned
 
 
-def pinsystem(system: model.System, target_element: int, target_A: int):
+def pinsystem(system: model.System, target_element: int, target_A: int) -> np.ndarray:
     r"""
     Pin down part of the system by converting blocks to being elastic:
     having a single parabolic potential with the minimum equal to the current minimum.
@@ -239,20 +242,31 @@ def pinsystem(system: model.System, target_element: int, target_A: int):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
+
     parser.add_argument(
         "-f", "--file", type=str, help="Filename of simulation file (read-only)"
     )
+
     parser.add_argument(
         "-o", "--output", type=str, help="Filename of output file (overwritten)"
     )
-    parser.add_argument("-s", "--stress", type=float, help="Stress as which to trigger")
+
+    parser.add_argument(
+        "-s", "--stress", type=float, help="Stress as which to trigger (in real units)"
+    )
+
     parser.add_argument(
         "-i", "--incc", type=int, help="Increment number of last system-spanning event"
     )
-    parser.add_argument("-e", "--element", type=int, help="Element to push")
+
+    parser.add_argument(
+        "-e", "--element", type=int, help="Element to push (index along the weak layer)"
+    )
+
     parser.add_argument(
         "-a", "--size", type=int, help="Number of elements to keep unpinned"
     )
+
     args = parser.parse_args()
     assert os.path.isfile(os.path.realpath(args.file))
     assert os.path.realpath(args.file) != os.path.realpath(args.output)
@@ -313,14 +327,13 @@ if __name__ == "__main__":
 
         print("done:", args.output, ", niter = ", niter)
 
-        output["/meta/PinAndTrigger/file"] = args.file
-        output["/meta/PinAndTrigger/version"] = myversion
-        output[
-            "/meta/PinAndTrigger/version_dependencies"
-        ] = model.version_dependencies()
-        output["/meta/PinAndTrigger/target_stress"] = target_stress
-        output["/meta/PinAndTrigger/target_inc_system"] = target_inc_system
-        output["/meta/PinAndTrigger/target_A"] = target_A
-        output["/meta/PinAndTrigger/target_element"] = target_element
-        output["/meta/PinAndTrigger/S"] = np.sum(idx - idx_n)
-        output["/meta/PinAndTrigger/A"] = np.sum(idx != idx_n)
+        root = "/meta/PinAndTrigger"
+        output[f"{root}/file"] = args.file
+        output[f"{root}/version"] = myversion
+        output[f"{root}/version_dependencies"] = model.version_dependencies()
+        output[f"{root}/target_stress"] = target_stress
+        output[f"{root}/target_inc_system"] = target_inc_system
+        output[f"{root}/target_A"] = target_A
+        output[f"{root}/target_element"] = target_element
+        output[f"{root}/S"] = np.sum(idx - idx_n)
+        output[f"{root}/A"] = np.sum(idx != idx_n)
