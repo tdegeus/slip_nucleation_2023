@@ -11,7 +11,6 @@
 
 To generate use ``PinAndTrigger_rerun_sync-A_job-serial.py``.
 """
-
 import argparse
 import os
 import re
@@ -125,7 +124,9 @@ if __name__ == "__main__":
 
     basename = os.path.splitext(os.path.basename(__file__))[0]
 
-    parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter, description=__doc__)
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.RawDescriptionHelpFormatter, description=__doc__
+    )
     parser.add_argument("file", type=str, help="YAML configuration file")
     args = parser.parse_args()
 
