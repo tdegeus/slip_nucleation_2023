@@ -1,4 +1,7 @@
-"""Generate configuration file for ``PinAndTrigger_rerun_sync-A.py``
+"""
+Generate configuration file for ``PinAndTrigger_rerun_sync-A.py``.
+All output is written to the current working directory.
+All inputs should be absolute or relative to the current working directory.
 """
 import argparse
 import itertools
@@ -12,21 +15,24 @@ import h5py
 import numpy as np
 import shelephant
 
-
 if __name__ == "__main__":
 
     basename = os.path.splitext(os.path.basename(__file__))[0]
+    reldir = os.path.relpath(os.path.dirname(__file__), os.getcwd())
 
-    parser = argparse.ArgumentParser(
-        formatter_class=argparse.RawDescriptionHelpFormatter, description=__doc__
-    )
+    class MyFormatter(
+        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
+    ):
+        pass
+
+    parser = argparse.ArgumentParser(formatter_class=MyFormatter, description=__doc__)
 
     parser.add_argument(
         "-c",
         "--collect",
         type=str,
         default="PinAndTrigger_collect.h5",
-        help="Input file ('r')",
+        help='Existing data, generated with "PinAndTrigger.py" (read-only)',
     )
 
     parser.add_argument(
@@ -34,7 +40,7 @@ if __name__ == "__main__":
         "--basename",
         type=str,
         default="PinAndTrigger_Rerun",
-        help="Base for job-scripts",
+        help="Base-name for job-scripts",
     )
 
     parser.add_argument(
@@ -42,7 +48,7 @@ if __name__ == "__main__":
         "--info",
         type=str,
         default="EnsembleInfo.h5",
-        help="EnsembleInfo (to read normalisation downstream)",
+        help="EnsembleInfo to read normalisation (read-only)",
     )
 
     parser.add_argument(
@@ -50,22 +56,21 @@ if __name__ == "__main__":
         "--group",
         type=int,
         default=50,
-        help="Number of runs to group in a single run.",
+        help="Number of runs to group in a single job.",
     )
 
     parser.add_argument(
-        "-e",
-        "--executable",
+        "--pyscript",
         type=str,
-        default="python PinAndTrigger_rerun_sync-A.py",
-        help="Executable to run simulations with",
+        default=os.path.normpath(os.path.join(reldir, "PinAndTrigger_rerun_sync-A.py")),
+        help="Python-script to run simulations",
     )
 
     parser.add_argument(
         "--conda",
         type=str,
         default="code_velocity",
-        help="Basename of the conda environment (appended with '_E5v4' and '_s6g1')",
+        help="Base-name of the Conda environment (appended with '_E5v4' and '_s6g1')",
     )
 
     args = parser.parse_args()
@@ -146,7 +151,7 @@ if __name__ == "__main__":
             exit 1
         fi
 
-        stdbuf -o0 -e0 {args.executable} {jobname}.yaml
+        stdbuf -o0 -e0 python {args.pyscript} {jobname}.yaml
         """
         )
 

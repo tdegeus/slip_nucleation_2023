@@ -78,6 +78,7 @@ def run_dynamics(
     a = 0
 
     ret = dict(
+        pinned=pinned,
         sig_xx=np.zeros((target_A, N), dtype=np.float64),
         sig_xy=np.zeros((target_A, N), dtype=np.float64),
         sig_yy=np.zeros((target_A, N), dtype=np.float64),
