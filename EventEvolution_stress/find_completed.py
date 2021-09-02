@@ -17,7 +17,7 @@ def is_completed(file):
     try:
         with h5py.File(file, "r") as data:
             return data["/meta/EventEvolution_stress/completed"][...]
-    except:  # noqa: E722
+    except:
         return False
 
 
