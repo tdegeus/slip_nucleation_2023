@@ -1,3 +1,17 @@
+"""This script use a configuration file as follows:
+
+.. code-block:: yaml
+
+    collected: PinAndTrigger_collect.h5
+    info: EnsembleInfo.h5
+    output: myoutput.h5
+    paths:
+      - stress=0d6/A=100/id=183/incc=45/element=0
+      - stress=0d6/A=100/id=232/incc=41/element=729
+
+To generate use ``PinAndTrigger_rerun_sync-A_job-serial.py``.
+"""
+
 import argparse
 import os
 import re
@@ -111,8 +125,8 @@ if __name__ == "__main__":
 
     basename = os.path.splitext(os.path.basename(__file__))[0]
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("file", type=str, help="Configuration file")
+    parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter, description=__doc__)
+    parser.add_argument("file", type=str, help="YAML configuration file")
     args = parser.parse_args()
 
     assert os.path.isfile(os.path.realpath(args.file))
