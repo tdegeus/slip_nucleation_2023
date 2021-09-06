@@ -73,23 +73,23 @@ def generate(filename: str, N: int):
     """
 
     # parameters
-    h       = np.pi
-    L       = h * float(N)
+    h = np.pi
+    L = h * float(N)
 
     # define mesh and element sets
-    mesh    = GooseFEM.Mesh.Quad4.FineLayer(N,N,h)
-    nelem   = mesh.nelem()
+    mesh = GooseFEM.Mesh.Quad4.FineLayer(N, N, h)
+    nelem = mesh.nelem()
     plastic = mesh.elementsMiddleLayer()
     elastic = np.setdiff1d(np.arange(nelem), plastic)
 
     # extract node sets to set the boundary conditions
-    ndim    = mesh.ndim()
-    top     = mesh.nodesTopEdge()
-    bottom  = mesh.nodesBottomEdge()
-    left    = mesh.nodesLeftOpenEdge()
-    right   = mesh.nodesRightOpenEdge()
-    nleft   = len(left)
-    ntop    = len(top)
+    ndim = mesh.ndim()
+    top = mesh.nodesTopEdge()
+    bottom = mesh.nodesBottomEdge()
+    left = mesh.nodesLeftOpenEdge()
+    right = mesh.nodesRightOpenEdge()
+    nleft = len(left)
+    ntop = len(top)
 
     # initialize DOF numbers
     dofs = mesh.dofs()
@@ -97,62 +97,63 @@ def generate(filename: str, N: int):
     # periodicity in horizontal direction : eliminate 'dependent' DOFs
     for i in range(nleft):
         for j in range(ndim):
-            dofs[right[i],j] = dofs[left[i],j]
+            dofs[right[i], j] = dofs[left[i], j]
 
     # renumber "dofs" to be sequential
     dofs = GooseFEM.Mesh.renumber(dofs)
 
     # construct list with prescribed DOFs
     # - allocate
-    fixedDofs = np.empty((2*ntop*ndim),dtype='int')
+    fixedDofs = np.empty((2 * ntop * ndim), dtype="int")
     # - set DOFs
     for i in range(ntop):
         for j in range(ndim):
-            fixedDofs[i*ndim+j          ] = dofs[bottom[i],j]
-            fixedDofs[i*ndim+j+ntop*ndim] = dofs[top   [i],j]
+            fixedDofs[i * ndim + j] = dofs[bottom[i], j]
+            fixedDofs[i * ndim + j + ntop * ndim] = dofs[top[i], j]
 
     # yield strains
-    k           = 2.0
+    k = 2.0
     realization = str(uuid.uuid4())
-    epsy        = 1.e-5 + 1.e-3 * np.random.weibull(k,size=1000*len(plastic)).reshape(len(plastic),-1)
-    epsy[:,0]   = 1.e-5 + 1.e-3 * np.random.random(len(plastic))
-    epsy        = np.cumsum(epsy,axis=1)
-    idx         = np.min(np.where(np.min(epsy,axis=0)>.55)[0])
-    epsy        = epsy[:,:idx]
+    epsy = 1.0e-5 + 1.0e-3 * np.random.weibull(k, size=1000 * len(plastic)).reshape(
+        len(plastic), -1
+    )
+    epsy[:, 0] = 1.0e-5 + 1.0e-3 * np.random.random(len(plastic))
+    epsy = np.cumsum(epsy, axis=1)
+    idx = np.min(np.where(np.min(epsy, axis=0) > 0.55)[0])
+    epsy = epsy[:, :idx]
 
     # parameters
-    c     = 1.
-    G     = 1.
-    K     = 10. * G
-    rho   = G / c**2.
-    qL    = 2. * np.pi / L
-    qh    = 2. * np.pi / h
-    alpha = np.sqrt(2.) * qL * c * rho
+    c = 1.0
+    G = 1.0
+    K = 10.0 * G
+    rho = G / c ** 2.0
+    qL = 2.0 * np.pi / L
+    qh = 2.0 * np.pi / h
+    alpha = np.sqrt(2.0) * qL * c * rho
 
     # time step
-    dt  = 1. / ( c * qh )
-    dt /= 10.
+    dt = 1.0 / (c * qh)
+    dt /= 10.0
 
-    with h5py.File(filename, 'w') as file:
+    with h5py.File(filename, "w") as file:
 
-        file['/coor'         ] = mesh.coor()
-        file['/conn'         ] = mesh.conn()
-        file['/dofs'         ] = dofs
-        file['/iip'          ] = fixedDofs
-        file['/run/epsd/max' ] = .5
-        file['/run/epsd/kick'] = 1.e-7
-        file['/run/dt'       ] = dt
-        file['/rho'          ] = rho   * np.ones((nelem))
-        file['alpha'         ] = alpha * np.ones((nelem))
-        file['/cusp/elem'    ] = plastic
-        file['/cusp/K'       ] = K * np.ones((len(plastic)))
-        file['/cusp/G'       ] = G * np.ones((len(plastic)))
-        file['/cusp/epsy'    ] = epsy
-        file['/elastic/elem' ] = elastic
-        file['/elastic/K'    ] = K * np.ones((len(elastic)))
-        file['/elastic/G'    ] = G * np.ones((len(elastic)))
-        file['/uuid'         ] = realization
-
+        file["/coor"] = mesh.coor()
+        file["/conn"] = mesh.conn()
+        file["/dofs"] = dofs
+        file["/iip"] = fixedDofs
+        file["/run/epsd/max"] = 0.5
+        file["/run/epsd/kick"] = 1.0e-7
+        file["/run/dt"] = dt
+        file["/rho"] = rho * np.ones(nelem)
+        file["alpha"] = alpha * np.ones(nelem)
+        file["/cusp/elem"] = plastic
+        file["/cusp/K"] = K * np.ones(len(plastic))
+        file["/cusp/G"] = G * np.ones(len(plastic))
+        file["/cusp/epsy"] = epsy
+        file["/elastic/elem"] = elastic
+        file["/elastic/K"] = K * np.ones(len(elastic))
+        file["/elastic/G"] = G * np.ones(len(elastic))
+        file["/uuid"] = realization
 
 
 def pushincrements(

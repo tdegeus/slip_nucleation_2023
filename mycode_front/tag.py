@@ -1,5 +1,6 @@
 import packaging.version
 
+
 def has_uncommited(ver: str):
     """
     Check of a version string encoded that there were uncommitted changes.
@@ -66,4 +67,3 @@ def greater_equal(a: str, b: str) -> bool:
     """
 
     return packaging.version.parse(a) >= packaging.version.parse(b)
-

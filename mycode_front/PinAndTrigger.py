@@ -163,7 +163,6 @@ def main():
 
         system = system.initsystem(data)
         eps_kick = data["/run/epsd/kick"][...]
-        N = system.plastic().size
 
         # (*) Determine at which increment a push could be applied
 
@@ -270,10 +269,12 @@ def collect():
                 incc = basename.split("incc=")[1].split("_")[0]
                 element = basename.split("element=")[1].split(".hdf5")[0]
 
+                # alias meta-data
+                # (allow for typos in previous versions)
+
                 if mymodule in data["meta"]:
                     meta = data["meta"][mymodule]
                     root_meta = f"/meta/{mymodule}"
-                # account for typo
                 elif "PushAndTrigger" in data["meta"]:
                     meta = data["meta"]["PushAndTrigger"]
                     root_meta = "/meta/PushAndTrigger"
@@ -282,15 +283,13 @@ def collect():
 
                 if init:
                     version = meta["version"].asstr()[...]
-                    version_dependencies = list(meta["version_dependencies"].asstr()[...])
+                    deps = list(meta["version_dependencies"].asstr()[...])
                     output["/meta/version"] = version
-                    output["/meta/version_dependencies"] = version_dependencies
+                    output["/meta/version_dependencies"] = deps
                     init = False
                 else:
                     assert version == meta["version"].asstr()[...]
-                    assert version_dependencies == list(
-                        meta["version_dependencies"].asstr()[...]
-                    )
+                    assert deps == list(meta["version_dependencies"].asstr()[...])
 
                 assert int(incc) == meta["target_inc_system"][...]
                 assert int(A) == meta["target_A"][...]
@@ -299,9 +298,7 @@ def collect():
                     os.path.splitext(str(meta["file"].asstr()[...]).split("id=")[1])[0]
                 )
 
-                root = (
-                    f"/data/stress={stress}/A={A}/id={simid}/incc={incc}/element={element}"
-                )
+                root = f"/data/stress={stress}/A={A}/id={simid}/incc={incc}/element={element}"
 
                 if root in output:
                     existing += [file]
