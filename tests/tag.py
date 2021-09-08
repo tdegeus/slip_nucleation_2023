@@ -17,10 +17,13 @@ class MyTests(unittest.TestCase):
 
     def test_any_has_uncommitted(self):
 
-        self.assertTrue(my.tag.any_has_uncommitted(["main=3.2.1", "other=4.4.dev1+hash.bash"]))
-        self.assertFalse(my.tag.any_has_uncommitted(["main=3.2.1", "other=4.4.dev1+hash"]))
-        self.assertFalse(my.tag.any_has_uncommitted(["main=3.2.1", "other=4.4.dev1"]))
-        self.assertFalse(my.tag.any_has_uncommitted(["main=3.2.1", "other=4.4"]))
+        m = "main=3.2.1"
+        o = "other"
+
+        self.assertTrue(my.tag.any_has_uncommitted([m, f"{o}=4.4.dev1+hash.bash"]))
+        self.assertFalse(my.tag.any_has_uncommitted([m, f"{o}=4.4.dev1+hash"]))
+        self.assertFalse(my.tag.any_has_uncommitted([m, f"{o}=4.4.dev1"]))
+        self.assertFalse(my.tag.any_has_uncommitted([m, f"{o}=4.4"]))
 
     def test_greater_equal(self):
 

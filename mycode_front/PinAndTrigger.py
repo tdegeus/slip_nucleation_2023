@@ -1,20 +1,17 @@
 import argparse
 import os
+import textwrap
 
 import FrictionQPotFEM.UniformSingleLayer2d as model
-import GMatElastoPlasticQPot.Cartesian2d as GMat
 import GooseFEM  # noqa: F401
-import h5py
-import numpy as np
-import QPot  # noqa: F401
 import GooseHDF5 as g5
 import h5py
 import numpy as np
+import QPot  # noqa: F401
 import shelephant
 import tqdm
 
-from . import system
-from . import tag
+from . import System
 from ._version import version
 
 mymodule = "PinAndTrigger"
@@ -107,6 +104,8 @@ def pinsystem(system: model.System, target_element: int, target_A: int) -> np.nd
 
 def main():
     """
+    Command-line interface:
+
     1.  Restore system at a given increment.
     2.  Pin down part of the system.
     3.  Push a specific element and minimise energy.
@@ -117,7 +116,9 @@ def main():
     ):
         pass
 
-    parser = argparse.ArgumentParser(formatter_class=MyFormatter, description=__doc__)
+    parser = argparse.ArgumentParser(
+        formatter_class=MyFormatter, description=textwrap.dedent(main.__doc__)
+    )
 
     parser.add_argument(
         "-f", "--file", type=str, help="Filename of simulation file (read-only)"
@@ -143,16 +144,13 @@ def main():
         "-a", "--size", type=int, help="Number of elements to keep unpinned"
     )
 
+    parser.add_argument("-v", "--version", action="version", version=version)
+
     args = parser.parse_args()
     assert os.path.isfile(os.path.realpath(args.file))
     assert os.path.realpath(args.file) != os.path.realpath(args.output)
 
     print("starting:", args.output)
-
-    root = git.Repo(
-        os.path.dirname(__file__), search_parent_directories=True
-    ).working_tree_dir
-    myversion = setuptools_scm.get_version(root=root)
 
     target_stress = args.stress
     target_inc_system = args.incc
@@ -161,7 +159,7 @@ def main():
 
     with h5py.File(args.file, "r") as data:
 
-        system = system.initsystem(data)
+        system = System.initsystem(data)
         eps_kick = data["/run/epsd/kick"][...]
 
         # (*) Determine at which increment a push could be applied
@@ -204,7 +202,7 @@ def main():
 
         root = f"/meta/{mymodule}"
         output[f"{root}/file"] = args.file
-        output[f"{root}/version"] = myversion
+        output[f"{root}/version"] = version
         output[f"{root}/version_dependencies"] = model.version_dependencies()
         output[f"{root}/target_stress"] = target_stress
         output[f"{root}/target_inc_system"] = target_inc_system

@@ -1,8 +1,11 @@
-import numpy as np
-import FrictionQPotFEM.UniformSingleLayer2d as model
-import h5py
-import GooseFEM
 import uuid
+
+import FrictionQPotFEM.UniformSingleLayer2d as model
+import GMatElastoPlasticQPot.Cartesian2d as GMat
+import GooseFEM
+import h5py
+import numpy as np
+
 
 def initsystem(data: h5py.File) -> model.System:
     r"""
@@ -114,13 +117,11 @@ def generate(filename: str, N: int):
     # yield strains
     k = 2.0
     realization = str(uuid.uuid4())
-    epsy = 1.0e-5 + 1.0e-3 * np.random.weibull(k, size=1000 * len(plastic)).reshape(
-        len(plastic), -1
-    )
-    epsy[:, 0] = 1.0e-5 + 1.0e-3 * np.random.random(len(plastic))
+    epsy = 1.0e-5 + 1.0e-3 * np.random.weibull(k, size=1000 * N).reshape(N, -1)
+    epsy[:, 0] = 1.0e-5 + 1.0e-3 * np.random.random(N)
     epsy = np.cumsum(epsy, axis=1)
-    idx = np.min(np.where(np.min(epsy, axis=0) > 0.55)[0])
-    epsy = epsy[:, :idx]
+    i = np.min(np.where(np.min(epsy, axis=0) > 0.55)[0])
+    epsy = epsy[:, :i]
 
     # parameters
     c = 1.0
@@ -170,6 +171,8 @@ def pushincrements(
         ``inc_push`` List of increment from which the stress can be reached by elastic loading only.
     """
 
+    plastic = system.plastic()
+    N = plastic.size
     dV = system.quad().AsTensor(2, system.quad().dV())
     kick = data["/kick"][...].astype(bool)
     incs = data["/stored"][...].astype(int)
