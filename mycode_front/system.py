@@ -1,10 +1,76 @@
 import uuid
+import os
+import sys
 
 import FrictionQPotFEM.UniformSingleLayer2d as model
 import GMatElastoPlasticQPot.Cartesian2d as GMat
 import GooseFEM
 import h5py
+import prrng
 import numpy as np
+from typing import TypeVar
+from numpy.typing import DTypeLike
+
+from ._version import version
+
+def dset_extend1d(file: h5py.File, key: str, i: int, value: TypeVar("T")):
+    """
+    Dump and auto-extend a 1d extendible dataset.
+    :param file: Opened HDF5 file.
+    :param key: Path to the dataset.
+    :param i: Index to which to write.
+    :param value: Value to write at index ``i``.
+    """
+
+    dset = file[key]
+    if dset.size <= i:
+        dset.resize((i + 1, ))
+    dset[i] = value
+
+
+def dump_with_atttrs(file: h5py.File, key: str, data: TypeVar("T"), **kwargs):
+    """
+    Write dataset and an optional number of attributes.
+    The attributed are stored based on the name that is used for the option.
+
+    :param file: Opened HDF5 file.
+    :param key: Path to the dataset.
+    :param data: Data to write.
+    """
+
+    file[key] = data
+    for attr in kwargs:
+        file[key].attrs[attr] = kwargs[attr]
+
+
+def read_epsy(data: h5py.File) -> np.ndarray:
+    """
+    Regenerate yield strain sequence per plastic element.
+    Note that two ways of storage are supported:
+    - "Classical": the yield strains are stored.
+    - "prrng": only the seeds per block are stored, that can then be unique restored.
+
+    :param data: Opened simulation archive.
+    """
+
+    if isinstance(data["/cusp/epsy"], h5py.Dataset):
+        return data["/cusp/epsy"][...]
+
+    initstate = data["/cusp/epsy/initstate"][...]
+    initseq = data["/cusp/epsy/initseq"][...]
+    eps_offset = data["/cusp/epsy/eps_offset"][...]
+    eps0 = data["/cusp/epsy/eps0"][...]
+    k = data["/cusp/epsy/k"][...]
+    nchunk = data["/cusp/epsy/nchunk"][...]
+
+    generators = prrng.pcg32_array(initstate, initseq)
+
+    epsy = generators.weibull([nchunk], k)
+    epsy *= 2.0 * eps0
+    epsy += eps_offset
+    epsy = np.cumsum(epsy, 1)
+
+    return epsy
 
 
 def initsystem(data: h5py.File) -> model.System:
@@ -16,19 +82,19 @@ def initsystem(data: h5py.File) -> model.System:
     """
 
     system = model.System(
-        data["/coor"][...],
-        data["/conn"][...],
-        data["/dofs"][...],
-        data["/dofsP"][...],
+        data["coor"][...],
+        data["conn"][...],
+        data["dofs"][...],
+        data["dofsP"][...] if "dofsP" in data else data["iip"][...],
         data["/elastic/elem"][...],
         data["/cusp/elem"][...],
     )
 
-    system.setMassMatrix(data["/rho"][...])
-    system.setDampingMatrix(data["/damping/alpha"][...])
+    system.setMassMatrix(data["rho"][...])
+    system.setDampingMatrix(data["alpha"][...] if "alpha" in data else data["damping/alpha"][...])
     system.setElastic(data["/elastic/K"][...], data["/elastic/G"][...])
     system.setPlastic(
-        data["/cusp/K"][...], data["/cusp/G"][...], data["/cusp/epsy"][...]
+        data["/cusp/K"][...], data["/cusp/G"][...], read_epsy(data)
     )
     system.setDt(data["/run/dt"][...])
 
@@ -44,7 +110,7 @@ def reset_epsy(system: model.System, data: h5py.File):
     :param data: Open simulation HDF5 archive (read-only).
     """
 
-    e = data["/cusp/epsy"][...]
+    e = read_epsy(data)
     epsy = np.empty((e.shape[0], e.shape[1] + 1), dtype=e.dtype)
     epsy[:, 0] = -e[:, 0]
     epsy[:, 1:] = e
@@ -67,12 +133,15 @@ def reset_epsy(system: model.System, data: h5py.File):
                 chunk.set_y(epsy[i, :])
 
 
-def generate(filename: str, N: int):
+def generate(filename: str, N: int, seed: int = 0, classic: bool = False):
     """
     Generate input file.
 
     :param filename: The filename of the input file (overwritten).
     :param N: The number of blocks.
+    :param seed: Base seed to use to generate the disorder.
+    :param classic:
+        If ``True`` the yield strain are hard-coded in the file, otherwise prrng is used.
     """
 
     # parameters
@@ -91,39 +160,36 @@ def generate(filename: str, N: int):
     bottom = mesh.nodesBottomEdge()
     left = mesh.nodesLeftOpenEdge()
     right = mesh.nodesRightOpenEdge()
-    nleft = len(left)
-    ntop = len(top)
 
-    # initialize DOF numbers
+    # periodicity in horizontal direction
     dofs = mesh.dofs()
-
-    # periodicity in horizontal direction : eliminate 'dependent' DOFs
-    for i in range(nleft):
-        for j in range(ndim):
-            dofs[right[i], j] = dofs[left[i], j]
-
-    # renumber "dofs" to be sequential
+    dofs[right, :] = dofs[left, :]
     dofs = GooseFEM.Mesh.renumber(dofs)
 
-    # construct list with prescribed DOFs
-    # - allocate
-    fixedDofs = np.empty((2 * ntop * ndim), dtype="int")
-    # - set DOFs
-    for i in range(ntop):
-        for j in range(ndim):
-            fixedDofs[i * ndim + j] = dofs[bottom[i], j]
-            fixedDofs[i * ndim + j + ntop * ndim] = dofs[top[i], j]
+    # fixed top and bottom
+    iip = np.concatenate((dofs[bottom, :].ravel(), dofs[top, :].ravel()))
 
     # yield strains
     k = 2.0
-    realization = str(uuid.uuid4())
-    epsy = 1.0e-5 + 1.0e-3 * np.random.weibull(k, size=1000 * N).reshape(N, -1)
-    epsy[:, 0] = 1.0e-5 + 1.0e-3 * np.random.random(N)
-    epsy = np.cumsum(epsy, axis=1)
-    i = np.min(np.where(np.min(epsy, axis=0) > 0.55)[0])
-    epsy = epsy[:, :i]
+    eps0 = 1.0e-3 / 2.0
+    eps_offset = 1.0e-5
+    nchunk = 1000
 
-    # parameters
+    if classic:
+        assert seed == 0 # at the moment seeding is not controlled locally
+        realization = str(uuid.uuid4())
+        epsy = eps_offset + 2.0 * eps0 * np.random.weibull(k, size=nchunk * N).reshape(N, -1)
+        epsy[:, 0] = eps_offset + 2.0 * eps0 * np.random.random(N)
+        epsy = np.cumsum(epsy, axis=1)
+        i = np.min(np.where(np.min(epsy, axis=0) > 0.55)[0])
+        epsy = epsy[:, :i]
+    else:
+        eps0 /= 10.0
+        nchunk *= 6
+        initstate = seed + np.arange(N).astype(np.int64)
+        initseq = np.zeros_like(initstate)
+
+    # elasticity & damping
     c = 1.0
     G = 1.0
     K = 10.0 * G
@@ -131,30 +197,249 @@ def generate(filename: str, N: int):
     qL = 2.0 * np.pi / L
     qh = 2.0 * np.pi / h
     alpha = np.sqrt(2.0) * qL * c * rho
-
-    # time step
-    dt = 1.0 / (c * qh)
-    dt /= 10.0
+    dt = (1.0 / (c * qh)) / 10.0
 
     with h5py.File(filename, "w") as file:
 
-        file["/coor"] = mesh.coor()
-        file["/conn"] = mesh.conn()
-        file["/dofs"] = dofs
-        file["/iip"] = fixedDofs
-        file["/run/epsd/max"] = 0.5
-        file["/run/epsd/kick"] = 1.0e-7
-        file["/run/dt"] = dt
-        file["/rho"] = rho * np.ones(nelem)
-        file["alpha"] = alpha * np.ones(nelem)
-        file["/cusp/elem"] = plastic
-        file["/cusp/K"] = K * np.ones(len(plastic))
-        file["/cusp/G"] = G * np.ones(len(plastic))
-        file["/cusp/epsy"] = epsy
-        file["/elastic/elem"] = elastic
-        file["/elastic/K"] = K * np.ones(len(elastic))
-        file["/elastic/G"] = G * np.ones(len(elastic))
-        file["/uuid"] = realization
+        dump_with_atttrs(
+            file,
+            "/coor",
+            mesh.coor(),
+            desc="Nodal coordinates [nnode, ndim]",
+        )
+
+        dump_with_atttrs(
+            file,
+            "/conn",
+            mesh.conn(),
+            desc="Connectivity (Quad4: nne = 4) [nelem, nne]",
+        )
+
+        dump_with_atttrs(
+            file,
+            "/dofs",
+            dofs,
+            desc="DOFs per node, accounting for semi-periodicity [nnode, ndim]",
+        )
+
+        dump_with_atttrs(
+            file,
+            "/iip",
+            iip,
+            desc="Prescribed DOFs [nnp]",
+        )
+
+        dump_with_atttrs(
+            file,
+            "/run/epsd/kick",
+            eps0 * 2e-4,
+            desc="Strain kick to apply",
+        )
+
+        dump_with_atttrs(
+            file,
+            "/run/dt",
+            dt,
+            desc="Time step",
+        )
+
+        dump_with_atttrs(
+            file,
+            "/rho",
+            rho * np.ones(nelem),
+            desc="Mass density [nelem]",
+        )
+
+        dump_with_atttrs(
+            file,
+            "/alpha",
+            alpha * np.ones(nelem),
+            desc="Damping coefficient (density) [nelem]",
+        )
+
+        dump_with_atttrs(
+            file,
+            "/elastic/elem",
+            elastic,
+            desc="Elastic elements [nelem - N]",
+        )
+
+        dump_with_atttrs(
+            file,
+            "/elastic/K",
+            K * np.ones(len(elastic)),
+            desc="Bulk modulus for elements in '/elastic/elem' [nelem - N]",
+        )
+
+        dump_with_atttrs(
+            file,
+            "/elastic/G",
+            G * np.ones(len(elastic)),
+            desc="Shear modulus for elements in '/elastic/elem' [nelem - N]",
+        )
+
+        dump_with_atttrs(
+            file,
+            "/cusp/elem",
+            plastic,
+            desc="Plastic elements with cusp potential [nplastic]",
+        )
+
+        dump_with_atttrs(
+            file,
+            "/cusp/K",
+            K * np.ones(len(plastic)),
+            desc="Bulk modulus for elements in '/cusp/elem' [nplastic]",
+        )
+
+        dump_with_atttrs(
+            file,
+            "/cusp/G",
+            G * np.ones(len(plastic)),
+            desc="Shear modulus for elements in '/cusp/elem' [nplastic]",
+        )
+
+        if classic:
+
+            file["/cusp/epsy"] = epsy
+            file["/uuid"] = realization
+
+        else:
+            dump_with_atttrs(
+                file,
+                "/cusp/epsy/initstate",
+                initstate,
+                desc="State to initialise prrng.pcg32_array",
+            )
+
+            dump_with_atttrs(
+                file,
+                "/cusp/epsy/initseq",
+                initseq,
+                desc="Sequence to initialise prrng.pcg32_array",
+            )
+
+            dump_with_atttrs(
+                file,
+                "/cusp/epsy/k",
+                k,
+                desc="Shape factor of Weibull distribution",
+            )
+
+            dump_with_atttrs(
+                file,
+                "/cusp/epsy/eps0",
+                eps0,
+                desc="Normalisation: epsy(i + 1) - epsy(i) = 2.0 * eps0 * random + eps_offset",
+            )
+
+            dump_with_atttrs(
+                file,
+                "/cusp/epsy/eps_offset",
+                eps_offset,
+                desc="Offset, see eps0",
+            )
+
+            dump_with_atttrs(
+                file,
+                "/cusp/epsy/nchunk",
+                nchunk,
+                desc="Chunk size",
+            )
+
+
+def run(filename: str, dev: bool):
+    """
+    Run the simulation.
+
+    :param filename: Name of the input/output file (appended).
+    :param dev: If ``True`` uncommitted changes are allowed.
+    """
+
+    basename = os.path.basename(filename)
+
+    with h5py.File(filename, "a") as data:
+
+        system = initsystem(data)
+
+        # check version compatibility
+
+        assert dev or not tag.has_uncommited(version)
+        assert dev or not tag.any_has_uncommited(model.version_dependencies())
+
+        path = "/meta/Run/version"
+        if version != "None":
+            if path in data:
+                assert tag.greater_equal(version, str(data[path].asstr()[...]))
+            else:
+                data[path] = version
+
+        path = "/meta/Run/version_dependencies"
+        if path in data:
+            assert tag.all_greater_equal(model.version_dependencies(), data[path].asstr()[...])
+        else:
+            data[path] = model.version_dependencies()
+
+        if "/meta/Run/completed" in data or "/completed" in data:
+            print("Marked completed, skipping")
+            return 1
+
+        # restore or initialise the this / output
+
+        if "/stored" in data:
+
+            inc = int(data["/stored"][-1])
+            kick = data["/kick"][inc]
+            system.setT(data["/t"][inc])
+            system.setU(data[f"/disp/{inc:d}"][...])
+            print(f"\"{basename}\": Loading, inc = {inc:d}")
+            kick = not kick
+
+        else:
+
+            inc = int(0)
+            kick = True
+
+            dset = data.create_dataset("/stored", (1, ), maxshape=(None, ), dtype=np.uint64)
+            dset[0] = inc
+            dset.attrs["desc"] = "List of increments in \"/disp/{:d}\" and \"/drive/ubar/{0:d}\""
+
+            dset = data.create_dataset("/t", (1, ), maxshape=(None, ), dtype=np.float64)
+            dset[0] = system.t()
+            dset.attrs["desc"] = "Per increment: time at the end of the increment"
+
+            dset = data.create_dataset("/kick", (1, ), maxshape=(None, ), dtype=np.dtype(bool))
+            dset[0] = kick
+            dset.attrs["desc"] = "Per increment: True is a kick was applied"
+
+            data[f"/disp/{inc}"] = system.u()
+            data[f"/disp/{inc}"].attrs["desc"] = "Displacement (at the end of the increment)."
+
+        # run
+
+        inc += 1
+        deps_kick = data["/run/epsd/kick"][...]
+
+        for inc in range(inc, sys.maxsize):
+
+            system.addSimpleShearEventDriven(deps_kick, kick)
+
+            if kick:
+                niter = system.minimise_boundcheck()
+                if niter == 0:
+                    break
+                print(f"\"{basename}\": inc = {inc:8d}, niter = {niter:8d}")
+
+            dset_extend1d(data, "/stored", inc, inc)
+            dset_extend1d(data, "/t", inc, system.t())
+            dset_extend1d(data, "/kick", inc, kick)
+            data[f"/disp/{inc:d}"] = system.u()
+
+            inc += 1
+            kick = not kick
+
+        print(f"\"{basename}\": completed")
+        data["/meta/Run/completed"] = 1
 
 
 def pushincrements(
