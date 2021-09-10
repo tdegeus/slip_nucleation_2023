@@ -12,7 +12,8 @@ setup(
     setup_requires=["setuptools_scm"],
     entry_points={
         "console_scripts": [
-            "PinAndTrigger = mycode_front.PinAndTrigger:main",
+            "PinAndTrigger = mycode_front.PinAndTrigger:cli_main",
+            "PinAndTrigger_collect = mycode_front.PinAndTrigger:cli_collect",
         ]
     },
 )

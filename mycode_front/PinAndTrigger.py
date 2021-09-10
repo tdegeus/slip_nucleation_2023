@@ -102,10 +102,8 @@ def pinsystem(system: model.System, target_element: int, target_A: int) -> np.nd
     return pinned
 
 
-def main():
+def cli_main():
     """
-    Command-line interface:
-
     1.  Restore system at a given increment.
     2.  Pin down part of the system.
     3.  Push a specific element and minimise energy.
@@ -212,7 +210,7 @@ def main():
         output[f"{root}/A"] = np.sum(idx != idx_n)
 
 
-def collect():
+def cli_collect():
 
     basename = os.path.splitext(os.path.basename(__file__))[0]
 
