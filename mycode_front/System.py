@@ -7,6 +7,7 @@ import GMatElastoPlasticQPot.Cartesian2d as GMat
 import GooseFEM
 import h5py
 import prrng
+import tqdm
 import numpy as np
 from typing import TypeVar
 from numpy.typing import DTypeLike
@@ -16,6 +17,7 @@ from ._version import version
 def dset_extend1d(file: h5py.File, key: str, i: int, value: TypeVar("T")):
     """
     Dump and auto-extend a 1d extendible dataset.
+
     :param file: Opened HDF5 file.
     :param key: Path to the dataset.
     :param i: Index to which to write.
@@ -31,7 +33,7 @@ def dset_extend1d(file: h5py.File, key: str, i: int, value: TypeVar("T")):
 def dump_with_atttrs(file: h5py.File, key: str, data: TypeVar("T"), **kwargs):
     """
     Write dataset and an optional number of attributes.
-    The attributed are stored based on the name that is used for the option.
+    The attributes are stored based on the name that is used for the option.
 
     :param file: Opened HDF5 file.
     :param key: Path to the dataset.
@@ -43,25 +45,25 @@ def dump_with_atttrs(file: h5py.File, key: str, data: TypeVar("T"), **kwargs):
         file[key].attrs[attr] = kwargs[attr]
 
 
-def read_epsy(data: h5py.File) -> np.ndarray:
+def read_epsy(file: h5py.File) -> np.ndarray:
     """
     Regenerate yield strain sequence per plastic element.
     Note that two ways of storage are supported:
-    - "Classical": the yield strains are stored.
+    - "classical": the yield strains are stored.
     - "prrng": only the seeds per block are stored, that can then be unique restored.
 
-    :param data: Opened simulation archive.
+    :param file: Opened simulation archive.
     """
 
-    if isinstance(data["/cusp/epsy"], h5py.Dataset):
-        return data["/cusp/epsy"][...]
+    if isinstance(file["/cusp/epsy"], h5py.Dataset):
+        return file["/cusp/epsy"][...]
 
-    initstate = data["/cusp/epsy/initstate"][...]
-    initseq = data["/cusp/epsy/initseq"][...]
-    eps_offset = data["/cusp/epsy/eps_offset"][...]
-    eps0 = data["/cusp/epsy/eps0"][...]
-    k = data["/cusp/epsy/k"][...]
-    nchunk = data["/cusp/epsy/nchunk"][...]
+    initstate = file["/cusp/epsy/initstate"][...]
+    initseq = file["/cusp/epsy/initseq"][...]
+    eps_offset = file["/cusp/epsy/eps_offset"][...]
+    eps0 = file["/cusp/epsy/eps0"][...]
+    k = file["/cusp/epsy/k"][...]
+    nchunk = file["/cusp/epsy/nchunk"][...]
 
     generators = prrng.pcg32_array(initstate, initseq)
 
@@ -73,44 +75,44 @@ def read_epsy(data: h5py.File) -> np.ndarray:
     return epsy
 
 
-def initsystem(data: h5py.File) -> model.System:
+def init(file: h5py.File) -> model.System:
     r"""
     Read system from file.
 
-    :param data: Open simulation HDF5 archive (read-only).
+    :param file: Open simulation HDF5 archive (read-only).
     :return: The initialised system.
     """
 
     system = model.System(
-        data["coor"][...],
-        data["conn"][...],
-        data["dofs"][...],
-        data["dofsP"][...] if "dofsP" in data else data["iip"][...],
-        data["/elastic/elem"][...],
-        data["/cusp/elem"][...],
+        file["coor"][...],
+        file["conn"][...],
+        file["dofs"][...],
+        file["dofsP"][...] if "dofsP" in file else file["iip"][...],
+        file["/elastic/elem"][...],
+        file["/cusp/elem"][...],
     )
 
-    system.setMassMatrix(data["rho"][...])
-    system.setDampingMatrix(data["alpha"][...] if "alpha" in data else data["damping/alpha"][...])
-    system.setElastic(data["/elastic/K"][...], data["/elastic/G"][...])
+    system.setMassMatrix(file["rho"][...])
+    system.setDampingMatrix(file["alpha"][...] if "alpha" in file else file["damping/alpha"][...])
+    system.setElastic(file["/elastic/K"][...], file["/elastic/G"][...])
     system.setPlastic(
-        data["/cusp/K"][...], data["/cusp/G"][...], read_epsy(data)
+        file["/cusp/K"][...], file["/cusp/G"][...], read_epsy(file)
     )
-    system.setDt(data["/run/dt"][...])
+    system.setDt(file["/run/dt"][...])
 
     return system
 
 
-def reset_epsy(system: model.System, data: h5py.File):
+def reset_epsy(system: model.System, file: h5py.File):
     r"""
     Reset yield strain history from file.
     This can for example be used to speed-up things by avoiding re-initialising the system.
 
     :param system: The system (modified: yield strains changed).
-    :param data: Open simulation HDF5 archive (read-only).
+    :param file: Open simulation HDF5 archive (read-only).
     """
 
-    e = read_epsy(data)
+    e = read_epsy(file)
     epsy = np.empty((e.shape[0], e.shape[1] + 1), dtype=e.dtype)
     epsy[:, 0] = -e[:, 0]
     epsy[:, 1:] = e
@@ -133,15 +135,15 @@ def reset_epsy(system: model.System, data: h5py.File):
                 chunk.set_y(epsy[i, :])
 
 
-def generate(filename: str, N: int, seed: int = 0, classic: bool = False):
+def generate(filename: str, N: int, seed: int = 0, classic: bool = False, test_mode: bool = False):
     """
     Generate input file.
 
     :param filename: The filename of the input file (overwritten).
     :param N: The number of blocks.
     :param seed: Base seed to use to generate the disorder.
-    :param classic:
-        If ``True`` the yield strain are hard-coded in the file, otherwise prrng is used.
+    :param classic: The yield strain are hard-coded in the file, otherwise prrng is used.
+    :param test_mode: Run in test mode (smaller chunk).
     """
 
     # parameters
@@ -188,6 +190,10 @@ def generate(filename: str, N: int, seed: int = 0, classic: bool = False):
         nchunk *= 6
         initstate = seed + np.arange(N).astype(np.int64)
         initseq = np.zeros_like(initstate)
+        if test_mode:
+            nchunk = 200
+
+    print(classic, nchunk)
 
     # elasticity & damping
     c = 1.0
@@ -347,20 +353,77 @@ def generate(filename: str, N: int, seed: int = 0, classic: bool = False):
                 desc="Chunk size",
             )
 
+        dump_with_atttrs(
+            file,
+            "/meta/normalisation/N",
+            N,
+            desc="Number of blocks along each plastic layer",
+        )
 
-def run(filename: str, dev: bool):
+        dump_with_atttrs(
+            file,
+            "/meta/normalisation/l",
+            h,
+            desc="Elementary block size",
+        )
+
+        dump_with_atttrs(
+            file,
+            "/meta/normalisation/rho",
+            rho,
+            desc="Elementary density",
+        )
+
+        dump_with_atttrs(
+            file,
+            "/meta/normalisation/G",
+            G,
+            desc="Uniform shear modulus == 2 mu",
+        )
+
+        dump_with_atttrs(
+            file,
+            "/meta/normalisation/K",
+            K,
+            desc="Uniform bulk modulus == kappa",
+        )
+
+        dump_with_atttrs(
+            file,
+            "/meta/normalisation/eps",
+            eps0,
+            desc="Typical yield strain",
+        )
+
+        dump_with_atttrs(
+            file,
+            "/meta/normalisation/sig",
+            2.0 * G * eps0,
+            desc="== 2 G eps0",
+        )
+
+        dump_with_atttrs(
+            file,
+            "/meta/seed_base",
+            seed,
+            desc="Basic seed == 'unique' identifier",
+        )
+
+
+def run(filename: str, dev: bool, verbose: bool = True):
     """
     Run the simulation.
 
     :param filename: Name of the input/output file (appended).
-    :param dev: If ``True`` uncommitted changes are allowed.
+    :param dev: Allow uncommitted changes.
+    :param verbose: Print summary of every increment.
     """
 
     basename = os.path.basename(filename)
 
-    with h5py.File(filename, "a") as data:
+    with h5py.File(filename, "a") as file:
 
-        system = initsystem(data)
+        system = init(file)
 
         # check version compatibility
 
@@ -369,29 +432,29 @@ def run(filename: str, dev: bool):
 
         path = "/meta/Run/version"
         if version != "None":
-            if path in data:
-                assert tag.greater_equal(version, str(data[path].asstr()[...]))
+            if path in file:
+                assert tag.greater_equal(version, str(file[path].asstr()[...]))
             else:
-                data[path] = version
+                file[path] = version
 
         path = "/meta/Run/version_dependencies"
-        if path in data:
-            assert tag.all_greater_equal(model.version_dependencies(), data[path].asstr()[...])
+        if path in file:
+            assert tag.all_greater_equal(model.version_dependencies(), file[path].asstr()[...])
         else:
-            data[path] = model.version_dependencies()
+            file[path] = model.version_dependencies()
 
-        if "/meta/Run/completed" in data or "/completed" in data:
+        if "/meta/Run/completed" in file or "/completed" in file:
             print("Marked completed, skipping")
             return 1
 
         # restore or initialise the this / output
 
-        if "/stored" in data:
+        if "/stored" in file:
 
-            inc = int(data["/stored"][-1])
-            kick = data["/kick"][inc]
-            system.setT(data["/t"][inc])
-            system.setU(data[f"/disp/{inc:d}"][...])
+            inc = int(file["/stored"][-1])
+            kick = file["/kick"][inc]
+            system.setT(file["/t"][inc])
+            system.setU(file[f"/disp/{inc:d}"][...])
             print(f"\"{basename}\": Loading, inc = {inc:d}")
             kick = not kick
 
@@ -400,25 +463,25 @@ def run(filename: str, dev: bool):
             inc = int(0)
             kick = True
 
-            dset = data.create_dataset("/stored", (1, ), maxshape=(None, ), dtype=np.uint64)
+            dset = file.create_dataset("/stored", (1, ), maxshape=(None, ), dtype=np.uint64)
             dset[0] = inc
             dset.attrs["desc"] = "List of increments in \"/disp/{:d}\" and \"/drive/ubar/{0:d}\""
 
-            dset = data.create_dataset("/t", (1, ), maxshape=(None, ), dtype=np.float64)
+            dset = file.create_dataset("/t", (1, ), maxshape=(None, ), dtype=np.float64)
             dset[0] = system.t()
             dset.attrs["desc"] = "Per increment: time at the end of the increment"
 
-            dset = data.create_dataset("/kick", (1, ), maxshape=(None, ), dtype=np.dtype(bool))
+            dset = file.create_dataset("/kick", (1, ), maxshape=(None, ), dtype=np.dtype(bool))
             dset[0] = kick
             dset.attrs["desc"] = "Per increment: True is a kick was applied"
 
-            data[f"/disp/{inc}"] = system.u()
-            data[f"/disp/{inc}"].attrs["desc"] = "Displacement (at the end of the increment)."
+            file[f"/disp/{inc}"] = system.u()
+            file[f"/disp/{inc}"].attrs["desc"] = "Displacement (at the end of the increment)."
 
         # run
 
         inc += 1
-        deps_kick = data["/run/epsd/kick"][...]
+        deps_kick = file["/run/epsd/kick"][...]
 
         for inc in range(inc, sys.maxsize):
 
@@ -430,26 +493,79 @@ def run(filename: str, dev: bool):
                     break
                 print(f"\"{basename}\": inc = {inc:8d}, niter = {niter:8d}")
 
-            dset_extend1d(data, "/stored", inc, inc)
-            dset_extend1d(data, "/t", inc, system.t())
-            dset_extend1d(data, "/kick", inc, kick)
-            data[f"/disp/{inc:d}"] = system.u()
+            dset_extend1d(file, "/stored", inc, inc)
+            dset_extend1d(file, "/t", inc, system.t())
+            dset_extend1d(file, "/kick", inc, kick)
+            file[f"/disp/{inc:d}"] = system.u()
 
             inc += 1
             kick = not kick
 
         print(f"\"{basename}\": completed")
-        data["/meta/Run/completed"] = 1
+        file["/meta/Run/completed"] = 1
+
+
+def basic_output(system: model.System, file: h5py.File) -> dict:
+    """
+    Read basic output from simulation.
+
+    :param system: The system (modified: all increments visited).
+    :param file: Open simulation HDF5 archive (read-only).
+    """
+
+    if "/meta/normalisation/N" in file:
+        N = file["/meta/normalisation/N"][...]
+        eps0 = file["/meta/normalisation/eps"][...]
+        sig0 = file["/meta/normalisation/sig"][...]
+    else:
+        N = system.plastic().size
+        G = 1.0
+        eps0 = 1.0e-3 / 2.0
+        sig0 = 2.0 * G * eps0
+
+    dV = system.quad().AsTensor(2, system.quad().dV())
+    incs = file["/stored"][...]
+    ninc = incs.size
+    assert np.all(incs == np.arange(ninc))
+    idx_n = None
+
+    ret = dict(
+        Eps = np.empty((ninc), dtype=float),
+        Sig = np.empty((ninc), dtype=float),
+        S = np.zeros((ninc), dtype=int),
+        A = np.zeros((ninc), dtype=int),
+    )
+
+    for inc in tqdm.tqdm(incs):
+
+        system.setU(file[f"/disp/{inc:d}"][...])
+
+        if idx_n is None:
+            idx_n = system.plastic_CurrentIndex().astype(int)[:, 0].reshape(-1, N)
+
+        Sig = system.Sig() / sig0
+        Eps = system.Eps() / eps0
+        idx = system.plastic_CurrentIndex().astype(int)[:, 0].reshape(-1, N)
+
+        ret["S"][inc] = np.sum(idx - idx_n, axis=1)
+        ret["A"][inc] = np.sum(idx != idx_n, axis=1)
+        ret["Eps"][inc] = GMat.Epsd(np.average(Eps, weights=dV, axis=(0, 1)))
+        ret["Sig"][inc] = GMat.Sigd(np.average(Sig, weights=dV, axis=(0, 1)))
+
+        idx_n = np.array(idx, copy=True)
+
+    return ret
+
 
 
 def pushincrements(
-    system: model.System, data: h5py.File, target_stress: float
+    system: model.System, file: h5py.File, target_stress: float
 ) -> (np.ndarray, np.ndarray):
     r"""
     Get a list of increment from which the stress can be reached by elastic loading only.
 
     :param system: The system (modified: all increments visited).
-    :param data: Open simulation HDF5 archive (read-only).
+    :param file: Open simulation HDF5 archive (read-only).
     :param target_stress: The stress at which to push (in real units).
     :return:
         ``inc_system`` List of system spanning avalanches.
@@ -459,8 +575,8 @@ def pushincrements(
     plastic = system.plastic()
     N = plastic.size
     dV = system.quad().AsTensor(2, system.quad().dV())
-    kick = data["/kick"][...].astype(bool)
-    incs = data["/stored"][...].astype(int)
+    kick = file["/kick"][...].astype(bool)
+    incs = file["/stored"][...].astype(int)
     assert np.all(incs == np.arange(incs.size))
     assert kick.shape == incs.shape
     assert np.all(not kick[::2])
@@ -474,7 +590,7 @@ def pushincrements(
 
     for inc in incs:
 
-        system.setU(data[f"/disp/{inc:d}"])
+        system.setU(file[f"/disp/{inc:d}"])
 
         idx = system.plastic_CurrentIndex()[:, 0].astype(int)
         Sig = system.Sig()
