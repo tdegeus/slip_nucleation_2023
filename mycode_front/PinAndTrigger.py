@@ -115,7 +115,7 @@ def cli_main():
         pass
 
     parser = argparse.ArgumentParser(
-        formatter_class=MyFormatter, description=textwrap.dedent(main.__doc__)
+        formatter_class=MyFormatter, description=textwrap.dedent(cli_main.__doc__)
     )
 
     parser.add_argument(
@@ -157,7 +157,7 @@ def cli_main():
 
     with h5py.File(args.file, "r") as data:
 
-        system = System.initsystem(data)
+        system = System.init(data)
         eps_kick = data["/run/epsd/kick"][...]
 
         # (*) Determine at which increment a push could be applied

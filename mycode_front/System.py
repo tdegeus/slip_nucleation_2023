@@ -1,18 +1,25 @@
-import uuid
+"""
+-   Initialise system.
+-   Write IO file.
+-   Run simulation.
+-   Get basic output.
+"""
 import os
 import sys
+import uuid
+from typing import TypeVar
 
 import FrictionQPotFEM.UniformSingleLayer2d as model
 import GMatElastoPlasticQPot.Cartesian2d as GMat
 import GooseFEM
 import h5py
+import numpy as np
 import prrng
 import tqdm
-import numpy as np
-from typing import TypeVar
-from numpy.typing import DTypeLike
 
+from . import tag
 from ._version import version
+
 
 def dset_extend1d(file: h5py.File, key: str, i: int, value: TypeVar("T")):
     """
@@ -26,7 +33,7 @@ def dset_extend1d(file: h5py.File, key: str, i: int, value: TypeVar("T")):
 
     dset = file[key]
     if dset.size <= i:
-        dset.resize((i + 1, ))
+        dset.resize((i + 1,))
     dset[i] = value
 
 
@@ -93,11 +100,11 @@ def init(file: h5py.File) -> model.System:
     )
 
     system.setMassMatrix(file["rho"][...])
-    system.setDampingMatrix(file["alpha"][...] if "alpha" in file else file["damping/alpha"][...])
-    system.setElastic(file["/elastic/K"][...], file["/elastic/G"][...])
-    system.setPlastic(
-        file["/cusp/K"][...], file["/cusp/G"][...], read_epsy(file)
+    system.setDampingMatrix(
+        file["alpha"][...] if "alpha" in file else file["damping/alpha"][...]
     )
+    system.setElastic(file["/elastic/K"][...], file["/elastic/G"][...])
+    system.setPlastic(file["/cusp/K"][...], file["/cusp/G"][...], read_epsy(file))
     system.setDt(file["/run/dt"][...])
 
     return system
@@ -135,7 +142,9 @@ def reset_epsy(system: model.System, file: h5py.File):
                 chunk.set_y(epsy[i, :])
 
 
-def generate(filename: str, N: int, seed: int = 0, classic: bool = False, test_mode: bool = False):
+def generate(
+    filename: str, N: int, seed: int = 0, classic: bool = False, test_mode: bool = False
+):
     """
     Generate input file.
 
@@ -157,7 +166,7 @@ def generate(filename: str, N: int, seed: int = 0, classic: bool = False, test_m
     elastic = np.setdiff1d(np.arange(nelem), plastic)
 
     # extract node sets to set the boundary conditions
-    ndim = mesh.ndim()
+    mesh.ndim()
     top = mesh.nodesTopEdge()
     bottom = mesh.nodesBottomEdge()
     left = mesh.nodesLeftOpenEdge()
@@ -178,9 +187,11 @@ def generate(filename: str, N: int, seed: int = 0, classic: bool = False, test_m
     nchunk = 1000
 
     if classic:
-        assert seed == 0 # at the moment seeding is not controlled locally
+        assert seed == 0  # at the moment seeding is not controlled locally
         realization = str(uuid.uuid4())
-        epsy = eps_offset + 2.0 * eps0 * np.random.weibull(k, size=nchunk * N).reshape(N, -1)
+        epsy = eps_offset + 2.0 * eps0 * np.random.weibull(k, size=nchunk * N).reshape(
+            N, -1
+        )
         epsy[:, 0] = eps_offset + 2.0 * eps0 * np.random.random(N)
         epsy = np.cumsum(epsy, axis=1)
         i = np.min(np.where(np.min(epsy, axis=0) > 0.55)[0])
@@ -192,8 +203,6 @@ def generate(filename: str, N: int, seed: int = 0, classic: bool = False, test_m
         initseq = np.zeros_like(initstate)
         if test_mode:
             nchunk = 200
-
-    print(classic, nchunk)
 
     # elasticity & damping
     c = 1.0
@@ -410,13 +419,12 @@ def generate(filename: str, N: int, seed: int = 0, classic: bool = False, test_m
         )
 
 
-def run(filename: str, dev: bool, verbose: bool = True):
+def run(filename: str, dev: bool):
     """
     Run the simulation.
 
     :param filename: Name of the input/output file (appended).
     :param dev: Allow uncommitted changes.
-    :param verbose: Print summary of every increment.
     """
 
     basename = os.path.basename(filename)
@@ -439,7 +447,9 @@ def run(filename: str, dev: bool, verbose: bool = True):
 
         path = "/meta/Run/version_dependencies"
         if path in file:
-            assert tag.all_greater_equal(model.version_dependencies(), file[path].asstr()[...])
+            assert tag.all_greater_equal(
+                model.version_dependencies(), file[path].asstr()[...]
+            )
         else:
             file[path] = model.version_dependencies()
 
@@ -455,7 +465,7 @@ def run(filename: str, dev: bool, verbose: bool = True):
             kick = file["/kick"][inc]
             system.setT(file["/t"][inc])
             system.setU(file[f"/disp/{inc:d}"][...])
-            print(f"\"{basename}\": Loading, inc = {inc:d}")
+            print(f'"{basename}": Loading, inc = {inc:d}')
             kick = not kick
 
         else:
@@ -463,20 +473,28 @@ def run(filename: str, dev: bool, verbose: bool = True):
             inc = int(0)
             kick = True
 
-            dset = file.create_dataset("/stored", (1, ), maxshape=(None, ), dtype=np.uint64)
+            dset = file.create_dataset(
+                "/stored", (1,), maxshape=(None,), dtype=np.uint64
+            )
             dset[0] = inc
-            dset.attrs["desc"] = "List of increments in \"/disp/{:d}\" and \"/drive/ubar/{0:d}\""
+            dset.attrs[
+                "desc"
+            ] = 'List of increments in "/disp/{:d}" and "/drive/ubar/{0:d}"'
 
-            dset = file.create_dataset("/t", (1, ), maxshape=(None, ), dtype=np.float64)
+            dset = file.create_dataset("/t", (1,), maxshape=(None,), dtype=np.float64)
             dset[0] = system.t()
             dset.attrs["desc"] = "Per increment: time at the end of the increment"
 
-            dset = file.create_dataset("/kick", (1, ), maxshape=(None, ), dtype=np.dtype(bool))
+            dset = file.create_dataset(
+                "/kick", (1,), maxshape=(None,), dtype=np.dtype(bool)
+            )
             dset[0] = kick
             dset.attrs["desc"] = "Per increment: True is a kick was applied"
 
             file[f"/disp/{inc}"] = system.u()
-            file[f"/disp/{inc}"].attrs["desc"] = "Displacement (at the end of the increment)."
+            file[f"/disp/{inc}"].attrs[
+                "desc"
+            ] = "Displacement (at the end of the increment)."
 
         # run
 
@@ -491,7 +509,7 @@ def run(filename: str, dev: bool, verbose: bool = True):
                 niter = system.minimise_boundcheck()
                 if niter == 0:
                     break
-                print(f"\"{basename}\": inc = {inc:8d}, niter = {niter:8d}")
+                print(f'"{basename}": inc = {inc:8d}, niter = {niter:8d}')
 
             dset_extend1d(file, "/stored", inc, inc)
             dset_extend1d(file, "/t", inc, system.t())
@@ -501,7 +519,7 @@ def run(filename: str, dev: bool, verbose: bool = True):
             inc += 1
             kick = not kick
 
-        print(f"\"{basename}\": completed")
+        print(f'"{basename}": completed')
         file["/meta/Run/completed"] = 1
 
 
@@ -511,6 +529,7 @@ def basic_output(system: model.System, file: h5py.File) -> dict:
 
     :param system: The system (modified: all increments visited).
     :param file: Open simulation HDF5 archive (read-only).
+    :param verbose: Print summary of every increment.
     """
 
     if "/meta/normalisation/N" in file:
@@ -530,10 +549,10 @@ def basic_output(system: model.System, file: h5py.File) -> dict:
     idx_n = None
 
     ret = dict(
-        Eps = np.empty((ninc), dtype=float),
-        Sig = np.empty((ninc), dtype=float),
-        S = np.zeros((ninc), dtype=int),
-        A = np.zeros((ninc), dtype=int),
+        Eps=np.empty((ninc), dtype=float),
+        Sig=np.empty((ninc), dtype=float),
+        S=np.zeros((ninc), dtype=int),
+        A=np.zeros((ninc), dtype=int),
     )
 
     for inc in tqdm.tqdm(incs):
@@ -555,7 +574,6 @@ def basic_output(system: model.System, file: h5py.File) -> dict:
         idx_n = np.array(idx, copy=True)
 
     return ret
-
 
 
 def pushincrements(
