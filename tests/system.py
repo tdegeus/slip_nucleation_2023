@@ -44,8 +44,22 @@ class MyTests(unittest.TestCase):
 
         pushname = os.path.join(dirname, "mypush.h5")
 
-        my.PinAndTrigger.cli_main(["--file", filename, "--output", pushname, "--stress", sigtarget * data["sig0"], "--incc", incc, "--element", 0, "--size", 4])
-
+        my.PinAndTrigger.cli_main(
+            [
+                "--file",
+                filename,
+                "--output",
+                pushname,
+                "--stress",
+                sigtarget * data["sig0"],
+                "--incc",
+                incc,
+                "--element",
+                0,
+                "--size",
+                4,
+            ]
+        )
 
         # shutil.rmtree(dirname)
 

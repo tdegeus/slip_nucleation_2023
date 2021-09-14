@@ -640,8 +640,9 @@ def pushincrements(
     for ii, jj in zip(inc_system[:-1], inc_system[1:]):
 
         # state after elastic loading (before kick)
-        s = Stress[ii + 1: jj: 2]
-        n = incs[ii + 1: jj: 2]
+        i = ii + 1
+        s = Stress[i:jj:2]
+        n = incs[i:jj:2]
 
         if not np.any(s > target_stress) or Stress[ii] > target_stress:
             continue

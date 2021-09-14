@@ -1,5 +1,6 @@
 import argparse
 import os
+import sys
 import textwrap
 
 import FrictionQPotFEM.UniformSingleLayer2d as model
@@ -102,7 +103,7 @@ def pinsystem(system: model.System, target_element: int, target_A: int) -> np.nd
     return pinned
 
 
-def cli_main(cli_args = None):
+def cli_main(cli_args=None):
     """
     1.  Restore system at a given increment.
     2.  Pin down part of the system.
