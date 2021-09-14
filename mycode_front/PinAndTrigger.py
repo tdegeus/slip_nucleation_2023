@@ -102,12 +102,17 @@ def pinsystem(system: model.System, target_element: int, target_A: int) -> np.nd
     return pinned
 
 
-def cli_main():
+def cli_main(cli_args = None):
     """
     1.  Restore system at a given increment.
     2.  Pin down part of the system.
     3.  Push a specific element and minimise energy.
     """
+
+    if cli_args is None:
+        cli_args = sys.argv[1:]
+    else:
+        cli_args = [str(arg) for arg in cli_args]
 
     class MyFormatter(
         argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
@@ -144,7 +149,8 @@ def cli_main():
 
     parser.add_argument("-v", "--version", action="version", version=version)
 
-    args = parser.parse_args()
+    args = parser.parse_args(cli_args)
+
     assert os.path.isfile(os.path.realpath(args.file))
     assert os.path.realpath(args.file) != os.path.realpath(args.output)
 
@@ -162,7 +168,7 @@ def cli_main():
 
         # (*) Determine at which increment a push could be applied
 
-        inc_system, inc_push = model.pushincrements(system, data, target_stress)
+        inc_system, inc_push = System.pushincrements(system, data, target_stress)
 
         # (*) Reload specific increment based on target stress and system-spanning increment
 

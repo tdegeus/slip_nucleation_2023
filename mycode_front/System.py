@@ -466,12 +466,11 @@ def run(filename: str, dev: bool):
             system.setT(file["/t"][inc])
             system.setU(file[f"/disp/{inc:d}"][...])
             print(f'"{basename}": Loading, inc = {inc:d}')
-            kick = not kick
 
         else:
 
             inc = int(0)
-            kick = True
+            kick = False
 
             dset = file.create_dataset(
                 "/stored", (1,), maxshape=(None,), dtype=np.uint64
@@ -492,13 +491,12 @@ def run(filename: str, dev: bool):
             dset.attrs["desc"] = "Per increment: True is a kick was applied"
 
             file[f"/disp/{inc}"] = system.u()
-            file[f"/disp/{inc}"].attrs[
-                "desc"
-            ] = "Displacement (at the end of the increment)."
+            file[f"/disp/{inc}"].attrs["desc"] = "Displacement (end of increment)."
 
         # run
 
         inc += 1
+        kick = not kick
         deps_kick = file["/run/epsd/kick"][...]
 
         for inc in range(inc, sys.maxsize):
@@ -553,6 +551,9 @@ def basic_output(system: model.System, file: h5py.File) -> dict:
         Sig=np.empty((ninc), dtype=float),
         S=np.zeros((ninc), dtype=int),
         A=np.zeros((ninc), dtype=int),
+        sig0=sig0,
+        eps0=eps0,
+        N=N,
     )
 
     for inc in tqdm.tqdm(incs):
@@ -597,7 +598,7 @@ def pushincrements(
     incs = file["/stored"][...].astype(int)
     assert np.all(incs == np.arange(incs.size))
     assert kick.shape == incs.shape
-    assert np.all(not kick[::2])
+    assert np.all(np.logical_not(kick[::2]))
     assert np.all(kick[1::2])
 
     A = np.zeros(incs.shape, dtype=int)
@@ -636,19 +637,16 @@ def pushincrements(
     inc_push = []
     inc_system_ret = []
 
-    for i in range(inc_system.size - 1):
+    for ii, jj in zip(inc_system[:-1], inc_system[1:]):
 
-        # state after elastc loading
-        ii = inc_system[i] + 1
-        jj = inc_system[i + 1]
-        s = Stress[ii:jj:2]
-        n = incs[ii:jj:2]
+        # state after elastic loading (before kick)
+        s = Stress[ii + 1: jj: 2]
+        n = incs[ii + 1: jj: 2]
 
-        if not np.any(s > target_stress):
+        if not np.any(s > target_stress) or Stress[ii] > target_stress:
             continue
 
-        j = np.argmax(s > target_stress)
-        ipush = n[j] - 1
+        ipush = n[np.argmax(s > target_stress)] - 1
 
         assert Stress[ipush] <= target_stress
         assert not kick[ipush + 1]

@@ -18,13 +18,14 @@ class MyTests(unittest.TestCase):
         with open(os.path.join(os.path.dirname(__file__), "system_small.yaml")) as file:
             historic = yaml.load(file.read(), Loader=yaml.FullLoader)
 
-        dirname = "test"
+        dirname = "mytest"
         filename = os.path.join(dirname, "mysim.h5")
 
         if not os.path.isdir(dirname):
             os.makedirs(dirname)
 
-        my.System.generate(filename, N=9, test_mode=True)
+        N = 9
+        my.System.generate(filename, N=N, test_mode=True)
         my.System.run(filename, dev=True)
 
         with h5py.File(filename, "r") as file:
@@ -34,7 +35,19 @@ class MyTests(unittest.TestCase):
         self.assertTrue(np.allclose(data["Eps"], historic["Eps"]))
         self.assertTrue(np.allclose(data["Sig"], historic["Sig"]))
 
-        shutil.rmtree(dirname)
+        iss = np.argwhere(data["A"] == N).ravel()
+        sign = np.mean(data["Sig"][iss - 1])
+        sigc = np.mean(data["Sig"][iss])
+
+        incc = iss[-2]
+        sigtarget = 0.5 * (sigc + sign)
+
+        pushname = os.path.join(dirname, "mypush.h5")
+
+        my.PinAndTrigger.cli_main(["--file", filename, "--output", pushname, "--stress", sigtarget * data["sig0"], "--incc", incc, "--element", 0, "--size", 4])
+
+
+        # shutil.rmtree(dirname)
 
 
 if __name__ == "__main__":
