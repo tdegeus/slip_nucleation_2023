@@ -217,17 +217,36 @@ def cli_main(cli_args=None):
         output[f"{root}/A"] = np.sum(idx != idx_n)
 
 
-def cli_collect():
+def cli_collect(cli_args=None):
+    """
+    Collect output of several pushes in a single output-file.
+    Requires files to be named "stress=X_A=X_id=X_incc=X_element=X" (in any order).
+    """
+
+    if cli_args is None:
+        cli_args = sys.argv[1:]
+    else:
+        cli_args = [str(arg) for arg in cli_args]
 
     basename = os.path.splitext(os.path.basename(__file__))[0]
 
-    parser = argparse.ArgumentParser()
+    class MyFormatter(
+        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
+    ):
+        pass
+
+    parser = argparse.ArgumentParser(
+        formatter_class=MyFormatter, description=textwrap.dedent(cli_collect.__doc__)
+    )
+
     parser.add_argument(
         "-A", "--min-A", type=int, help="Save events only with A > ...", default=10
     )
+
     parser.add_argument(
         "-o", "--output", type=str, help="Output file ('a')", default=basename + ".h5"
     )
+
     parser.add_argument(
         "-e",
         "--error",
@@ -235,13 +254,14 @@ def cli_collect():
         help="Store list of corrupted files",
         default=basename + ".yaml",
     )
+
     parser.add_argument("files", type=str, nargs="*", help="Files to add")
-    args = parser.parse_args()
+
+    args = parser.parse_args(cli_args)
+
     assert np.all([os.path.isfile(os.path.realpath(file)) for file in args.files])
     assert len(args.files) > 0
-    args = parser.parse_args()
 
-    init = True
     corrupted = []
     existing = []
 
@@ -265,12 +285,12 @@ def cli_collect():
 
             with h5py.File(file, "r") as data:
 
-                basename = os.path.basename(file)
+                basename = os.path.splitext(os.path.basename(file))[0]
                 stress = basename.split("stress=")[1].split("_")[0]
                 A = basename.split("A=")[1].split("_")[0]
                 simid = basename.split("id=")[1].split("_")[0]
                 incc = basename.split("incc=")[1].split("_")[0]
-                element = basename.split("element=")[1].split(".hdf5")[0]
+                element = basename.split("element=")[1].split("_")[0]
 
                 # alias meta-data
                 # (allow for typos in previous versions)
@@ -284,15 +304,14 @@ def cli_collect():
                 else:
                     raise OSError("Unknown input")
 
-                if init:
+                if "/meta/version" in output:
+                    assert version == meta["version"].asstr()[...]
+                    assert deps == list(meta["version_dependencies"].asstr()[...])
+                else:
                     version = meta["version"].asstr()[...]
                     deps = list(meta["version_dependencies"].asstr()[...])
                     output["/meta/version"] = version
                     output["/meta/version_dependencies"] = deps
-                    init = False
-                else:
-                    assert version == meta["version"].asstr()[...]
-                    assert deps == list(meta["version_dependencies"].asstr()[...])
 
                 assert int(incc) == meta["target_inc_system"][...]
                 assert int(A) == meta["target_A"][...]

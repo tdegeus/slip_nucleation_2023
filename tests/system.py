@@ -1,11 +1,10 @@
 import os
-import shutil
 import sys
 import unittest
 
 import h5py
 import numpy as np
-import yaml
+import shelephant
 
 root = os.path.join(os.path.dirname(__file__), "..")
 sys.path.append(os.path.abspath(root))
@@ -15,11 +14,10 @@ import mycode_front as my  # noqa: E402
 class MyTests(unittest.TestCase):
     def test_small(self):
 
-        with open(os.path.join(os.path.dirname(__file__), "system_small.yaml")) as file:
-            historic = yaml.load(file.read(), Loader=yaml.FullLoader)
+        historic = shelephant.yaml.read(os.path.join(os.path.dirname(__file__), "system_small.yaml"))
 
         dirname = "mytest"
-        filename = os.path.join(dirname, "mysim.h5")
+        filename = os.path.join(dirname, "id=0.h5")
 
         if not os.path.isdir(dirname):
             os.makedirs(dirname)
@@ -39,26 +37,41 @@ class MyTests(unittest.TestCase):
         sign = np.mean(data["Sig"][iss - 1])
         sigc = np.mean(data["Sig"][iss])
 
-        incc = iss[-2]
         sigtarget = 0.5 * (sigc + sign)
+        pushincs = [iss[-10], iss[-4]]
+        fmt = os.path.join(dirname, "stress=mid_A=4_id=0_incc={0:d}_element=0.h5")
+        pushnames = [fmt.format(i) for i in pushincs]
+        collectname = os.path.join(dirname, "mypushes.h5")
 
-        pushname = os.path.join(dirname, "mypush.h5")
+        for pushname, incc in zip(pushnames, pushincs):
 
-        my.PinAndTrigger.cli_main(
+            my.PinAndTrigger.cli_main(
+                [
+                    "--file",
+                    filename,
+                    "--output",
+                    pushname,
+                    "--stress",
+                    sigtarget * data["sig0"],
+                    "--incc",
+                    incc,
+                    "--element",
+                    0,
+                    "--size",
+                    4,
+                ]
+            )
+
+        if os.path.isfile(collectname):
+            os.remove(collectname)
+
+        my.PinAndTrigger.cli_collect(
             [
-                "--file",
-                filename,
                 "--output",
-                pushname,
-                "--stress",
-                sigtarget * data["sig0"],
-                "--incc",
-                incc,
-                "--element",
-                0,
-                "--size",
-                4,
-            ]
+                collectname,
+                "--min-A",
+                1,
+            ] + pushnames
         )
 
         # shutil.rmtree(dirname)
