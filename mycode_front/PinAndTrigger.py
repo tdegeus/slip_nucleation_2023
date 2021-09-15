@@ -11,6 +11,8 @@ import numpy as np
 import QPot  # noqa: F401
 import shelephant
 import tqdm
+import click
+import shutil
 
 from . import System
 from ._version import version
@@ -228,7 +230,7 @@ def cli_collect(cli_args=None):
     else:
         cli_args = [str(arg) for arg in cli_args]
 
-    basename = os.path.splitext(os.path.basename(__file__))[0]
+    basename = "PinAndTrigger_collect"
 
     class MyFormatter(
         argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
@@ -344,3 +346,63 @@ def cli_collect(cli_args=None):
     shelephant.yaml.dump(
         args.error, dict(corrupted=corrupted, existing=existing), force=True
     )
+
+
+def cli_collect_combine(cli_args=None):
+    """
+    Combine two or more collections.
+    """
+
+    if cli_args is None:
+        cli_args = sys.argv[1:]
+    else:
+        cli_args = [str(arg) for arg in cli_args]
+
+    basename = "PinAndTrigger_combine"
+
+    class MyFormatter(
+        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
+    ):
+        pass
+
+    parser = argparse.ArgumentParser(
+        formatter_class=MyFormatter, description=textwrap.dedent(cli_collect.__doc__)
+    )
+
+    parser.add_argument(
+        "-o", "--output", type=str, help="Output file (overwritten)", default=basename + ".h5"
+    )
+
+    parser.add_argument(
+        "-f", "--force", action="store_true", help="Force overwrite of output file"
+    )
+
+    parser.add_argument("files", type=str, nargs="*", help="Files to add")
+
+    args = parser.parse_args(cli_args)
+
+    assert np.all([os.path.isfile(os.path.realpath(file)) for file in args.files])
+    assert len(args.files) > 0
+
+    if not args.force:
+        if os.path.isfile(args.output):
+            if not click.confirm(f'Overwrite "{args.output}"?'):
+                raise OSError("Cancelled")
+
+    shutil.copyfile(args.files[0], args.output)
+
+    with h5py.File(args.output, "a") as output:
+
+        for file in tqdm.tqdm(args.files[1:]):
+
+            with h5py.File(file, "r") as data:
+
+                for key in ["/meta/version", "/meta/version_dependencies"]:
+                    assert g5.equal(output, data, key)
+
+                paths = list(g5.getdatasets(data))
+                paths.remove("/meta/version")
+                paths.remove("/meta/version_dependencies")
+
+                g5.copydatasets(data, output, paths)
+

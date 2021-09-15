@@ -7,7 +7,7 @@ import numpy as np
 import shelephant
 
 root = os.path.join(os.path.dirname(__file__), "..")
-sys.path.append(os.path.abspath(root))
+sys.path.insert(0, os.path.abspath(root))
 import mycode_front as my  # noqa: E402
 
 
@@ -38,9 +38,11 @@ class MyTests(unittest.TestCase):
         sigc = np.mean(data["Sig"][iss])
 
         sigtarget = 0.5 * (sigc + sign)
-        pushincs = [iss[-10], iss[-4]]
+        pushincs = [iss[-30], iss[-20], iss[-10], iss[-4]]
         fmt = os.path.join(dirname, "stress=mid_A=4_id=0_incc={0:d}_element=0.h5")
         pushnames = [fmt.format(i) for i in pushincs]
+        collectname1 = os.path.join(dirname, "mypushes_1.h5")
+        collectname2 = os.path.join(dirname, "mypushes_2.h5")
         collectname = os.path.join(dirname, "mypushes.h5")
 
         for pushname, incc in zip(pushnames, pushincs):
@@ -62,16 +64,35 @@ class MyTests(unittest.TestCase):
                 ]
             )
 
-        if os.path.isfile(collectname):
-            os.remove(collectname)
+        for file in [collectname1, collectname2, collectname]:
+            if os.path.isfile(file):
+                os.remove(file)
 
         my.PinAndTrigger.cli_collect(
             [
                 "--output",
-                collectname,
+                collectname1,
                 "--min-A",
                 1,
-            ] + pushnames
+            ] + pushnames[:2]
+        )
+
+        my.PinAndTrigger.cli_collect(
+            [
+                "--output",
+                collectname2,
+                "--min-A",
+                1,
+            ] + pushnames[2:]
+        )
+
+        my.PinAndTrigger.cli_collect_combine(
+            [
+                "--output",
+                collectname,
+                collectname1,
+                collectname2,
+            ]
         )
 
         # shutil.rmtree(dirname)
