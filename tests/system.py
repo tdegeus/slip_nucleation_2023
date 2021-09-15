@@ -14,7 +14,9 @@ import mycode_front as my  # noqa: E402
 class MyTests(unittest.TestCase):
     def test_small(self):
 
-        historic = shelephant.yaml.read(os.path.join(os.path.dirname(__file__), "system_small.yaml"))
+        historic = shelephant.yaml.read(
+            os.path.join(os.path.dirname(__file__), "system_small.yaml")
+        )
 
         dirname = "mytest"
         filename = os.path.join(dirname, "id=0.h5")
@@ -74,7 +76,8 @@ class MyTests(unittest.TestCase):
                 collectname1,
                 "--min-A",
                 1,
-            ] + pushnames[:2]
+            ]
+            + pushnames[:2]
         )
 
         my.PinAndTrigger.cli_collect(
@@ -83,7 +86,8 @@ class MyTests(unittest.TestCase):
                 collectname2,
                 "--min-A",
                 1,
-            ] + pushnames[2:]
+            ]
+            + pushnames[2:]
         )
 
         my.PinAndTrigger.cli_collect_combine(

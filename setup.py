@@ -14,6 +14,7 @@ setup(
         "console_scripts": [
             "PinAndTrigger = mycode_front.PinAndTrigger:cli_main",
             "PinAndTrigger_collect = mycode_front.PinAndTrigger:cli_collect",
+            "PinAndTrigger_collect_combine = mycode_front.PinAndTrigger:cli_cli_collect_combine",
         ]
     },
 )

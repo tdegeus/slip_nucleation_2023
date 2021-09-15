@@ -1,8 +1,10 @@
 import argparse
 import os
+import shutil
 import sys
 import textwrap
 
+import click
 import FrictionQPotFEM.UniformSingleLayer2d as model
 import GooseFEM  # noqa: F401
 import GooseHDF5 as g5
@@ -11,8 +13,6 @@ import numpy as np
 import QPot  # noqa: F401
 import shelephant
 import tqdm
-import click
-import shutil
 
 from . import System
 from ._version import version
@@ -266,6 +266,8 @@ def cli_collect(cli_args=None):
 
     corrupted = []
     existing = []
+    version = None
+    deps = None
 
     with h5py.File(args.output, "a") as output:
 
@@ -306,14 +308,14 @@ def cli_collect(cli_args=None):
                 else:
                     raise OSError("Unknown input")
 
-                if "/meta/version" in output:
-                    assert version == meta["version"].asstr()[...]
-                    assert deps == list(meta["version_dependencies"].asstr()[...])
-                else:
+                if version is None:
                     version = meta["version"].asstr()[...]
                     deps = list(meta["version_dependencies"].asstr()[...])
                     output["/meta/version"] = version
                     output["/meta/version_dependencies"] = deps
+                else:
+                    assert version == meta["version"].asstr()[...]
+                    assert deps == list(meta["version_dependencies"].asstr()[...])
 
                 assert int(incc) == meta["target_inc_system"][...]
                 assert int(A) == meta["target_A"][...]
@@ -350,7 +352,8 @@ def cli_collect(cli_args=None):
 
 def cli_collect_combine(cli_args=None):
     """
-    Combine two or more collections.
+    Combine two or more collections, see "PinAndTrigger_combine" to obtain them from
+    individual runs.
     """
 
     if cli_args is None:
@@ -370,7 +373,11 @@ def cli_collect_combine(cli_args=None):
     )
 
     parser.add_argument(
-        "-o", "--output", type=str, help="Output file (overwritten)", default=basename + ".h5"
+        "-o",
+        "--output",
+        type=str,
+        help="Output file (overwritten)",
+        default=basename + ".h5",
     )
 
     parser.add_argument(
@@ -405,4 +412,3 @@ def cli_collect_combine(cli_args=None):
                 paths.remove("/meta/version_dependencies")
 
                 g5.copydatasets(data, output, paths)
-
