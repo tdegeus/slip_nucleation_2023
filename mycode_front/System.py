@@ -507,21 +507,21 @@ def run(filename: str, dev: bool):
         file["/meta/Run/completed"] = 1
 
 
-def steadystate(Eps: ArrayLike, Sig: ArrayLike, kick: ArrayLike, **kwargs):
+def steadystate(epsd: ArrayLike, sigd: ArrayLike, kick: ArrayLike, **kwargs):
     """
     Estimate the first increment of the steady-state, with additional constraints:
     -   Skip at least two increments.
     -   Start with elastic loading.
 
-    :param Eps: Strain history [ninc].
-    :param Sig: Stress history [ninc].
+    :param epsd: Strain history [ninc].
+    :param sigd: Stress history [ninc].
     :param kick: Per increment, skip or not [ninc].
     :return: Increment number.
     """
 
-    K = np.empty_like(Sig)
+    K = np.empty_like(sigd)
     K[0] = np.inf
-    K[1:] = (Sig[1:] - Sig[0]) / (Eps[1:] - Eps[0])
+    K[1:] = (sigd[1:] - sigd[0]) / (epsd[1:] - epsd[0])
 
     steadystate = max(2, np.argmax(K <= 0.95 * K[1]))
 
@@ -545,8 +545,8 @@ def basic_output(system: model.System, file: h5py.File, verbose: bool = True) ->
     assert np.all(incs == np.arange(ninc))
 
     ret = dict(
-        Eps=np.empty((ninc), dtype=float),
-        Sig=np.empty((ninc), dtype=float),
+        epsd=np.empty((ninc), dtype=float),
+        sigd=np.empty((ninc), dtype=float),
         S=np.zeros((ninc), dtype=int),
         A=np.zeros((ninc), dtype=int),
         kick=file["/kick"][...].astype(bool),
@@ -598,8 +598,8 @@ def basic_output(system: model.System, file: h5py.File, verbose: bool = True) ->
 
         ret["S"][inc] = np.sum(idx - idx_n, axis=1)
         ret["A"][inc] = np.sum(idx != idx_n, axis=1)
-        ret["Eps"][inc] = GMat.Epsd(np.average(Eps, weights=dV, axis=(0, 1)))
-        ret["Sig"][inc] = GMat.Sigd(np.average(Sig, weights=dV, axis=(0, 1)))
+        ret["epsd"][inc] = GMat.Epsd(np.average(Eps, weights=dV, axis=(0, 1)))
+        ret["sigd"][inc] = GMat.Sigd(np.average(Sig, weights=dV, axis=(0, 1)))
 
         idx_n = np.array(idx, copy=True)
 
@@ -654,19 +654,9 @@ def cli_ensembleinfo(cli_args=None):
                 raise OSError("Cancelled")
 
     fields_norm = ["l0", "G", "K", "rho", "cs", "cd", "sig0", "eps0", "N", "t0", "dt"]
-
-    fields_full = dict(
-        epsd="Eps",
-        sigd="Sig",
-        S="S",
-        A="A",
-        kick="kick",
-        steadystate="steadystate",
-    )
-
-    combine_load = {key: [] for key in fields_full if key not in ["steadystate"]}
-    combine_kick = {key: [] for key in fields_full if key not in ["steadystate"]}
-
+    fields_full = ["epsd", "sigd", "S", "A", "kick", "steadystate"]
+    combine_load = {key: [] for key in ["epsd", "sigd", "S", "A", "kick"]}
+    combine_kick = {key: [] for key in ["epsd", "sigd", "S", "A", "kick"]}
     file_load = []
     file_kick = []
 
@@ -689,15 +679,15 @@ def cli_ensembleinfo(cli_args=None):
                 kick[: out["steadystate"]] = False
                 load[: out["steadystate"]] = False
 
-                for key, read in fields_full.items():
-                    output[f"/full/{filename}/{key}"] = out[read]
+                for key in fields_full:
+                    output[f"/full/{filename}/{key}"] = out[key]
 
                 for key in combine_load:
-                    combine_load[key] += list(out[fields_full[key]][load])
-                    combine_kick[key] += list(out[fields_full[key]][kick])
+                    combine_load[key] += list(out[key][load])
+                    combine_kick[key] += list(out[key][kick])
 
                 file_load += list(np.ones(np.sum(load), dtype=int))
-                file_kick += list(np.ones(np.sum(load), dtype=int))
+                file_kick += list(np.ones(np.sum(kick), dtype=int))
 
                 if i == 0:
                     norm = {key: out[key] for key in fields_norm}
@@ -743,7 +733,7 @@ def pushincrements(
     assert np.all(kick[1::2])
 
     output = basic_output(system, file)
-    Stress = output["Sig"] * output["sig0"]
+    Stress = output["sigd"] * output["sig0"]
     A = output["A"]
     A[: output["steadystate"]] = 0
 
