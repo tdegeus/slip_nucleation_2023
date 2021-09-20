@@ -1,4 +1,5 @@
 import argparse
+import itertools
 import os
 import shutil
 import sys
@@ -9,7 +10,6 @@ import FrictionQPotFEM.UniformSingleLayer2d as model
 import GooseFEM  # noqa: F401
 import GooseHDF5 as g5
 import GooseSLURM
-import itertools
 import h5py
 import numpy as np
 import QPot  # noqa: F401
@@ -251,7 +251,11 @@ def cli_collect(cli_args=None):
     )
 
     parser.add_argument(
-        "-o", "--output", type=str, help="Output file ('a')", default=f"{entry_collect}.h5"
+        "-o",
+        "--output",
+        type=str,
+        help="Output file ('a')",
+        default=f"{entry_collect}.h5",
     )
 
     parser.add_argument(
@@ -446,15 +450,37 @@ def cli_job(cli_args=None):
 
     parser.add_argument("info", type=str, help="EnsembleInfo (read-only)")
 
-    parser.add_argument("-A", "--size", type=int, default=1200, help="Size to keep unpinned")
+    parser.add_argument(
+        "-A", "--size", type=int, default=1200, help="Size to keep unpinned"
+    )
 
-    parser.add_argument("-c", "--conda", type=str, default="code_velocity", help="Base name of the conda environment, appended '_E5v4' and '_s6g1'")
+    parser.add_argument(
+        "-c",
+        "--conda",
+        type=str,
+        default="code_velocity",
+        help="Base name of the conda environment, appended '_E5v4' and '_s6g1'",
+    )
 
-    parser.add_argument("-n", "--group", type=int, default=100, help="Number of pushes to group in a single job")
+    parser.add_argument(
+        "-n",
+        "--group",
+        type=int,
+        default=100,
+        help="Number of pushes to group in a single job",
+    )
 
-    parser.add_argument("-w", "--walltime", type=str, default="24h", help="Walltime to allocate for the job")
+    parser.add_argument(
+        "-w",
+        "--walltime",
+        type=str,
+        default="24h",
+        help="Walltime to allocate for the job",
+    )
 
-    parser.add_argument("-e", "--executable", type=str, default=entry_main, help="Executable to use")
+    parser.add_argument(
+        "-e", "--executable", type=str, default=entry_main, help="Executable to use"
+    )
 
     parser.add_argument(
         "-c", "--collection", type=str, help=f"Result of {entry_collect}"
@@ -473,7 +499,6 @@ def cli_job(cli_args=None):
         with h5py.File(args.collection, "r") as file:
             simpaths = list(g5.getpaths(file, max_depth=6))
             simpaths = [path.replace("/...", "") for path in simpaths]
-
 
     with h5py.File(args.info, "r") as data:
 
@@ -521,18 +546,26 @@ def cli_job(cli_args=None):
 
             simid = os.path.basename(os.path.splitext(filename)[0])
 
-            for element, A, incc in itertools.product([0, int(N / 2)], [args.size], trigger):
+            for element, A, incc in itertools.product(
+                [0, int(N / 2)], [args.size], trigger
+            ):
 
-                root = (
-                    f"/data/{stress_name}/A={A:d}/{simid}/incc={incc:d}/element={element:d}"
-                )
+                root = f"/data/{stress_name}/A={A:d}/{simid}/incc={incc:d}/element={element:d}"
                 if root in simpaths:
                     continue
 
-                output = (
-                    f"{stress_name}_A={A:d}_{simid}_incc={incc:d}_element={element:d}.h5"
+                output = f"{stress_name}_A={A:d}_{simid}_incc={incc:d}_element={element:d}.h5"
+                cmd = "\n".join(
+                    [
+                        f"{executable}",
+                        f"-f {filename}",
+                        f"-o {output}",
+                        f"-s {stress:.8e}",
+                        f"-i {incc:d}",
+                        f"-e {element:d}",
+                        f"-a {A:d}",
+                    ]
                 )
-                cmd = f"{executable} -f {filename} -o {output} -s {stress:.8e} -i {incc:d} -e {element:d} -a {A:d}"
                 commands += [cmd]
 
     commands = [slurm.script_flush(cmd) for cmd in commands]
@@ -558,7 +591,7 @@ def cli_job(cli_args=None):
             "nodes": 1,
             "ntasks": 1,
             "cpus-per-task": 1,
-            "time": arg.walltime,
+            "time": args.walltime,
             "account": "pcsl",
             "partition": "serial",
         }
@@ -566,4 +599,3 @@ def cli_job(cli_args=None):
         open(jobname + ".slurm", "w").write(
             GooseSLURM.scripts.plain(command=command, **sbatch)
         )
-

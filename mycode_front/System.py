@@ -4,12 +4,14 @@
 -   Run simulation.
 -   Get basic output.
 """
+import argparse
 import os
 import sys
+import textwrap
 import uuid
 from typing import TypeVar
-from numpy.typing import ArrayLike
 
+import click
 import FrictionQPotFEM.UniformSingleLayer2d as model
 import GMatElastoPlasticQPot.Cartesian2d as GMat
 import GooseFEM
@@ -17,9 +19,7 @@ import h5py
 import numpy as np
 import prrng
 import tqdm
-import click
-import argparse
-import textwrap
+from numpy.typing import ArrayLike
 
 from . import tag
 from ._version import version
@@ -531,7 +531,7 @@ def steadystate(Eps: ArrayLike, Sig: ArrayLike, kick: ArrayLike, **kwargs):
     return steadystate
 
 
-def basic_output(system: model.System, file: h5py.File, verbose: bool=True) -> dict:
+def basic_output(system: model.System, file: h5py.File, verbose: bool = True) -> dict:
     """
     Read basic output from simulation.
 
@@ -625,12 +625,19 @@ def cli_ensembleinfo(cli_args=None):
         pass
 
     parser = argparse.ArgumentParser(
-        formatter_class=MyFormatter, description=textwrap.dedent(cli_ensembleinfo.__doc__)
+        formatter_class=MyFormatter,
+        description=textwrap.dedent(cli_ensembleinfo.__doc__),
     )
 
     parser.add_argument("files", nargs="*", type=str, help="Files to read")
 
-    parser.add_argument("-o", "--output", type=str, default=f"{entry_ensembleinfo}.h5", help="Output file")
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        default=f"{entry_ensembleinfo}.h5",
+        help="Output file",
+    )
 
     parser.add_argument(
         "-f", "--force", action="store_true", help="Force overwrite of output file"
@@ -649,16 +656,19 @@ def cli_ensembleinfo(cli_args=None):
     fields_norm = ["l0", "G", "K", "rho", "cs", "cd", "sig0", "eps0", "N", "t0", "dt"]
 
     fields_full = dict(
-        epsd = "Eps",
-        sigd = "Sig",
-        S = "S",
-        A = "A",
-        kick = "kick",
-        steadystate = "steadystate",
+        epsd="Eps",
+        sigd="Sig",
+        S="S",
+        A="A",
+        kick="kick",
+        steadystate="steadystate",
     )
 
     combine_load = {key: [] for key in fields_full if key not in ["steadystate"]}
     combine_kick = {key: [] for key in fields_full if key not in ["steadystate"]}
+
+    file_load = []
+    file_kick = []
 
     with h5py.File(args.output, "w") as output:
 
@@ -674,10 +684,10 @@ def cli_ensembleinfo(cli_args=None):
                 out = basic_output(system, file, verbose=False)
                 assert np.all(out["kick"][1::2])
                 assert not np.any(out["kick"][::2])
-                load = np.array(out["kick"], copy=True)
-                kick = np.logical_not(out["kick"])
-                load[:out["steadystate"]] = False
-                kick[:out["steadystate"]] = False
+                kick = np.array(out["kick"], copy=True)
+                load = np.logical_not(out["kick"])
+                kick[: out["steadystate"]] = False
+                load[: out["steadystate"]] = False
 
                 for key, read in fields_full.items():
                     output[f"/full/{filename}/{key}"] = out[read]
@@ -686,11 +696,20 @@ def cli_ensembleinfo(cli_args=None):
                     combine_load[key] += list(out[fields_full[key]][load])
                     combine_kick[key] += list(out[fields_full[key]][kick])
 
+                file_load += list(np.ones(np.sum(load), dtype=int))
+                file_kick += list(np.ones(np.sum(load), dtype=int))
+
                 if i == 0:
                     norm = {key: out[key] for key in fields_norm}
                 else:
                     for key in fields_norm:
                         assert np.isclose(norm[key], out[key])
+
+        combine_load["file"] = np.array(file_load, dtype=np.uint64)
+        combine_kick["file"] = np.array(file_kick, dtype=np.uint64)
+
+        for key in ["A"]:
+            combine_load[key] = np.array(combine_load[key], dtype=np.uint64)
 
         for key in combine_load:
             output[f"/loading/{key}"] = combine_load[key]
@@ -698,7 +717,6 @@ def cli_ensembleinfo(cli_args=None):
 
         for key, value in norm.items():
             output[f"/normalisation/{key}"] = value
-
 
 
 def pushincrements(
@@ -717,7 +735,6 @@ def pushincrements(
 
     plastic = system.plastic()
     N = plastic.size
-    dV = system.quad().AsTensor(2, system.quad().dV())
     kick = file["/kick"][...].astype(bool)
     incs = file["/stored"][...].astype(int)
     assert np.all(incs == np.arange(incs.size))
@@ -726,10 +743,9 @@ def pushincrements(
     assert np.all(kick[1::2])
 
     output = basic_output(system, file)
-    Strain = output["Eps"] * output["eps0"]
     Stress = output["Sig"] * output["sig0"]
     A = output["A"]
-    A[:output["steadystate"]] = 0
+    A[: output["steadystate"]] = 0
 
     inc_system = np.argwhere(A == N).ravel()
     inc_push = []
