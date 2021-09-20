@@ -14,12 +14,19 @@ import mycode_front as my  # noqa: E402
 class MyTests(unittest.TestCase):
     def test_small(self):
 
+        # Basic run / Get output
+
         historic = shelephant.yaml.read(
             os.path.join(os.path.dirname(__file__), "system_small.yaml")
         )
 
         dirname = "mytest"
-        filename = os.path.join(dirname, "id=0.h5")
+        idname = "id=0.h5"
+        filename = os.path.join(dirname, idname)
+        infoname = os.path.join(dirname, "EnsembleInfo.h5")
+
+        if os.path.isfile(infoname):
+            os.remove(infoname)
 
         if not os.path.isdir(dirname):
             os.makedirs(dirname)
@@ -27,25 +34,27 @@ class MyTests(unittest.TestCase):
         N = 9
         my.System.generate(filename, N=N, test_mode=True)
         my.System.run(filename, dev=True)
+        my.System.cli_ensembleinfo([filename, "--output", infoname])
 
-        with h5py.File(filename, "r") as file:
-            system = my.System.init(file)
-            data = my.System.basic_output(system, file)
+        with h5py.File(infoname, "r") as file:
+            Eps = file[f"/full/{idname}/epsd"][...]
+            Sig = file[f"/full/{idname}/sigd"][...]
+            A = file[f"/full/{idname}/A"][...]
+            sig0 = file["/normalisation/sig0"][...]
 
-        self.assertTrue(np.allclose(data["Eps"], historic["Eps"]))
-        self.assertTrue(np.allclose(data["Sig"], historic["Sig"]))
+        self.assertTrue(np.allclose(Eps, historic["Eps"]))
+        self.assertTrue(np.allclose(Sig, historic["Sig"]))
 
-        iss = np.argwhere(data["A"] == N).ravel()
-        sign = np.mean(data["Sig"][iss - 1])
-        sigc = np.mean(data["Sig"][iss])
+        # PinAndTrigger : full run + collection (try running only, not real test)
+
+        iss = np.argwhere(A == N).ravel()
+        sign = np.mean(Sig[iss - 1])
+        sigc = np.mean(Sig[iss])
 
         sigtarget = 0.5 * (sigc + sign)
         pushincs = [iss[-30], iss[-20], iss[-10], iss[-4]]
         fmt = os.path.join(dirname, "stress=mid_A=4_id=0_incc={0:d}_element=0.h5")
         pushnames = [fmt.format(i) for i in pushincs]
-        collectname1 = os.path.join(dirname, "mypushes_1.h5")
-        collectname2 = os.path.join(dirname, "mypushes_2.h5")
-        collectname = os.path.join(dirname, "mypushes.h5")
 
         for pushname, incc in zip(pushnames, pushincs):
 
@@ -56,7 +65,7 @@ class MyTests(unittest.TestCase):
                     "--output",
                     pushname,
                     "--stress",
-                    sigtarget * data["sig0"],
+                    sigtarget * sig0,
                     "--incc",
                     incc,
                     "--element",
@@ -65,6 +74,10 @@ class MyTests(unittest.TestCase):
                     4,
                 ]
             )
+
+        collectname1 = os.path.join(dirname, "mypushes_1.h5")
+        collectname2 = os.path.join(dirname, "mypushes_2.h5")
+        collectname = os.path.join(dirname, "mypushes.h5")
 
         for file in [collectname1, collectname2, collectname]:
             if os.path.isfile(file):
@@ -98,6 +111,21 @@ class MyTests(unittest.TestCase):
                 collectname2,
             ]
         )
+
+        # PinAndTrigger : job-creation (try running only, not real test)
+
+        my.PinAndTrigger.cli_job(["-A", 4, infoname, "-o", dirname, "-n", int(1e9)])
+
+        pwd = os.getcwd()
+        os.chdir(dirname)
+        with open("PinAndTrigger_1-of-1.slurm", "r") as file:
+            cmd = file.read().split("\n")[-2].split("stdbuf -o0 -e0 PinAndTrigger ")[1].split(" ")
+            my.PinAndTrigger.cli_main(cmd)
+        os.chdir(pwd)
+
+
+
+
 
         # shutil.rmtree(dirname)
 

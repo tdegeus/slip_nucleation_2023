@@ -550,6 +550,7 @@ def basic_output(system: model.System, file: h5py.File, verbose: bool = True) ->
         S=np.zeros((ninc), dtype=int),
         A=np.zeros((ninc), dtype=int),
         kick=file["/kick"][...].astype(bool),
+        inc=incs,
     )
 
     # read normalisation
@@ -561,6 +562,7 @@ def basic_output(system: model.System, file: h5py.File, verbose: bool = True) ->
         ret["G"] = file["/meta/normalisation/G"][...]
         ret["K"] = file["/meta/normalisation/K"][...]
         ret["rho"] = file["/meta/normalisation/rho"][...]
+        ret["seed"] = file["/meta/seed_base"][...]
     else:
         N = system.plastic().size
         G = 1.0
@@ -570,6 +572,7 @@ def basic_output(system: model.System, file: h5py.File, verbose: bool = True) ->
         ret["G"] = G
         ret["K"] = 10.0 * G
         ret["rho"] = G / 1.0 ** 2.0
+        ret["seed"] = str(file["/uuid"].asstr()[...])
 
     # interpret / store additional normalisation
     kappa = ret["K"] / 3.0
@@ -611,7 +614,8 @@ def basic_output(system: model.System, file: h5py.File, verbose: bool = True) ->
 
 def cli_ensembleinfo(cli_args=None):
     """
-    Read information (avalanche size, stress, strain, ...) of an ensemble.
+    Read information (avalanche size, stress, strain, ...) of an ensemble, and combine into
+    a single output file.
     """
 
     if cli_args is None:
@@ -629,8 +633,6 @@ def cli_ensembleinfo(cli_args=None):
         description=textwrap.dedent(cli_ensembleinfo.__doc__),
     )
 
-    parser.add_argument("files", nargs="*", type=str, help="Files to read")
-
     parser.add_argument(
         "-o",
         "--output",
@@ -640,13 +642,19 @@ def cli_ensembleinfo(cli_args=None):
     )
 
     parser.add_argument(
-        "-f", "--force", action="store_true", help="Force overwrite of output file"
+        "-f",
+        "--force",
+        action="store_true",
+        help="Force overwrite of output file if it exists",
     )
+
+    parser.add_argument("files", nargs="*", type=str, help="Files to read")
 
     args = parser.parse_args(cli_args)
 
     assert np.all([os.path.isfile(os.path.realpath(file)) for file in args.files])
-    files = [os.path.normpath(file) for file in args.files]
+    files = [os.path.normpath(os.path.relpath(file, os.path.dirname(args.output))) for file in args.files]
+    seeds = []
 
     if not args.force:
         if os.path.isfile(args.output):
@@ -654,17 +662,17 @@ def cli_ensembleinfo(cli_args=None):
                 raise OSError("Cancelled")
 
     fields_norm = ["l0", "G", "K", "rho", "cs", "cd", "sig0", "eps0", "N", "t0", "dt"]
-    fields_full = ["epsd", "sigd", "S", "A", "kick", "steadystate"]
-    combine_load = {key: [] for key in ["epsd", "sigd", "S", "A", "kick"]}
-    combine_kick = {key: [] for key in ["epsd", "sigd", "S", "A", "kick"]}
+    fields_full = ["epsd", "sigd", "S", "A", "kick", "inc", "steadystate"]
+    combine_load = {key: [] for key in ["epsd", "sigd", "S", "A", "kick", "inc"]}
+    combine_kick = {key: [] for key in ["epsd", "sigd", "S", "A", "kick", "inc"]}
     file_load = []
     file_kick = []
 
     with h5py.File(args.output, "w") as output:
 
-        for i, filename in enumerate(tqdm.tqdm(files)):
+        for i, (filename, filepath) in enumerate(tqdm.tqdm(zip(files, args.files))):
 
-            with h5py.File(filename, "r") as file:
+            with h5py.File(filepath, "r") as file:
 
                 if i == 0:
                     system = init(file)
@@ -679,6 +687,11 @@ def cli_ensembleinfo(cli_args=None):
                 kick[: out["steadystate"]] = False
                 load[: out["steadystate"]] = False
 
+                if np.sum(load) > np.sum(kick):
+                    load[-1] = False
+
+                assert np.sum(load) == np.sum(kick)
+
                 for key in fields_full:
                     output[f"/full/{filename}/{key}"] = out[key]
 
@@ -686,8 +699,9 @@ def cli_ensembleinfo(cli_args=None):
                     combine_load[key] += list(out[key][load])
                     combine_kick[key] += list(out[key][kick])
 
-                file_load += list(np.ones(np.sum(load), dtype=int))
-                file_kick += list(np.ones(np.sum(kick), dtype=int))
+                file_load += list(i * np.ones(np.sum(load), dtype=int))
+                file_kick += list(i * np.ones(np.sum(kick), dtype=int))
+                seeds += [out["seed"]]
 
                 if i == 0:
                     norm = {key: out[key] for key in fields_norm}
@@ -698,8 +712,13 @@ def cli_ensembleinfo(cli_args=None):
         combine_load["file"] = np.array(file_load, dtype=np.uint64)
         combine_kick["file"] = np.array(file_kick, dtype=np.uint64)
 
-        for key in ["A"]:
+        for key in ["A", "inc"]:
             combine_load[key] = np.array(combine_load[key], dtype=np.uint64)
+            combine_kick[key] = np.array(combine_kick[key], dtype=np.uint64)
+
+        for key in ["epsd", "sigd"]:
+            combine_load[key] = np.array(combine_load[key])
+            combine_kick[key] = np.array(combine_kick[key])
 
         for key in combine_load:
             output[f"/loading/{key}"] = combine_load[key]
@@ -707,6 +726,14 @@ def cli_ensembleinfo(cli_args=None):
 
         for key, value in norm.items():
             output[f"/normalisation/{key}"] = value
+
+        ss = np.equal(combine_kick["A"], norm["N"])
+        assert np.all(np.equal(combine_kick["inc"][ss], combine_load["inc"][ss] + 1))
+        output["/averages/sigd_top"] = np.mean(combine_load["sigd"][ss])
+        output["/averages/sigd_bottom"] = np.mean(combine_kick["sigd"][ss])
+
+        output["files"] = files
+        output["seeds"] = seeds
 
 
 def pushincrements(

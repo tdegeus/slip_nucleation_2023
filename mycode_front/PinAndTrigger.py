@@ -354,9 +354,10 @@ def cli_collect(cli_args=None):
 
                 g5.copydatasets(data, output, source_datasets, dest_datasets, root)
 
-    shelephant.yaml.dump(
-        args.error, dict(corrupted=corrupted, existing=existing), force=True
-    )
+    if len(corrupted) > 0 or len(existing) > 0:
+        shelephant.yaml.dump(
+            args.error, dict(corrupted=corrupted, existing=existing), force=True
+        )
 
 
 def cli_collect_combine(cli_args=None):
@@ -450,6 +451,8 @@ def cli_job(cli_args=None):
 
     parser.add_argument("info", type=str, help="EnsembleInfo (read-only)")
 
+    parser.add_argument("-o", "--output", type=str, default=".", help="Output directory")
+
     parser.add_argument(
         "-A", "--size", type=int, default=1200, help="Size to keep unpinned"
     )
@@ -483,20 +486,22 @@ def cli_job(cli_args=None):
     )
 
     parser.add_argument(
-        "-c", "--collection", type=str, help=f"Result of {entry_collect}"
+        "-f", "--finished", type=str, help=f"Result of {entry_collect}"
     )
 
     args = parser.parse_args(cli_args)
 
     assert os.path.isfile(os.path.realpath(args.info))
-    assert os.path.isfile(os.path.realpath(args.collection)) or not args.collection
+    assert os.path.isdir(os.path.realpath(args.output))
+    if args.finished:
+        assert os.path.isfile(os.path.realpath(args.finished))
 
     basedir = os.path.dirname(args.info)
     executable = args.executable
 
     simpaths = []
-    if args.collection:
-        with h5py.File(args.collection, "r") as file:
+    if args.finished:
+        with h5py.File(args.finished, "r") as file:
             simpaths = list(g5.getpaths(file, max_depth=6))
             simpaths = [path.replace("/...", "") for path in simpaths]
 
@@ -545,6 +550,7 @@ def cli_job(cli_args=None):
                 trigger, _ = System.pushincrements(system, file, stress)
 
             simid = os.path.basename(os.path.splitext(filename)[0])
+            filepath = os.path.relpath(filename, args.output)
 
             for element, A, incc in itertools.product(
                 [0, int(N / 2)], [args.size], trigger
@@ -555,10 +561,10 @@ def cli_job(cli_args=None):
                     continue
 
                 output = f"{stress_name}_A={A:d}_{simid}_incc={incc:d}_element={element:d}.h5"
-                cmd = "\n".join(
+                cmd = " ".join(
                     [
                         f"{executable}",
-                        f"-f {filename}",
+                        f"-f {filepath}",
                         f"-o {output}",
                         f"-s {stress:.8e}",
                         f"-i {incc:d}",
@@ -579,10 +585,10 @@ def cli_job(cli_args=None):
         jj = (group + 1) * args.group
         c = commands[ii:jj]
         command = "\n".join(c)
-        command = slurm.script_exec(command)
+        command = slurm.script_exec(command, flush=False)
 
-        jobname = ("{0:s}-{1:0" + fmt + "d}").format(
-            args.executable.replace(" ", "_"), group
+        jobname = ("{0:s}_{1:0" + fmt + "d}-of-{2:d}").format(
+            args.executable.replace(" ", "_"), group + 1, ngroup
         )
 
         sbatch = {
@@ -596,6 +602,5 @@ def cli_job(cli_args=None):
             "partition": "serial",
         }
 
-        open(jobname + ".slurm", "w").write(
-            GooseSLURM.scripts.plain(command=command, **sbatch)
-        )
+        with open(os.path.join(args.output, jobname + ".slurm"), "w") as file:
+            file.write(GooseSLURM.scripts.plain(command=command, **sbatch))
