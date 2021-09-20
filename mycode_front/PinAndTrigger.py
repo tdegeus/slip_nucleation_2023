@@ -8,16 +8,23 @@ import click
 import FrictionQPotFEM.UniformSingleLayer2d as model
 import GooseFEM  # noqa: F401
 import GooseHDF5 as g5
+import GooseSLURM
+import itertools
 import h5py
 import numpy as np
 import QPot  # noqa: F401
 import shelephant
 import tqdm
 
+from . import slurm
 from . import System
 from ._version import version
 
-mymodule = "PinAndTrigger"
+
+# name of the entry points (used also a default file names)
+entry_main = "PinAndTrigger"
+entry_collect = "PinAndTrigger_collect"
+entry_collect_combine = "PinAndTrigger_collect_combine"
 
 
 def pinning(system: model.System, target_element: int, target_A: int) -> np.ndarray:
@@ -207,7 +214,7 @@ def cli_main(cli_args=None):
 
         print("done:", args.output, ", niter = ", niter)
 
-        root = f"/meta/{mymodule}"
+        root = f"/meta/{entry_main}"
         output[f"{root}/file"] = args.file
         output[f"{root}/version"] = version
         output[f"{root}/version_dependencies"] = model.version_dependencies()
@@ -230,8 +237,6 @@ def cli_collect(cli_args=None):
     else:
         cli_args = [str(arg) for arg in cli_args]
 
-    basename = "PinAndTrigger_collect"
-
     class MyFormatter(
         argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
     ):
@@ -246,7 +251,7 @@ def cli_collect(cli_args=None):
     )
 
     parser.add_argument(
-        "-o", "--output", type=str, help="Output file ('a')", default=basename + ".h5"
+        "-o", "--output", type=str, help="Output file ('a')", default=f"{entry_collect}.h5"
     )
 
     parser.add_argument(
@@ -254,7 +259,7 @@ def cli_collect(cli_args=None):
         "--error",
         type=str,
         help="Store list of corrupted files",
-        default=basename + ".yaml",
+        default=f"{entry_collect}.yaml",
     )
 
     parser.add_argument("files", type=str, nargs="*", help="Files to add")
@@ -299,9 +304,9 @@ def cli_collect(cli_args=None):
                 # alias meta-data
                 # (allow for typos in previous versions)
 
-                if mymodule in data["meta"]:
-                    meta = data["meta"][mymodule]
-                    root_meta = f"/meta/{mymodule}"
+                if entry_main in data["meta"]:
+                    meta = data["meta"][entry_main]
+                    root_meta = f"/meta/{entry_main}"
                 elif "PushAndTrigger" in data["meta"]:
                     meta = data["meta"]["PushAndTrigger"]
                     root_meta = "/meta/PushAndTrigger"
@@ -351,8 +356,8 @@ def cli_collect(cli_args=None):
 
 
 def cli_collect_combine(cli_args=None):
-    """
-    Combine two or more collections, see "PinAndTrigger_combine" to obtain them from
+    f"""
+    Combine two or more collections, see {entry_collect} to obtain them from
     individual runs.
     """
 
@@ -360,8 +365,6 @@ def cli_collect_combine(cli_args=None):
         cli_args = sys.argv[1:]
     else:
         cli_args = [str(arg) for arg in cli_args]
-
-    basename = "PinAndTrigger_combine"
 
     class MyFormatter(
         argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
@@ -377,7 +380,7 @@ def cli_collect_combine(cli_args=None):
         "--output",
         type=str,
         help="Output file (overwritten)",
-        default=basename + ".h5",
+        default=f"{entry_collect_combine}.h5",
     )
 
     parser.add_argument(
@@ -412,3 +415,155 @@ def cli_collect_combine(cli_args=None):
                 paths.remove("/meta/version_dependencies")
 
                 g5.copydatasets(data, output, paths)
+
+
+def cli_job(cli_args=None):
+    """
+    Run for fixed A by pushing two different elements (0 and N / 2).
+    Fixed A implies that N - A are pinned, leaving A / 2 unpinned blocks on both sides of the
+    pushed element.
+    Note that the assumption is made that the push on the different elements of the same system
+    in the same still still results in sufficiently independent measurements.
+
+    Use "PinAndTrigger_job_compact" to run for A that are smaller than the one used here.
+    That function skips all events that are know to be too small,
+    and therefore less time is waisted on computing small events.
+    """
+
+    if cli_args is None:
+        cli_args = sys.argv[1:]
+    else:
+        cli_args = [str(arg) for arg in cli_args]
+
+    class MyFormatter(
+        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
+    ):
+        pass
+
+    parser = argparse.ArgumentParser(
+        formatter_class=MyFormatter, description=textwrap.dedent(cli_collect.__doc__)
+    )
+
+    parser.add_argument("info", type=str, help="EnsembleInfo (read-only)")
+
+    parser.add_argument("-A", "--size", type=int, default=1200, help="Size to keep unpinned")
+
+    parser.add_argument("-c", "--conda", type=str, default="code_velocity", help="Base name of the conda environment, appended '_E5v4' and '_s6g1'")
+
+    parser.add_argument("-n", "--group", type=int, default=100, help="Number of pushes to group in a single job")
+
+    parser.add_argument("-w", "--walltime", type=str, default="24h", help="Walltime to allocate for the job")
+
+    parser.add_argument("-e", "--executable", type=str, default=entry_main, help="Executable to use")
+
+    parser.add_argument(
+        "-c", "--collection", type=str, help=f"Result of {entry_collect}"
+    )
+
+    args = parser.parse_args(cli_args)
+
+    assert os.path.isfile(os.path.realpath(args.info))
+    assert os.path.isfile(os.path.realpath(args.collection)) or not args.collection
+
+    basedir = os.path.dirname(args.info)
+    executable = args.executable
+
+    simpaths = []
+    if args.collection:
+        with h5py.File(args.collection, "r") as file:
+            simpaths = list(g5.getpaths(file, max_depth=6))
+            simpaths = [path.replace("/...", "") for path in simpaths]
+
+
+    with h5py.File(args.info, "r") as data:
+
+        files = [os.path.join(basedir, f) for f in data["/files"].asstr()[...]]
+        N = data["/normalisation/N"][...]
+        sig0 = data["/normalisation/sig0"][...]
+        sigc = data["/averages/sigd_bottom"][...] * sig0
+        sign = data["/averages/sigd_top"][...] * sig0
+
+        stress_names = [
+            "stress=0d6",
+            "stress=1d6",
+            "stress=2d6",
+            "stress=3d6",
+            "stress=4d6",
+            "stress=5d6",
+            "stress=6d6",
+        ]
+
+        stresses = [
+            0.0 * (sign - sigc) / 6.0 + sigc,
+            1.0 * (sign - sigc) / 6.0 + sigc,
+            2.0 * (sign - sigc) / 6.0 + sigc,
+            3.0 * (sign - sigc) / 6.0 + sigc,
+            4.0 * (sign - sigc) / 6.0 + sigc,
+            5.0 * (sign - sigc) / 6.0 + sigc,
+            6.0 * (sign - sigc) / 6.0 + sigc,
+        ]
+
+        system = None
+        commands = []
+
+        for filename, (stress, stress_name) in itertools.product(
+            files, zip(stresses, stress_names)
+        ):
+
+            with h5py.File(filename, "r") as file:
+
+                if system is None:
+                    system = System.init(file)
+                else:
+                    system.reset_epsy(System.read_epsy(file))
+
+                trigger, _ = System.pushincrements(system, file, stress)
+
+            simid = os.path.basename(os.path.splitext(filename)[0])
+
+            for element, A, incc in itertools.product([0, int(N / 2)], [args.size], trigger):
+
+                root = (
+                    f"/data/{stress_name}/A={A:d}/{simid}/incc={incc:d}/element={element:d}"
+                )
+                if root in simpaths:
+                    continue
+
+                output = (
+                    f"{stress_name}_A={A:d}_{simid}_incc={incc:d}_element={element:d}.h5"
+                )
+                cmd = f"{executable} -f {filename} -o {output} -s {stress:.8e} -i {incc:d} -e {element:d} -a {A:d}"
+                commands += [cmd]
+
+    commands = [slurm.script_flush(cmd) for cmd in commands]
+
+    ngroup = int(np.ceil(len(commands) / args.group))
+    fmt = str(int(np.ceil(np.log10(ngroup))))
+
+    for group in range(ngroup):
+
+        ii = group * args.group
+        jj = (group + 1) * args.group
+        c = commands[ii:jj]
+        command = "\n".join(c)
+        command = slurm.script_exec(command)
+
+        jobname = ("{0:s}-{1:0" + fmt + "d}").format(
+            args.executable.replace(" ", "_"), group
+        )
+
+        sbatch = {
+            "job-name": "_".join([slurm.default_jobbase, jobname]),
+            "out": jobname + ".out",
+            "nodes": 1,
+            "ntasks": 1,
+            "cpus-per-task": 1,
+            "time": arg.walltime,
+            "account": "pcsl",
+            "partition": "serial",
+        }
+
+        open(jobname + ".slurm", "w").write(
+            GooseSLURM.scripts.plain(command=command, **sbatch)
+        )
+

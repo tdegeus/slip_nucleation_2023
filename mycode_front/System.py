@@ -8,6 +8,7 @@ import os
 import sys
 import uuid
 from typing import TypeVar
+from numpy.typing import ArrayLike
 
 import FrictionQPotFEM.UniformSingleLayer2d as model
 import GMatElastoPlasticQPot.Cartesian2d as GMat
@@ -16,9 +17,14 @@ import h5py
 import numpy as np
 import prrng
 import tqdm
+import click
+import argparse
+import textwrap
 
 from . import tag
 from ._version import version
+
+entry_ensembleinfo = "EnsembleInfo"
 
 
 def dset_extend1d(file: h5py.File, key: str, i: int, value: TypeVar("T")):
@@ -119,27 +125,7 @@ def reset_epsy(system: model.System, file: h5py.File):
     :param file: Open simulation HDF5 archive (read-only).
     """
 
-    e = read_epsy(file)
-    epsy = np.empty((e.shape[0], e.shape[1] + 1), dtype=e.dtype)
-    epsy[:, 0] = -e[:, 0]
-    epsy[:, 1:] = e
-
-    plastic = system.plastic()
-    N = plastic.size
-    nip = system.quad().nip()
-    material = system.material()
-    material_plastic = system.material_plastic()
-
-    assert epsy.shape[0] == N
-
-    for i, e in enumerate(plastic):
-        for q in range(nip):
-            for cusp in [
-                material.refCusp([e, q]),
-                material_plastic.refCusp([i, q]),
-            ]:
-                chunk = cusp.refQPotChunked()
-                chunk.set_y(epsy[i, :])
+    system.reset_epsy(read_epsy(file))
 
 
 def generate(
@@ -521,42 +507,85 @@ def run(filename: str, dev: bool):
         file["/meta/Run/completed"] = 1
 
 
-def basic_output(system: model.System, file: h5py.File) -> dict:
+def steadystate(Eps: ArrayLike, Sig: ArrayLike, kick: ArrayLike, **kwargs):
+    """
+    Estimate the first increment of the steady-state, with additional constraints:
+    -   Skip at least two increments.
+    -   Start with elastic loading.
+
+    :param Eps: Strain history [ninc].
+    :param Sig: Stress history [ninc].
+    :param kick: Per increment, skip or not [ninc].
+    :return: Increment number.
+    """
+
+    K = np.empty_like(Sig)
+    K[0] = np.inf
+    K[1:] = (Sig[1:] - Sig[0]) / (Eps[1:] - Eps[0])
+
+    steadystate = max(2, np.argmax(K <= 0.95 * K[1]))
+
+    if kick[steadystate]:
+        steadystate += 1
+
+    return steadystate
+
+
+def basic_output(system: model.System, file: h5py.File, verbose: bool=True) -> dict:
     """
     Read basic output from simulation.
 
     :param system: The system (modified: all increments visited).
     :param file: Open simulation HDF5 archive (read-only).
-    :param verbose: Print summary of every increment.
+    :param verbose: Print progress.
     """
 
-    if "/meta/normalisation/N" in file:
-        N = file["/meta/normalisation/N"][...]
-        eps0 = file["/meta/normalisation/eps"][...]
-        sig0 = file["/meta/normalisation/sig"][...]
-    else:
-        N = system.plastic().size
-        G = 1.0
-        eps0 = 1.0e-3 / 2.0
-        sig0 = 2.0 * G * eps0
-
-    dV = system.quad().AsTensor(2, system.quad().dV())
     incs = file["/stored"][...]
     ninc = incs.size
     assert np.all(incs == np.arange(ninc))
-    idx_n = None
 
     ret = dict(
         Eps=np.empty((ninc), dtype=float),
         Sig=np.empty((ninc), dtype=float),
         S=np.zeros((ninc), dtype=int),
         A=np.zeros((ninc), dtype=int),
-        sig0=sig0,
-        eps0=eps0,
-        N=N,
+        kick=file["/kick"][...].astype(bool),
     )
 
-    for inc in tqdm.tqdm(incs):
+    # read normalisation
+    if "/meta/normalisation/N" in file:
+        N = file["/meta/normalisation/N"][...]
+        eps0 = file["/meta/normalisation/eps"][...]
+        sig0 = file["/meta/normalisation/sig"][...]
+        ret["l0"] = file["/meta/normalisation/l"][...]
+        ret["G"] = file["/meta/normalisation/G"][...]
+        ret["K"] = file["/meta/normalisation/K"][...]
+        ret["rho"] = file["/meta/normalisation/rho"][...]
+    else:
+        N = system.plastic().size
+        G = 1.0
+        eps0 = 1.0e-3 / 2.0
+        sig0 = 2.0 * G * eps0
+        ret["l0"] = np.pi
+        ret["G"] = G
+        ret["K"] = 10.0 * G
+        ret["rho"] = G / 1.0 ** 2.0
+
+    # interpret / store additional normalisation
+    kappa = ret["K"] / 3.0
+    mu = ret["G"] / 2.0
+    ret["cs"] = np.sqrt(mu / ret["rho"])
+    ret["cd"] = np.sqrt((kappa + 4.0 / 3.0 * mu) / ret["rho"])
+    ret["sig0"] = sig0
+    ret["eps0"] = eps0
+    ret["N"] = N
+    ret["t0"] = ret["l0"] / ret["cs"]
+    ret["dt"] = file["/run/dt"][...]
+
+    dV = system.quad().AsTensor(2, system.quad().dV())
+    idx_n = None
+
+    for inc in tqdm.tqdm(incs, disable=not verbose):
 
         system.setU(file[f"/disp/{inc:d}"][...])
 
@@ -574,7 +603,102 @@ def basic_output(system: model.System, file: h5py.File) -> dict:
 
         idx_n = np.array(idx, copy=True)
 
+    # estimate steady-state
+    ret["steadystate"] = steadystate(**ret)
+
     return ret
+
+
+def cli_ensembleinfo(cli_args=None):
+    """
+    Read information (avalanche size, stress, strain, ...) of an ensemble.
+    """
+
+    if cli_args is None:
+        cli_args = sys.argv[1:]
+    else:
+        cli_args = [str(arg) for arg in cli_args]
+
+    class MyFormatter(
+        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
+    ):
+        pass
+
+    parser = argparse.ArgumentParser(
+        formatter_class=MyFormatter, description=textwrap.dedent(cli_ensembleinfo.__doc__)
+    )
+
+    parser.add_argument("files", nargs="*", type=str, help="Files to read")
+
+    parser.add_argument("-o", "--output", type=str, default=f"{entry_ensembleinfo}.h5", help="Output file")
+
+    parser.add_argument(
+        "-f", "--force", action="store_true", help="Force overwrite of output file"
+    )
+
+    args = parser.parse_args(cli_args)
+
+    assert np.all([os.path.isfile(os.path.realpath(file)) for file in args.files])
+    files = [os.path.normpath(file) for file in args.files]
+
+    if not args.force:
+        if os.path.isfile(args.output):
+            if not click.confirm(f'Overwrite "{args.output}"?'):
+                raise OSError("Cancelled")
+
+    fields_norm = ["l0", "G", "K", "rho", "cs", "cd", "sig0", "eps0", "N", "t0", "dt"]
+
+    fields_full = dict(
+        epsd = "Eps",
+        sigd = "Sig",
+        S = "S",
+        A = "A",
+        kick = "kick",
+        steadystate = "steadystate",
+    )
+
+    combine_load = {key: [] for key in fields_full if key not in ["steadystate"]}
+    combine_kick = {key: [] for key in fields_full if key not in ["steadystate"]}
+
+    with h5py.File(args.output, "w") as output:
+
+        for i, filename in enumerate(tqdm.tqdm(files)):
+
+            with h5py.File(filename, "r") as file:
+
+                if i == 0:
+                    system = init(file)
+                else:
+                    system.reset_epsy(read_epsy(file))
+
+                out = basic_output(system, file, verbose=False)
+                assert np.all(out["kick"][1::2])
+                assert not np.any(out["kick"][::2])
+                load = np.array(out["kick"], copy=True)
+                kick = np.logical_not(out["kick"])
+                load[:out["steadystate"]] = False
+                kick[:out["steadystate"]] = False
+
+                for key, read in fields_full.items():
+                    output[f"/full/{filename}/{key}"] = out[read]
+
+                for key in combine_load:
+                    combine_load[key] += list(out[fields_full[key]][load])
+                    combine_kick[key] += list(out[fields_full[key]][kick])
+
+                if i == 0:
+                    norm = {key: out[key] for key in fields_norm}
+                else:
+                    for key in fields_norm:
+                        assert np.isclose(norm[key], out[key])
+
+        for key in combine_load:
+            output[f"/loading/{key}"] = combine_load[key]
+            output[f"/avalanche/{key}"] = combine_kick[key]
+
+        for key, value in norm.items():
+            output[f"/normalisation/{key}"] = value
+
 
 
 def pushincrements(
@@ -601,37 +725,11 @@ def pushincrements(
     assert np.all(np.logical_not(kick[::2]))
     assert np.all(kick[1::2])
 
-    A = np.zeros(incs.shape, dtype=int)
-    Strain = np.zeros(incs.shape, dtype=float)
-    Stress = np.zeros(incs.shape, dtype=float)
-
-    idx_n = system.plastic_CurrentIndex()[:, 0].astype(int)
-
-    for inc in incs:
-
-        system.setU(file[f"/disp/{inc:d}"])
-
-        idx = system.plastic_CurrentIndex()[:, 0].astype(int)
-        Sig = system.Sig()
-        Eps = system.Eps()
-
-        A[inc] = np.sum(idx != idx_n)
-        Strain[inc] = GMat.Epsd(np.average(Eps, weights=dV, axis=(0, 1)))
-        Stress[inc] = GMat.Sigd(np.average(Sig, weights=dV, axis=(0, 1)))
-
-        idx_n = np.array(idx, copy=True)
-
-    # estimate steady-state using secant modulus:
-    # - always skip two increments
-    # - start with elastic loading
-    K = np.empty_like(Stress)
-    K[0] = np.inf
-    K[1:] = (Stress[1:] - Stress[0]) / (Strain[1:] - Strain[0])
-    steadystate = max(2, np.argmax(K <= 0.95 * K[1]))
-    if kick[steadystate]:
-        steadystate += 1
-
-    A[:steadystate] = 0
+    output = basic_output(system, file)
+    Strain = output["Eps"] * output["eps0"]
+    Stress = output["Sig"] * output["sig0"]
+    A = output["A"]
+    A[:output["steadystate"]] = 0
 
     inc_system = np.argwhere(A == N).ravel()
     inc_push = []
