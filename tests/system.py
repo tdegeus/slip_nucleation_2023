@@ -1,4 +1,5 @@
 import os
+import shutil
 import sys
 import unittest
 
@@ -128,7 +129,7 @@ class MyTests(unittest.TestCase):
             my.PinAndTrigger.cli_main(cmd)
         os.chdir(pwd)
 
-        # shutil.rmtree(dirname)
+        shutil.rmtree(dirname)
 
 
 if __name__ == "__main__":
