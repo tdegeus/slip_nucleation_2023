@@ -451,7 +451,9 @@ def cli_job(cli_args=None):
 
     parser.add_argument("info", type=str, help="EnsembleInfo (read-only)")
 
-    parser.add_argument("-o", "--output", type=str, default=".", help="Output directory")
+    parser.add_argument(
+        "-o", "--output", type=str, default=".", help="Output directory"
+    )
 
     parser.add_argument(
         "-A", "--size", type=int, default=1200, help="Size to keep unpinned"
@@ -485,9 +487,7 @@ def cli_job(cli_args=None):
         "-e", "--executable", type=str, default=entry_main, help="Executable to use"
     )
 
-    parser.add_argument(
-        "-f", "--finished", type=str, help=f"Result of {entry_collect}"
-    )
+    parser.add_argument("-f", "--finished", type=str, help=f"Result of {entry_collect}")
 
     args = parser.parse_args(cli_args)
 

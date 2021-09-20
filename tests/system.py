@@ -118,14 +118,15 @@ class MyTests(unittest.TestCase):
 
         pwd = os.getcwd()
         os.chdir(dirname)
-        with open("PinAndTrigger_1-of-1.slurm", "r") as file:
-            cmd = file.read().split("\n")[-2].split("stdbuf -o0 -e0 PinAndTrigger ")[1].split(" ")
+        with open("PinAndTrigger_1-of-1.slurm") as file:
+            cmd = (
+                file.read()
+                .split("\n")[-2]
+                .split("stdbuf -o0 -e0 PinAndTrigger ")[1]
+                .split(" ")
+            )
             my.PinAndTrigger.cli_main(cmd)
         os.chdir(pwd)
-
-
-
-
 
         # shutil.rmtree(dirname)
 

@@ -4,28 +4,37 @@ default_condabase = "code_velocity"
 default_condaexec = "~/miniconda3/etc/profile.d/conda.sh"
 default_jobbase = "velocity"
 
+
 def script_echo_jobid():
     """
     Return code to echo the job-id.
     :return: str
     """
-    return textwrap.dedent(f"""
-    # print jobid
-    echo "SLURM_JOBID = ${{SLURM_JOBID}}"
-    echo ""
-    """)
+    return textwrap.dedent(
+        """
+        # print jobid
+        echo "SLURM_JOBID = ${{SLURM_JOBID}}"
+        echo ""
+        """
+    )
+
 
 def script_export_omp_num_threads(ncores=1):
     """
     Return code to set OMP_NUM_THREADS
     :return: str
     """
-    return textwrap.dedent(f"""
-    # set the number of cores to use by OMP
-    export OMP_NUM_THREADS={ncores}
-    """)
+    return textwrap.dedent(
+        f"""
+        # set the number of cores to use by OMP
+        export OMP_NUM_THREADS={ncores}
+        """
+    )
 
-def script_load_conda(condabase: str=default_condabase, condaexec: str=default_condaexec):
+
+def script_load_conda(
+    condabase: str = default_condabase, condaexec: str = default_condaexec
+):
     """
     Return code to load the Conda environment.
     :param condabase: Base name of the Conda environment, appended '_E5v4' and '_s6g1'".
@@ -33,21 +42,23 @@ def script_load_conda(condabase: str=default_condabase, condaexec: str=default_c
     :return: str
     """
 
-    return textwrap.dedent(f"""
-    # load conda environment
-    source {condaexec}
+    return textwrap.dedent(
+        f"""
+        # load conda environment
+        source {condaexec}
 
-    if [[ "${{SYS_TYPE}}" == *E5v4* ]]; then
-        conda activate {condabase}_E5v4
-    elif [[ "${{SYS_TYPE}}" == *s6g1* ]]; then
-        conda activate {condabase}_s6g1
-    elif [[ "${{SYS_TYPE}}" == *S6g1* ]]; then
-        conda activate {condabase}_s6g1
-    else
-        echo "Unknown SYS_TYPE ${{SYS_TYPE}}"
-        exit 1
-    fi
-    """)
+        if [[ "${{SYS_TYPE}}" == *E5v4* ]]; then
+            conda activate {condabase}_E5v4
+        elif [[ "${{SYS_TYPE}}" == *s6g1* ]]; then
+            conda activate {condabase}_s6g1
+        elif [[ "${{SYS_TYPE}}" == *S6g1* ]]; then
+            conda activate {condabase}_s6g1
+        else
+            echo "Unknown SYS_TYPE ${{SYS_TYPE}}"
+            exit 1
+        fi
+        """
+    )
 
 
 def script_flush(cmd):
@@ -80,7 +91,10 @@ def script_exec(cmd, jobid=True, omp_num_threads=True, conda=True, flush=True):
 
     ret = []
 
-    for opt, func in zip([jobid, omp_num_threads, conda], [script_echo_jobid, script_export_omp_num_threads, script_load_conda]):
+    for opt, func in zip(
+        [jobid, omp_num_threads, conda],
+        [script_echo_jobid, script_export_omp_num_threads, script_load_conda],
+    ):
         if opt is True:
             ret += [func()]
         elif opt is not None and opt is not False:
@@ -95,4 +109,3 @@ def script_exec(cmd, jobid=True, omp_num_threads=True, conda=True, flush=True):
         ret += [cmd]
 
     return "\n".join(ret)
-
