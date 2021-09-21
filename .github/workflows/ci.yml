@@ -13,22 +13,6 @@ jobs:
 
     strategy:
       fail-fast: false
-      matrix:
-        code:
-          - CrackEvolution_raw_stress
-          - CrackEvolution_strain
-          - CrackEvolution_stress
-          - CrackEvolution_weak-sync-A_strain
-          - CrackEvolution_weak-sync-A_stress
-          - EnsembleInfo
-          - EventEvolution_strain
-          - EventEvolution_stress
-          - PushBarrier
-          - PushBarrierRecursive
-          - PushElement
-          - PushRecursiveQuasiThermal
-          - Run
-          - UnloadPushElement
 
     defaults:
       run:
@@ -49,12 +33,10 @@ jobs:
         environment-name: myenv
 
     - name: Set dummy version
-      run: echo "SETUPTOOLS_SCM_PRETEND_VERSION=ci" >> $GITHUB_ENV
+      run: echo "SETUPTOOLS_SCM_PRETEND_VERSION=0.0" >> $GITHUB_ENV
 
-    - name: Configure
-      working-directory: ${{ matrix.code }}
-      run: cmake -Bbuild
-
-    - name: Compile
-      working-directory: ${{ matrix.code }}/build
-      run: make
+    - name: Run tests
+      run: |
+        python tests/slurm.py
+        python tests/system.py
+        python tests/tag.py

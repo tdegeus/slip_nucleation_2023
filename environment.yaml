@@ -20,6 +20,7 @@ dependencies:
   - python-frictionqpotfem
   - python-gmatelastoplasticqpot
   - python-goosefem
+  - python-prrng
   - python-qpot
   - qpot
   - setuptools_scm
