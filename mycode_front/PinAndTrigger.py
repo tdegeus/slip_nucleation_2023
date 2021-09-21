@@ -247,7 +247,7 @@ def cli_collect(cli_args=None):
     )
 
     parser.add_argument(
-        "-A", "--min-A", type=int, help="Save events only with A > ...", default=10
+        "-a", "--min-a", type=int, help="Save events only with A > ...", default=10
     )
 
     parser.add_argument(
@@ -348,7 +348,7 @@ def cli_collect(cli_args=None):
 
                 dest_datasets = ["/file", "/target_stress", "/S", "/A"]
 
-                if meta["A"][...] >= args.min_A:
+                if meta["A"][...] >= args.min_a:
                     source_datasets = ["/disp/0", "/disp/1"] + source_datasets
                     dest_datasets = ["/disp/0", "/disp/1"] + dest_datasets
 
@@ -456,7 +456,7 @@ def cli_job(cli_args=None):
     )
 
     parser.add_argument(
-        "-A", "--size", type=int, default=1200, help="Size to keep unpinned"
+        "-a", "--size", type=int, default=1200, help="Size to keep unpinned"
     )
 
     parser.add_argument(
@@ -477,7 +477,7 @@ def cli_job(cli_args=None):
 
     parser.add_argument(
         "-w",
-        "--walltime",
+        "--time",
         type=str,
         default="24h",
         help="Walltime to allocate for the job",
@@ -574,33 +574,5 @@ def cli_job(cli_args=None):
                 )
                 commands += [cmd]
 
-    commands = [slurm.script_flush(cmd) for cmd in commands]
+    slurm.serial_group(commands, basename=args.executable.replace(" ", "_"), group=args.group, outdir=args.output, sbatch={"time": args.time})
 
-    ngroup = int(np.ceil(len(commands) / args.group))
-    fmt = str(int(np.ceil(np.log10(ngroup))))
-
-    for group in range(ngroup):
-
-        ii = group * args.group
-        jj = (group + 1) * args.group
-        c = commands[ii:jj]
-        command = "\n".join(c)
-        command = slurm.script_exec(command, flush=False)
-
-        jobname = ("{0:s}_{1:0" + fmt + "d}-of-{2:d}").format(
-            args.executable.replace(" ", "_"), group + 1, ngroup
-        )
-
-        sbatch = {
-            "job-name": "_".join([slurm.default_jobbase, jobname]),
-            "out": jobname + ".out",
-            "nodes": 1,
-            "ntasks": 1,
-            "cpus-per-task": 1,
-            "time": args.walltime,
-            "account": "pcsl",
-            "partition": "serial",
-        }
-
-        with open(os.path.join(args.output, jobname + ".slurm"), "w") as file:
-            file.write(GooseSLURM.scripts.plain(command=command, **sbatch))

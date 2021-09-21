@@ -88,7 +88,7 @@ class MyTests(unittest.TestCase):
             [
                 "--output",
                 collectname1,
-                "--min-A",
+                "--min-a",
                 1,
             ]
             + pushnames[:2]
@@ -98,7 +98,7 @@ class MyTests(unittest.TestCase):
             [
                 "--output",
                 collectname2,
-                "--min-A",
+                "--min-a",
                 1,
             ]
             + pushnames[2:]
@@ -115,7 +115,7 @@ class MyTests(unittest.TestCase):
 
         # PinAndTrigger : job-creation (try running only, not real test)
 
-        my.PinAndTrigger.cli_job(["-A", 4, infoname, "-o", dirname, "-n", int(1e9)])
+        my.PinAndTrigger.cli_job(["-a", 4, infoname, "-o", dirname, "-n", int(1e9)])
 
         pwd = os.getcwd()
         os.chdir(dirname)
