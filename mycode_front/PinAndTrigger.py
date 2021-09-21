@@ -463,7 +463,7 @@ def cli_job(cli_args=None):
         "-c",
         "--conda",
         type=str,
-        default="code_velocity",
+        default=slurm.default_condabase,
         help="Base name of the conda environment, appended '_E5v4' and '_s6g1'",
     )
 
