@@ -721,7 +721,6 @@ def basic_output(system: model.System, file: h5py.File, verbose: bool = True) ->
 
         idx_n = np.array(idx, copy=True)
 
-    # estimate steady-state
     ret["steadystate"] = steadystate(**ret)
 
     return ret
@@ -774,6 +773,7 @@ def cli_ensembleinfo(cli_args=None):
 
     args = parser.parse_args(cli_args)
 
+    assert len(args.files) > 0
     assert np.all([os.path.isfile(os.path.realpath(file)) for file in args.files])
     files = [os.path.relpath(file, os.path.dirname(args.output)) for file in args.files]
     seeds = []
