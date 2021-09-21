@@ -12,10 +12,13 @@ setup(
     setup_requires=["setuptools_scm"],
     entry_points={
         "console_scripts": [
+            "JobSerialGroup = mycode_front.slum:cli_serial_group",
+            "Run = mycode_front.System:cli_run",
+            "Run_generate = mycode_front.System:cli_generate",
             "EnsembleInfo = mycode_front.System:cli_ensembleinfo",
             "PinAndTrigger = mycode_front.PinAndTrigger:cli_main",
             "PinAndTrigger_collect = mycode_front.PinAndTrigger:cli_collect",
-            "PinAndTrigger_collect_combine = mycode_front.PinAndTrigger:cli_cli_collect_combine",
+            "PinAndTrigger_collect_combine = mycode_front.PinAndTrigger:cli_collect_combine",
         ]
     },
 )

@@ -1,9 +1,10 @@
 import os
 import sys
 import unittest
+import shutil
 
 root = os.path.join(os.path.dirname(__file__), "..")
-sys.path.append(os.path.abspath(root))
+sys.path.insert(0, os.path.abspath(root))
 import mycode_front as my  # noqa: E402
 
 
@@ -20,6 +21,26 @@ class MyTests(unittest.TestCase):
         _ = my.slurm.script_exec(cmd, conda=False)
 
 
+    def test_cli_serial_group(self):
+
+        dirname = "mytest"
+        filename = os.path.join(dirname, "foo.txt")
+
+        if not os.path.isdir(dirname):
+            os.makedirs(dirname)
+
+        with open(filename, "w") as file:
+            file.write("")
+
+        my.slurm.cli_serial_group(["-o", dirname, "-c", "dummy", filename])
+
+        shutil.rmtree(dirname)
+
+
 if __name__ == "__main__":
 
     unittest.main()
+
+
+
+

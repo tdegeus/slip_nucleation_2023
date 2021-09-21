@@ -3,6 +3,7 @@ import textwrap
 
 import GooseSLURM
 import numpy as np
+import argparse
 
 default_condabase = "code_velocity"
 default_condaexec = "~/miniconda3/etc/profile.d/conda.sh"
@@ -175,3 +176,66 @@ def serial_group(
 
         with open(os.path.join(outdir, jobname + ".slurm"), "w") as file:
             file.write(GooseSLURM.scripts.plain(command=command, **sbatch))
+
+
+def cli_serial_group(cli_args=None):
+    """
+    Job-script to run commands.
+    """
+
+    if cli_args is None:
+        cli_args = sys.argv[1:]
+    else:
+        cli_args = [str(arg) for arg in cli_args]
+
+    class MyFormatter(
+        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
+    ):
+        pass
+
+    parser = argparse.ArgumentParser(
+        formatter_class=MyFormatter,
+        description=textwrap.dedent(cli_serial_group.__doc__),
+    )
+
+    parser.add_argument(
+        "files",
+        nargs="*",
+        type=str,
+        help="Files to run",
+    )
+
+    parser.add_argument(
+        "-o", "--outdir", type=str, default=os.getcwd(), help="Output directory"
+    )
+
+    parser.add_argument(
+        "-c",
+        "--command",
+        type=str,
+        help="Command to use",
+    )
+
+    parser.add_argument(
+        "-n",
+        "--group",
+        type=int,
+        default=1,
+        help="Number of commands to group in a single job",
+    )
+
+    parser.add_argument(
+        "-w",
+        "--time",
+        type=str,
+        default="24h",
+        help="Walltime to allocate for the job",
+    )
+
+    args = parser.parse_args(cli_args)
+
+    assert np.all([os.path.isfile(os.path.realpath(file)) for file in args.files])
+
+    files = [os.path.relpath(file, args.outdir) for file in args.files]
+    commands = [f"{args.command} {file}" for file in files]
+    serial_group(commands, basename=args.command, group=args.group, outdir=args.outdir, sbatch={"time": args.time})

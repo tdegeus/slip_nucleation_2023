@@ -11,8 +11,20 @@ root = os.path.join(os.path.dirname(__file__), "..")
 sys.path.insert(0, os.path.abspath(root))
 import mycode_front as my  # noqa: E402
 
-
 class MyTests(unittest.TestCase):
+
+    def test_generate(self):
+
+        dirname = "mytest"
+
+        if not os.path.isdir(dirname):
+            os.makedirs(dirname)
+
+        my.System.cli_generate([dirname])
+
+        shutil.rmtree(dirname)
+
+
     def test_small(self):
 
         # Basic run / Get output
@@ -26,15 +38,16 @@ class MyTests(unittest.TestCase):
         filename = os.path.join(dirname, idname)
         infoname = os.path.join(dirname, "EnsembleInfo.h5")
 
-        if os.path.isfile(infoname):
-            os.remove(infoname)
+        for file in [filename, infoname]:
+            if os.path.isfile(file):
+                os.remove(file)
 
         if not os.path.isdir(dirname):
             os.makedirs(dirname)
 
         N = 9
         my.System.generate(filename, N=N, test_mode=True)
-        my.System.run(filename, dev=True)
+        my.System.cli_run(["--force", filename])
         my.System.cli_ensembleinfo([filename, "--output", infoname])
 
         with h5py.File(infoname, "r") as file:

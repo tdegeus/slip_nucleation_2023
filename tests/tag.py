@@ -3,7 +3,7 @@ import sys
 import unittest
 
 root = os.path.join(os.path.dirname(__file__), "..")
-sys.path.append(os.path.abspath(root))
+sys.path.insert(0, os.path.abspath(root))
 import mycode_front as my  # noqa: E402
 
 

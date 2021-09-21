@@ -22,6 +22,7 @@ import tqdm
 from numpy.typing import ArrayLike
 
 from . import tag
+from . import slurm
 from ._version import version
 
 entry_ensembleinfo = "EnsembleInfo"
@@ -62,8 +63,9 @@ def read_epsy(file: h5py.File) -> np.ndarray:
     """
     Regenerate yield strain sequence per plastic element.
     Note that two ways of storage are supported:
-    - "classical": the yield strains are stored.
-    - "prrng": only the seeds per block are stored, that can then be unique restored.
+    -   "classical": the yield strains are stored.
+    -   "prrng": only the seeds per block are stored, that can then be uniquely restored.
+        Note that in this case a larger strain history is used.
 
     :param file: Opened simulation archive.
     """
@@ -90,7 +92,7 @@ def read_epsy(file: h5py.File) -> np.ndarray:
 
 def init(file: h5py.File) -> model.System:
     r"""
-    Read system from file.
+    Initialise system from file.
 
     :param file: Open simulation HDF5 archive (read-only).
     :return: The initialised system.
@@ -116,30 +118,24 @@ def init(file: h5py.File) -> model.System:
     return system
 
 
-def reset_epsy(system: model.System, file: h5py.File):
-    r"""
-    Reset yield strain history from file.
-    This can for example be used to speed-up things by avoiding re-initialising the system.
-
-    :param system: The system (modified: yield strains changed).
-    :param file: Open simulation HDF5 archive (read-only).
-    """
-
-    system.reset_epsy(read_epsy(file))
-
-
 def generate(
     filename: str, N: int, seed: int = 0, classic: bool = False, test_mode: bool = False
 ):
     """
     Generate input file.
+    Note that two ways of storage of yield strains are supported:
+    -   "classical": the yield strains are stored.
+    -   "prrng": only the seeds per block are stored, that can then be uniquely restored.
+        Note that in this case a larger strain history is used.
 
-    :param filename: The filename of the input file (overwritten).
+    :param filename: The filename of the input file.
     :param N: The number of blocks.
     :param seed: Base seed to use to generate the disorder.
     :param classic: The yield strain are hard-coded in the file, otherwise prrng is used.
     :param test_mode: Run in test mode (smaller chunk).
     """
+
+    assert not os.path.isfile(os.path.realpath(filename))
 
     # parameters
     h = np.pi
@@ -405,6 +401,78 @@ def generate(
         )
 
 
+def cli_generate(cli_args=None):
+    """
+    Generate IO files, including job-scripts to run simulations.
+    """
+
+    if cli_args is None:
+        cli_args = sys.argv[1:]
+    else:
+        cli_args = [str(arg) for arg in cli_args]
+
+    class MyFormatter(
+        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
+    ):
+        pass
+
+    parser = argparse.ArgumentParser(
+        formatter_class=MyFormatter,
+        description=textwrap.dedent(cli_generate.__doc__),
+    )
+
+    parser.add_argument(
+        "outdir",
+        type=str,
+        help="Output directory",
+    )
+
+    parser.add_argument(
+        "-N",
+        "--size",
+        type=int,
+        default=2 * (3 ** 6),
+        help="Number of plastic blocks",
+    )
+
+    parser.add_argument(
+        "-n",
+        "--nsim",
+        type=int,
+        default=1,
+        help="Number of simulations to generate",
+    )
+
+    parser.add_argument(
+        "-s",
+        "--start",
+        type=int,
+        default=0,
+        help="Starting simulation (sets the seed)",
+    )
+
+    parser.add_argument(
+        "-w",
+        "--time",
+        type=str,
+        default="72h",
+        help="Walltime to allocate for the job",
+    )
+
+    args = parser.parse_args(cli_args)
+
+    assert os.path.isdir(os.path.realpath(args.outdir))
+
+    files = []
+
+    for i in range(args.start, args.start + args.nsim):
+        files += [f"id={i:03d}.h5"]
+        generate(filename=os.path.join(args.outdir, f"id={i:03d}.h5"), N = args.size, seed=i * args.size)
+
+    commands = [f"Run {file}" for file in files]
+    slurm.serial_group(commands, basename="Run", group=1, outdir=args.outdir, sbatch={"time": args.time})
+
+
 def run(filename: str, dev: bool):
     """
     Run the simulation.
@@ -505,6 +573,45 @@ def run(filename: str, dev: bool):
 
         print(f'"{basename}": completed')
         file["/meta/Run/completed"] = 1
+
+
+def cli_run(cli_args=None):
+    """
+    Run simulation.
+    """
+
+    if cli_args is None:
+        cli_args = sys.argv[1:]
+    else:
+        cli_args = [str(arg) for arg in cli_args]
+
+    class MyFormatter(
+        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
+    ):
+        pass
+
+    parser = argparse.ArgumentParser(
+        formatter_class=MyFormatter,
+        description=textwrap.dedent(cli_run.__doc__),
+    )
+
+    parser.add_argument(
+        "file",
+        type=str,
+        help="Simulation file",
+    )
+
+    parser.add_argument(
+        "-f",
+        "--force",
+        action="store_true",
+        help="Allow uncommitted changed",
+    )
+
+    args = parser.parse_args(cli_args)
+
+    assert os.path.isfile(os.path.realpath(args.file))
+    run(args.file, dev=args.force)
 
 
 def steadystate(epsd: ArrayLike, sigd: ArrayLike, kick: ArrayLike, **kwargs):

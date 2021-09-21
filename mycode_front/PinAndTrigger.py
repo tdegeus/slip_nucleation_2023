@@ -360,8 +360,8 @@ def cli_collect(cli_args=None):
 
 
 def cli_collect_combine(cli_args=None):
-    f"""
-    Combine two or more collections, see {entry_collect} to obtain them from
+    """
+    Combine two or more collections, see PinAndTrigger_collect to obtain them from
     individual runs.
     """
 
@@ -376,7 +376,7 @@ def cli_collect_combine(cli_args=None):
         pass
 
     parser = argparse.ArgumentParser(
-        formatter_class=MyFormatter, description=textwrap.dedent(cli_collect.__doc__)
+        formatter_class=MyFormatter, description=textwrap.dedent(cli_collect_combine.__doc__)
     )
 
     parser.add_argument(
