@@ -376,7 +376,8 @@ def cli_collect_combine(cli_args=None):
         pass
 
     parser = argparse.ArgumentParser(
-        formatter_class=MyFormatter, description=textwrap.dedent(cli_collect_combine.__doc__)
+        formatter_class=MyFormatter,
+        description=textwrap.dedent(cli_collect_combine.__doc__),
     )
 
     parser.add_argument(

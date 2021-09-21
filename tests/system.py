@@ -11,8 +11,8 @@ root = os.path.join(os.path.dirname(__file__), "..")
 sys.path.insert(0, os.path.abspath(root))
 import mycode_front as my  # noqa: E402
 
-class MyTests(unittest.TestCase):
 
+class MyTests(unittest.TestCase):
     def test_generate(self):
 
         dirname = "mytest"
@@ -23,7 +23,6 @@ class MyTests(unittest.TestCase):
         my.System.cli_generate([dirname])
 
         shutil.rmtree(dirname)
-
 
     def test_small(self):
 

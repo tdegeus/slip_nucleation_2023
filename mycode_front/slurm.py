@@ -1,9 +1,10 @@
+import argparse
 import os
+import sys
 import textwrap
 
 import GooseSLURM
 import numpy as np
-import argparse
 
 default_condabase = "code_velocity"
 default_condaexec = "~/miniconda3/etc/profile.d/conda.sh"
@@ -238,4 +239,10 @@ def cli_serial_group(cli_args=None):
 
     files = [os.path.relpath(file, args.outdir) for file in args.files]
     commands = [f"{args.command} {file}" for file in files]
-    serial_group(commands, basename=args.command, group=args.group, outdir=args.outdir, sbatch={"time": args.time})
+    serial_group(
+        commands,
+        basename=args.command,
+        group=args.group,
+        outdir=args.outdir,
+        sbatch={"time": args.time},
+    )

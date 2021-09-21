@@ -1,7 +1,7 @@
 import os
+import shutil
 import sys
 import unittest
-import shutil
 
 root = os.path.join(os.path.dirname(__file__), "..")
 sys.path.insert(0, os.path.abspath(root))
@@ -19,7 +19,6 @@ class MyTests(unittest.TestCase):
         _ = my.slurm.script_exec(cmd, conda=("my", "/root"))
         _ = my.slurm.script_exec(cmd, conda=None)
         _ = my.slurm.script_exec(cmd, conda=False)
-
 
     def test_cli_serial_group(self):
 
@@ -40,7 +39,3 @@ class MyTests(unittest.TestCase):
 if __name__ == "__main__":
 
     unittest.main()
-
-
-
-

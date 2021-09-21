@@ -21,8 +21,8 @@ import prrng
 import tqdm
 from numpy.typing import ArrayLike
 
-from . import tag
 from . import slurm
+from . import tag
 from ._version import version
 
 entry_ensembleinfo = "EnsembleInfo"
@@ -467,10 +467,20 @@ def cli_generate(cli_args=None):
 
     for i in range(args.start, args.start + args.nsim):
         files += [f"id={i:03d}.h5"]
-        generate(filename=os.path.join(args.outdir, f"id={i:03d}.h5"), N = args.size, seed=i * args.size)
+        generate(
+            filename=os.path.join(args.outdir, f"id={i:03d}.h5"),
+            N=args.size,
+            seed=i * args.size,
+        )
 
     commands = [f"Run {file}" for file in files]
-    slurm.serial_group(commands, basename="Run", group=1, outdir=args.outdir, sbatch={"time": args.time})
+    slurm.serial_group(
+        commands,
+        basename="Run",
+        group=1,
+        outdir=args.outdir,
+        sbatch={"time": args.time},
+    )
 
 
 def run(filename: str, dev: bool):
