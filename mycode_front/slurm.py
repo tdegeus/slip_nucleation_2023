@@ -1,7 +1,8 @@
-import textwrap
-import numpy as np
 import os
+import textwrap
+
 import GooseSLURM
+import numpy as np
 
 default_condabase = "code_velocity"
 default_condaexec = "~/miniconda3/etc/profile.d/conda.sh"
@@ -115,7 +116,17 @@ def script_exec(cmd, jobid=True, omp_num_threads=True, conda=True, flush=True):
     return "\n".join(ret)
 
 
-def serial_group(commands: list[str], basename: str, group: int, outdir: str = os.getcwd(), sbatch: dict = {}, jobid=True, omp_num_threads=True, conda=True, flush=True):
+def serial_group(
+    commands: list[str],
+    basename: str,
+    group: int,
+    outdir: str = os.getcwd(),
+    sbatch: dict = {},
+    jobid=True,
+    omp_num_threads=True,
+    conda=True,
+    flush=True,
+):
     """
     Group a number of commands per job-script.
 
@@ -150,7 +161,13 @@ def serial_group(commands: list[str], basename: str, group: int, outdir: str = o
         ii = g * group
         jj = (g + 1) * group
         c = commands[ii:jj]
-        command = script_exec("\n".join(c), jobid=jobid, omp_num_threads=omp_num_threads, conda=conda, flush=False)
+        command = script_exec(
+            "\n".join(c),
+            jobid=jobid,
+            omp_num_threads=omp_num_threads,
+            conda=conda,
+            flush=False,
+        )
 
         jobname = ("{0:s}_{1:0" + fmt + "d}-of-{2:d}").format(basename, g + 1, ngroup)
         sbatch["job-name"] = jobname
@@ -158,6 +175,3 @@ def serial_group(commands: list[str], basename: str, group: int, outdir: str = o
 
         with open(os.path.join(outdir, jobname + ".slurm"), "w") as file:
             file.write(GooseSLURM.scripts.plain(command=command, **sbatch))
-
-
-

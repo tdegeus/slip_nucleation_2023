@@ -9,7 +9,6 @@ import click
 import FrictionQPotFEM.UniformSingleLayer2d as model
 import GooseFEM  # noqa: F401
 import GooseHDF5 as g5
-import GooseSLURM
 import h5py
 import numpy as np
 import QPot  # noqa: F401
@@ -574,5 +573,10 @@ def cli_job(cli_args=None):
                 )
                 commands += [cmd]
 
-    slurm.serial_group(commands, basename=args.executable.replace(" ", "_"), group=args.group, outdir=args.output, sbatch={"time": args.time})
-
+    slurm.serial_group(
+        commands,
+        basename=args.executable.replace(" ", "_"),
+        group=args.group,
+        outdir=args.output,
+        sbatch={"time": args.time},
+    )
