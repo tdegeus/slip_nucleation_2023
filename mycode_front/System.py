@@ -775,10 +775,7 @@ def cli_ensembleinfo(cli_args=None):
     args = parser.parse_args(cli_args)
 
     assert np.all([os.path.isfile(os.path.realpath(file)) for file in args.files])
-    files = [
-        os.path.normpath(os.path.relpath(file, os.path.dirname(args.output)))
-        for file in args.files
-    ]
+    files = [os.path.relpath(file, os.path.dirname(args.output)) for file in args.files]
     seeds = []
 
     if not args.force:
