@@ -29,7 +29,7 @@ class MyTests(unittest.TestCase):
         # Basic run / Get output
 
         historic = shelephant.yaml.read(
-            os.path.join(os.path.dirname(__file__), "system_small.yaml")
+            os.path.join(os.path.dirname(__file__), "data_System_small.yaml")
         )
 
         dirname = "mytest"
@@ -50,19 +50,19 @@ class MyTests(unittest.TestCase):
         my.System.cli_ensembleinfo([filename, "--output", infoname])
 
         with h5py.File(infoname, "r") as file:
-            Eps = file[f"/full/{idname}/epsd"][...]
-            Sig = file[f"/full/{idname}/sigd"][...]
+            epsd = file[f"/full/{idname}/epsd"][...]
+            sigd = file[f"/full/{idname}/sigd"][...]
             A = file[f"/full/{idname}/A"][...]
             sig0 = file["/normalisation/sig0"][...]
 
-        self.assertTrue(np.allclose(Eps, historic["Eps"]))
-        self.assertTrue(np.allclose(Sig, historic["Sig"]))
+        self.assertTrue(np.allclose(epsd, historic["epsd"]))
+        self.assertTrue(np.allclose(sigd, historic["sigd"]))
 
         # PinAndTrigger : full run + collection (try running only, not real test)
 
         iss = np.argwhere(A == N).ravel()
-        sign = np.mean(Sig[iss - 1])
-        sigc = np.mean(Sig[iss])
+        sign = np.mean(sigd[iss - 1])
+        sigc = np.mean(sigd[iss])
 
         sigtarget = 0.5 * (sigc + sign)
         pushincs = [iss[-30], iss[-20], iss[-10], iss[-4]]

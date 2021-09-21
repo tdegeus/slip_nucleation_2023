@@ -38,5 +38,5 @@ jobs:
     - name: Run tests
       run: |
         python tests/slurm.py
-        python tests/system.py
+        python tests/System.py
         python tests/tag.py

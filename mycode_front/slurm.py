@@ -10,7 +10,7 @@ default_condabase = "code_velocity"
 default_condaexec = "~/miniconda3/etc/profile.d/conda.sh"
 
 
-def script_echo_jobid():
+def snippet_echo_jobid():
     """
     Return code to echo the job-id.
     :return: str
@@ -24,7 +24,7 @@ def script_echo_jobid():
     )
 
 
-def script_export_omp_num_threads(ncores=1):
+def snippet_export_omp_num_threads(ncores=1):
     """
     Return code to set OMP_NUM_THREADS
     :return: str
@@ -37,7 +37,7 @@ def script_export_omp_num_threads(ncores=1):
     )
 
 
-def script_load_conda(
+def snippet_load_conda(
     condabase: str = default_condabase, condaexec: str = default_condaexec
 ):
     """
@@ -66,7 +66,7 @@ def script_load_conda(
     )
 
 
-def script_flush(cmd):
+def snippet_flush(cmd):
     """
     Return code to run a command and flush the buffer of stdout.
     :param cmd: The command.
@@ -87,9 +87,9 @@ def script_exec(cmd, jobid=True, omp_num_threads=True, conda=True, flush=True):
         slurm.script_exec(cmd, conda=dict(condabase="my"))
 
     :param cmd: The command.
-    :param jobjd: Echo the jobid (see script_echo_jobid()).
-    :param omp_num_threads: Number of cores to use (see script_export_omp_num_threads()).
-    :param conda: Load conda environment (see defaults of script_load_conda()).
+    :param jobjd: Echo the jobid (see snippet_echo_jobid()).
+    :param omp_num_threads: Number of cores to use (see snippet_export_omp_num_threads()).
+    :param conda: Load conda environment (see defaults of snippet_load_conda()).
     :param flush: Flush the buffer of stdout.
     :return: str
     """
@@ -98,7 +98,7 @@ def script_exec(cmd, jobid=True, omp_num_threads=True, conda=True, flush=True):
 
     for opt, func in zip(
         [jobid, omp_num_threads, conda],
-        [script_echo_jobid, script_export_omp_num_threads, script_load_conda],
+        [snippet_echo_jobid, snippet_export_omp_num_threads, snippet_load_conda],
     ):
         if opt is True:
             ret += [func()]
@@ -111,7 +111,7 @@ def script_exec(cmd, jobid=True, omp_num_threads=True, conda=True, flush=True):
     ret += []
 
     if flush:
-        ret += [script_flush(cmd)]
+        ret += [snippet_flush(cmd)]
     else:
         ret += [cmd]
 
@@ -137,9 +137,9 @@ def serial_group(
     :param group: Number of commands to group per job-script.
     :param outdir: Directory where to write the job-scripts (nothing in changed for the commands).
     :param sbatch: Job options.
-    :param jobjd: Echo the jobid (see script_echo_jobid()).
-    :param omp_num_threads: Number of cores to use (see script_export_omp_num_threads()).
-    :param conda: Load conda environment (see defaults of script_load_conda()).
+    :param jobjd: Echo the jobid (see snippet_echo_jobid()).
+    :param omp_num_threads: Number of cores to use (see snippet_export_omp_num_threads()).
+    :param conda: Load conda environment (see defaults of snippet_load_conda()).
     :param flush: Flush the buffer of stdout for each commands.
     """
 
@@ -153,7 +153,7 @@ def serial_group(
     sbatch.setdefault("partition", "serial")
 
     if flush:
-        commands = [script_flush(cmd) for cmd in commands]
+        commands = [snippet_flush(cmd) for cmd in commands]
 
     ngroup = int(np.ceil(len(commands) / group))
     fmt = str(int(np.ceil(np.log10(ngroup))))
