@@ -6,7 +6,7 @@ setup(
     license="MIT",
     author="Tom de Geus",
     author_email="tom@geus.me",
-    description="Code for examining front dynamics",
+    description="Code for examining front dynamics and sigmac",
     packages=find_packages(),
     use_scm_version={"write_to": "mycode_front/_version.py"},
     setup_requires=["setuptools_scm"],
