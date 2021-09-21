@@ -29,7 +29,7 @@ class MyTests(unittest.TestCase):
         # Basic run / Get output
 
         historic = shelephant.yaml.read(
-            os.path.join(os.path.dirname(__file__), "system_small.yaml")
+            os.path.join(os.path.dirname(__file__), "data_System_small.yaml")
         )
 
         dirname = "mytest"

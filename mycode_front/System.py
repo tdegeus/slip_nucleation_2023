@@ -9,7 +9,6 @@ import os
 import sys
 import textwrap
 import uuid
-from typing import TypeVar
 
 import click
 import FrictionQPotFEM.UniformSingleLayer2d as model
@@ -22,41 +21,9 @@ import tqdm
 from numpy.typing import ArrayLike
 
 from . import slurm
+from . import storage
 from . import tag
 from ._version import version
-
-entry_ensembleinfo = "EnsembleInfo"
-
-
-def dset_extend1d(file: h5py.File, key: str, i: int, value: TypeVar("T")):
-    """
-    Dump and auto-extend a 1d extendible dataset.
-
-    :param file: Opened HDF5 file.
-    :param key: Path to the dataset.
-    :param i: Index to which to write.
-    :param value: Value to write at index ``i``.
-    """
-
-    dset = file[key]
-    if dset.size <= i:
-        dset.resize((i + 1,))
-    dset[i] = value
-
-
-def dump_with_atttrs(file: h5py.File, key: str, data: TypeVar("T"), **kwargs):
-    """
-    Write dataset and an optional number of attributes.
-    The attributes are stored based on the name that is used for the option.
-
-    :param file: Opened HDF5 file.
-    :param key: Path to the dataset.
-    :param data: Data to write.
-    """
-
-    file[key] = data
-    for attr in kwargs:
-        file[key].attrs[attr] = kwargs[attr]
 
 
 def read_epsy(file: h5py.File) -> np.ndarray:
@@ -113,6 +80,7 @@ def init(file: h5py.File) -> model.System:
     )
     system.setElastic(file["/elastic/K"][...], file["/elastic/G"][...])
     system.setPlastic(file["/cusp/K"][...], file["/cusp/G"][...], read_epsy(file))
+
     system.setDt(file["/run/dt"][...])
 
     return system
@@ -198,98 +166,98 @@ def generate(
 
     with h5py.File(filename, "w") as file:
 
-        dump_with_atttrs(
+        storage.dump_with_atttrs(
             file,
             "/coor",
             mesh.coor(),
             desc="Nodal coordinates [nnode, ndim]",
         )
 
-        dump_with_atttrs(
+        storage.dump_with_atttrs(
             file,
             "/conn",
             mesh.conn(),
             desc="Connectivity (Quad4: nne = 4) [nelem, nne]",
         )
 
-        dump_with_atttrs(
+        storage.dump_with_atttrs(
             file,
             "/dofs",
             dofs,
             desc="DOFs per node, accounting for semi-periodicity [nnode, ndim]",
         )
 
-        dump_with_atttrs(
+        storage.dump_with_atttrs(
             file,
             "/iip",
             iip,
             desc="Prescribed DOFs [nnp]",
         )
 
-        dump_with_atttrs(
+        storage.dump_with_atttrs(
             file,
             "/run/epsd/kick",
             eps0 * 2e-4,
             desc="Strain kick to apply",
         )
 
-        dump_with_atttrs(
+        storage.dump_with_atttrs(
             file,
             "/run/dt",
             dt,
             desc="Time step",
         )
 
-        dump_with_atttrs(
+        storage.dump_with_atttrs(
             file,
             "/rho",
             rho * np.ones(nelem),
             desc="Mass density [nelem]",
         )
 
-        dump_with_atttrs(
+        storage.dump_with_atttrs(
             file,
             "/alpha",
             alpha * np.ones(nelem),
             desc="Damping coefficient (density) [nelem]",
         )
 
-        dump_with_atttrs(
+        storage.dump_with_atttrs(
             file,
             "/elastic/elem",
             elastic,
             desc="Elastic elements [nelem - N]",
         )
 
-        dump_with_atttrs(
+        storage.dump_with_atttrs(
             file,
             "/elastic/K",
             K * np.ones(len(elastic)),
             desc="Bulk modulus for elements in '/elastic/elem' [nelem - N]",
         )
 
-        dump_with_atttrs(
+        storage.dump_with_atttrs(
             file,
             "/elastic/G",
             G * np.ones(len(elastic)),
             desc="Shear modulus for elements in '/elastic/elem' [nelem - N]",
         )
 
-        dump_with_atttrs(
+        storage.dump_with_atttrs(
             file,
             "/cusp/elem",
             plastic,
             desc="Plastic elements with cusp potential [nplastic]",
         )
 
-        dump_with_atttrs(
+        storage.dump_with_atttrs(
             file,
             "/cusp/K",
             K * np.ones(len(plastic)),
             desc="Bulk modulus for elements in '/cusp/elem' [nplastic]",
         )
 
-        dump_with_atttrs(
+        storage.dump_with_atttrs(
             file,
             "/cusp/G",
             G * np.ones(len(plastic)),
@@ -302,102 +270,109 @@ def generate(
             file["/uuid"] = realization
 
         else:
-            dump_with_atttrs(
+            storage.dump_with_atttrs(
                 file,
                 "/cusp/epsy/initstate",
                 initstate,
                 desc="State to initialise prrng.pcg32_array",
             )
 
-            dump_with_atttrs(
+            storage.dump_with_atttrs(
                 file,
                 "/cusp/epsy/initseq",
                 initseq,
                 desc="Sequence to initialise prrng.pcg32_array",
             )
 
-            dump_with_atttrs(
+            storage.dump_with_atttrs(
                 file,
                 "/cusp/epsy/k",
                 k,
                 desc="Shape factor of Weibull distribution",
             )
 
-            dump_with_atttrs(
+            storage.dump_with_atttrs(
                 file,
                 "/cusp/epsy/eps0",
                 eps0,
                 desc="Normalisation: epsy(i + 1) - epsy(i) = 2.0 * eps0 * random + eps_offset",
             )
 
-            dump_with_atttrs(
+            storage.dump_with_atttrs(
                 file,
                 "/cusp/epsy/eps_offset",
                 eps_offset,
                 desc="Offset, see eps0",
             )
 
-            dump_with_atttrs(
+            storage.dump_with_atttrs(
                 file,
                 "/cusp/epsy/nchunk",
                 nchunk,
                 desc="Chunk size",
             )
 
-        dump_with_atttrs(
+        storage.dump_with_atttrs(
             file,
             "/meta/normalisation/N",
             N,
             desc="Number of blocks along each plastic layer",
         )
 
-        dump_with_atttrs(
+        storage.dump_with_atttrs(
             file,
             "/meta/normalisation/l",
             h,
             desc="Elementary block size",
         )
 
-        dump_with_atttrs(
+        storage.dump_with_atttrs(
             file,
             "/meta/normalisation/rho",
             rho,
             desc="Elementary density",
         )
 
-        dump_with_atttrs(
+        storage.dump_with_atttrs(
             file,
             "/meta/normalisation/G",
             G,
             desc="Uniform shear modulus == 2 mu",
         )
 
-        dump_with_atttrs(
+        storage.dump_with_atttrs(
             file,
             "/meta/normalisation/K",
             K,
             desc="Uniform bulk modulus == kappa",
         )
 
-        dump_with_atttrs(
+        storage.dump_with_atttrs(
             file,
             "/meta/normalisation/eps",
             eps0,
             desc="Typical yield strain",
         )
 
-        dump_with_atttrs(
+        storage.dump_with_atttrs(
             file,
             "/meta/normalisation/sig",
             2.0 * G * eps0,
             desc="== 2 G eps0",
         )
 
-        dump_with_atttrs(
+        storage.dump_with_atttrs(
             file,
             "/meta/seed_base",
             seed,
             desc="Basic seed == 'unique' identifier",
+        )
+
+        storage.dump_with_atttrs(
+            file,
+            "/meta/Run/version",
+            version,
+            desc="Version when generating",
         )
 
 
@@ -457,6 +432,13 @@ def cli_generate(cli_args=None):
         type=str,
         default="72h",
         help="Walltime to allocate for the job",
+    )
+
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="version",
+        version=version,
     )
 
     args = parser.parse_args(cli_args)
@@ -521,7 +503,7 @@ def run(filename: str, dev: bool):
             print("Marked completed, skipping")
             return 1
 
-        # restore or initialise the this / output
+        # restore or initialise the system / output
 
         if "/stored" in file:
 
@@ -536,26 +518,36 @@ def run(filename: str, dev: bool):
             inc = int(0)
             kick = False
 
-            dset = file.create_dataset(
-                "/stored", (1,), maxshape=(None,), dtype=np.uint64
+            storage.dset_extendible1d(
+                file=file,
+                key="/stored",
+                dtype=np.uint64,
+                value=inc,
+                desc="List of stored increments",
             )
-            dset[0] = inc
-            dset.attrs[
-                "desc"
-            ] = 'List of increments in "/disp/{:d}" and "/drive/ubar/{0:d}"'
 
-            dset = file.create_dataset("/t", (1,), maxshape=(None,), dtype=np.float64)
-            dset[0] = system.t()
-            dset.attrs["desc"] = "Per increment: time at the end of the increment"
-
-            dset = file.create_dataset(
-                "/kick", (1,), maxshape=(None,), dtype=np.dtype(bool)
+            storage.dset_extendible1d(
+                file=file,
+                key="/t",
+                dtype=np.float64,
+                value=system.t(),
+                desc="Per increment: time at the end of the increment",
             )
-            dset[0] = kick
-            dset.attrs["desc"] = "Per increment: True is a kick was applied"
 
-            file[f"/disp/{inc}"] = system.u()
-            file[f"/disp/{inc}"].attrs["desc"] = "Displacement (end of increment)."
+            storage.dset_extendible1d(
+                file=file,
+                key="/kick",
+                dtype=np.dtype(bool),
+                value=kick,
+                desc="Per increment: True is a kick was applied",
+            )
+
+            storage.dump_with_atttrs(
+                file=file,
+                key=f"/disp/{inc}",
+                data=system.u(),
+                desc="Displacement (end of increment).",
+            )
 
         # run
 
@@ -573,12 +565,11 @@ def run(filename: str, dev: bool):
                     break
                 print(f'"{basename}": inc = {inc:8d}, niter = {niter:8d}')
 
-            dset_extend1d(file, "/stored", inc, inc)
-            dset_extend1d(file, "/t", inc, system.t())
-            dset_extend1d(file, "/kick", inc, kick)
+            storage.dset_extend1d(file, "/stored", inc, inc)
+            storage.dset_extend1d(file, "/t", inc, system.t())
+            storage.dset_extend1d(file, "/kick", inc, kick)
             file[f"/disp/{inc:d}"] = system.u()
 
-            inc += 1
             kick = not kick
 
         print(f'"{basename}": completed')
@@ -616,6 +607,13 @@ def cli_run(cli_args=None):
         "--force",
         action="store_true",
         help="Allow uncommitted changed",
+    )
+
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="version",
+        version=version,
     )
 
     args = parser.parse_args(cli_args)
@@ -754,7 +752,7 @@ def cli_ensembleinfo(cli_args=None):
         "-o",
         "--output",
         type=str,
-        default=f"{entry_ensembleinfo}.h5",
+        default="EnsembleInfo.h5",
         help="Output file",
     )
 
@@ -763,6 +761,13 @@ def cli_ensembleinfo(cli_args=None):
         "--force",
         action="store_true",
         help="Force overwrite of output file if it exists",
+    )
+
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="version",
+        version=version,
     )
 
     parser.add_argument("files", nargs="*", type=str, help="Files to read")
