@@ -5,7 +5,7 @@ on:
   pull_request:
   push:
     branches:
-      - master
+    - master
 
 jobs:
 
@@ -15,26 +15,26 @@ jobs:
       fail-fast: false
       matrix:
         code:
-          - CrackEvolution_raw_stress
-          - CrackEvolution_strain
-          - CrackEvolution_stress
-          - CrackEvolution_weak-sync-A_strain
-          - CrackEvolution_weak-sync-A_stress
-          - EnsembleInfo
-          - EventEvolution_strain
-          - EventEvolution_stress
-          - PushBarrier
-          - PushBarrierRecursive
-          - PushElement
-          - PushRecursiveQuasiThermal
-          - Run
-          - UnloadPushElement
+        - CrackEvolution_raw_stress
+        - CrackEvolution_strain
+        - CrackEvolution_stress
+        - CrackEvolution_weak-sync-A_strain
+        - CrackEvolution_weak-sync-A_stress
+        - EnsembleInfo
+        - EventEvolution_strain
+        - EventEvolution_stress
+        - PushBarrier
+        - PushBarrierRecursive
+        - PushElement
+        - PushRecursiveQuasiThermal
+        - Run
+        - UnloadPushElement
 
     defaults:
       run:
         shell: bash -l {0}
 
-    name: "${{ matrix.code }}"
+    name: ${{ matrix.code }}
     runs-on: ubuntu-latest
 
     steps:

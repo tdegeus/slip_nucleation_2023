@@ -26,6 +26,42 @@ from . import tag
 from ._version import version
 
 
+entry_points = dict(
+    cli_run="Run",
+    cli_generate="Run_generate",
+    cli_ensembleinfo="EnsembleInfo",
+)
+
+
+def dependencies(system: model.System) -> list[str]:
+    """
+    Return list with version strings.
+    Compared to model.System.version_dependencies() this added the version of prrng.
+    """
+    return sorted(list(model.version_dependencies()) + ["prrng=" + prrng.version()])
+
+
+def interpret_filename(filename):
+    """
+    Split filename in useful information.
+    """
+
+    part = os.path.splitext(os.path.basename(filename))[0].split("_")
+    info = {}
+
+    for i in part:
+        key, value = i.split("=")
+        info[key] = value
+
+    for key in info:
+        if key in ["kplate"]:
+            info[key] = float(info[key])
+        else:
+            info[key] = int(info[key])
+
+    return info
+
+
 def read_epsy(file: h5py.File) -> np.ndarray:
     """
     Regenerate yield strain sequence per plastic element.
@@ -104,6 +140,7 @@ def generate(
     """
 
     assert not os.path.isfile(os.path.realpath(filename))
+    progname = entry_points["cli_generate"]
 
     # parameters
     h = np.pi
@@ -368,12 +405,8 @@ def generate(
             desc="Basic seed == 'unique' identifier",
         )
 
-        storage.dump_with_atttrs(
-            file,
-            "/meta/Run/version",
-            version,
-            desc="Version when generating",
-        )
+        meta = file.create_group(f"/meta/{progname}")
+        meta.attrs["version"] = version
 
 
 def cli_generate(cli_args=None):
@@ -455,10 +488,11 @@ def cli_generate(cli_args=None):
             seed=i * args.size,
         )
 
-    commands = [f"Run {file}" for file in files]
+    progname = entry_points["cli_run"]
+    commands = [f"{progname} {file}" for file in files]
     slurm.serial_group(
         commands,
-        basename="Run",
+        basename=progname,
         group=1,
         outdir=args.outdir,
         sbatch={"time": args.time},
@@ -474,6 +508,7 @@ def run(filename: str, dev: bool):
     """
 
     basename = os.path.basename(filename)
+    progname = entry_points["cli_run"]
 
     with h5py.File(filename, "a") as file:
 
@@ -482,24 +517,16 @@ def run(filename: str, dev: bool):
         # check version compatibility
 
         assert dev or not tag.has_uncommited(version)
-        assert dev or not tag.any_has_uncommited(model.version_dependencies())
+        assert dev or not tag.any_has_uncommited(dependencies(model))
 
-        path = "/meta/Run/version"
-        if version != "None":
-            if path in file:
-                assert tag.greater_equal(version, str(file[path].asstr()[...]))
-            else:
-                file[path] = version
-
-        path = "/meta/Run/version_dependencies"
-        if path in file:
-            assert tag.all_greater_equal(
-                model.version_dependencies(), file[path].asstr()[...]
-            )
+        if f"/meta/{progname}" not in file:
+            meta = file.create_group(f"/meta/{progname}")
+            meta.attrs["version"] = version
+            meta.attrs["dependencies"] = dependencies(model)
         else:
-            file[path] = model.version_dependencies()
+            meta = file[f"/meta/{progname}"]
 
-        if "/meta/Run/completed" in file or "/completed" in file:
+        if "completed" in meta:
             print("Marked completed, skipping")
             return 1
 
@@ -573,7 +600,7 @@ def run(filename: str, dev: bool):
             kick = not kick
 
         print(f'"{basename}": completed')
-        file["/meta/Run/completed"] = 1
+        meta.attrs["completed"] = 1
 
 
 def cli_run(cli_args=None):
@@ -751,7 +778,7 @@ def cli_ensembleinfo(cli_args=None):
         "-o",
         "--output",
         type=str,
-        default="EnsembleInfo.h5",
+        default=entry_points["cli_ensembleinfo"],
         help="Output file",
     )
 
@@ -772,6 +799,7 @@ def cli_ensembleinfo(cli_args=None):
     parser.add_argument("files", nargs="*", type=str, help="Files to read")
 
     args = parser.parse_args(cli_args)
+    progname = entry_points["cli_ensembleinfo"]
 
     assert len(args.files) > 0
     assert np.all([os.path.isfile(os.path.realpath(file)) for file in args.files])
@@ -856,6 +884,10 @@ def cli_ensembleinfo(cli_args=None):
 
         output["files"] = files
         output["seeds"] = seeds
+
+        meta = output.create_group(f"/meta/{progname}")
+        meta.attrs["version"] = version
+        meta.attrs["dependencies"] = dependencies(model)
 
 
 def pushincrements(

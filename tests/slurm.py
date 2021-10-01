@@ -13,10 +13,9 @@ class MyTests(unittest.TestCase):
 
         cmd = 'echo "hello world"'
         script = my.slurm.script_exec(cmd)
-        self.assertEqual(script.split("\n")[-1], "stdbuf -o0 -e0 " + cmd)
+        self.assertEqual(script.split("\n")[-2], "stdbuf -o0 -e0 " + cmd)
 
         _ = my.slurm.script_exec(cmd, conda=dict(condabase="my"))
-        _ = my.slurm.script_exec(cmd, conda=("my", "/root"))
         _ = my.slurm.script_exec(cmd, conda=None)
         _ = my.slurm.script_exec(cmd, conda=False)
 

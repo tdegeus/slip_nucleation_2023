@@ -7,21 +7,23 @@ import GooseSLURM
 import numpy as np
 
 default_condabase = "code_velocity"
-default_condaexec = "~/miniconda3/etc/profile.d/conda.sh"
+
+entry_points = dict(
+    cli_serial_group="JobSerialGroup",
+)
+
+slurm_defaults = dict(
+    account="pcsl",
+)
 
 
-def snippet_echo_jobid():
+def snippet_initenv(cmd="source $HOME/myinit/compiler_conda.sh"):
     """
-    Return code to echo the job-id.
+    Return code to initialise the environment.
+    :param cmd: The command to run.
     :return: str
     """
-    return textwrap.dedent(
-        """
-        # print jobid
-        echo "SLURM_JOBID = ${{SLURM_JOBID}}"
-        echo ""
-        """
-    )
+    return f"# Initialise the environment\n{cmd}"
 
 
 def snippet_export_omp_num_threads(ncores=1):
@@ -29,41 +31,26 @@ def snippet_export_omp_num_threads(ncores=1):
     Return code to set OMP_NUM_THREADS
     :return: str
     """
-    return textwrap.dedent(
-        f"""
-        # set the number of cores to use by OMP
-        export OMP_NUM_THREADS={ncores}
-        """
-    )
+    return f"# Set number of cores to use\nexport OMP_NUM_THREADS={ncores}"
 
 
-def snippet_load_conda(
-    condabase: str = default_condabase, condaexec: str = default_condaexec
-):
+def snippet_load_conda(condabase: str = default_condabase):
     """
     Return code to load the Conda environment.
+    This function assumes that these BASH-functions are present:
+    -   ``conda_activate_existing``
+    -   ``get_simd_envname``
+    Use snippet_initenv() to set them.
+
     :param condabase: Base name of the Conda environment, appended '_E5v4' and '_s6g1'".
-    :param condaexec: Path of the Conda executable.
     :return: str
     """
 
-    return textwrap.dedent(
-        f"""
-        # load conda environment
-        source {condaexec}
+    ret = ["# Activate hardware optimised environment (or fallback environment)"]
+    ret += [f'conda_activate_existing "{condabase}$(get_simd_envname)" "{condabase}"']
+    ret += []
 
-        if [[ "${{SYS_TYPE}}" == *E5v4* ]]; then
-            conda activate {condabase}_E5v4
-        elif [[ "${{SYS_TYPE}}" == *s6g1* ]]; then
-            conda activate {condabase}_s6g1
-        elif [[ "${{SYS_TYPE}}" == *S6g1* ]]; then
-            conda activate {condabase}_s6g1
-        else
-            echo "Unknown SYS_TYPE ${{SYS_TYPE}}"
-            exit 1
-        fi
-        """
-    )
+    return "\n".join(ret)
 
 
 def snippet_flush(cmd):
@@ -75,7 +62,7 @@ def snippet_flush(cmd):
     return "stdbuf -o0 -e0 " + cmd
 
 
-def script_exec(cmd, jobid=True, omp_num_threads=True, conda=True, flush=True):
+def script_exec(cmd, initenv=True, omp_num_threads=True, conda=True, flush=True):
     """
     Return code to execute a command.
     Optionally a number of extra commands are run before the command itself, see options.
@@ -87,7 +74,7 @@ def script_exec(cmd, jobid=True, omp_num_threads=True, conda=True, flush=True):
         slurm.script_exec(cmd, conda=dict(condabase="my"))
 
     :param cmd: The command.
-    :param jobjd: Echo the jobid (see snippet_echo_jobid()).
+    :param initenv: Init the environment (see snippet_initenv()).
     :param omp_num_threads: Number of cores to use (see snippet_export_omp_num_threads()).
     :param conda: Load conda environment (see defaults of snippet_load_conda()).
     :param flush: Flush the buffer of stdout.
@@ -97,23 +84,21 @@ def script_exec(cmd, jobid=True, omp_num_threads=True, conda=True, flush=True):
     ret = []
 
     for opt, func in zip(
-        [jobid, omp_num_threads, conda],
-        [snippet_echo_jobid, snippet_export_omp_num_threads, snippet_load_conda],
+        [initenv, omp_num_threads, conda],
+        [snippet_initenv, snippet_export_omp_num_threads, snippet_load_conda],
     ):
         if opt is True:
-            ret += [func()]
+            ret += [func(), ""]
         elif opt is not None and opt is not False:
             if type(opt) == dict:
-                ret += [func(**opt)]
+                ret += [func(**opt), ""]
             else:
-                ret += [func(*opt)]
-
-    ret += []
+                ret += [func(*opt), ""]
 
     if flush:
-        ret += [snippet_flush(cmd)]
+        ret += ["# --- Run ---", "", snippet_flush(cmd), ""]
     else:
-        ret += [cmd]
+        ret += ["# --- Run ---", "", cmd, ""]
 
     return "\n".join(ret)
 
@@ -124,7 +109,7 @@ def serial_group(
     group: int,
     outdir: str = os.getcwd(),
     sbatch: dict = {},
-    jobid=True,
+    initenv=True,
     omp_num_threads=True,
     conda=True,
     flush=True,
@@ -137,11 +122,14 @@ def serial_group(
     :param group: Number of commands to group per job-script.
     :param outdir: Directory where to write the job-scripts (nothing in changed for the commands).
     :param sbatch: Job options.
-    :param jobjd: Echo the jobid (see snippet_echo_jobid()).
+    :param initenv: Init the environment (see snippet_initenv()).
     :param omp_num_threads: Number of cores to use (see snippet_export_omp_num_threads()).
     :param conda: Load conda environment (see defaults of snippet_load_conda()).
     :param flush: Flush the buffer of stdout for each commands.
     """
+
+    if len(commands) == 0:
+        return
 
     assert "job-name" not in sbatch
     assert "out" not in sbatch
@@ -149,31 +137,30 @@ def serial_group(
     sbatch.setdefault("ntasks", 1)
     sbatch.setdefault("cpus-per-task", 1)
     sbatch.setdefault("time", "24h")
-    sbatch.setdefault("account", "pcsl")
+    sbatch.setdefault("account", slurm_defaults["account"])
     sbatch.setdefault("partition", "serial")
 
     if flush:
         commands = [snippet_flush(cmd) for cmd in commands]
 
-    ngroup = int(np.ceil(len(commands) / group))
-    fmt = str(int(np.ceil(np.log10(ngroup))))
+    chunks = int(np.ceil(len(commands) / float(group)))
+    devided = np.array_split(commands, chunks)
+    njob = len(devided)
+    fmt = str(int(np.ceil(np.log10(njob))))
 
-    for g in range(ngroup):
+    for g, selection in enumerate(devided):
 
-        ii = g * group
-        jj = (g + 1) * group
-        c = commands[ii:jj]
         command = script_exec(
-            "\n".join(c),
-            jobid=jobid,
+            "\n".join(selection),
+            initenv=initenv,
             omp_num_threads=omp_num_threads,
             conda=conda,
             flush=False,
         )
 
-        jobname = ("{0:s}_{1:0" + fmt + "d}-of-{2:d}").format(basename, g + 1, ngroup)
+        jobname = ("{0:s}_{1:0" + fmt + "d}-of-{2:d}").format(basename, g + 1, njob)
         sbatch["job-name"] = jobname
-        sbatch["out"] = jobname + ".out"
+        sbatch["out"] = jobname + "_%j.out"
 
         with open(os.path.join(outdir, jobname + ".slurm"), "w") as file:
             file.write(GooseSLURM.scripts.plain(command=command, **sbatch))

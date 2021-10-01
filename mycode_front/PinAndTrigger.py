@@ -20,10 +20,33 @@ from . import System
 from ._version import version
 
 
-# name of the entry points (used also a default file names)
-entry_main = "PinAndTrigger"
-entry_collect = "PinAndTrigger_collect"
-entry_collect_combine = "PinAndTrigger_collect_combine"
+entry_points = dict(
+    cli_main="PinAndTrigger",
+    cli_job="PinAndTrigger_job",
+    cli_collect="PinAndTrigger_collect",
+    cli_collect_combine="PinAndTrigger_collect_combine",
+)
+
+
+def interpret_filename(filename):
+    """
+    Split filename in useful information.
+    """
+
+    part = os.path.splitext(os.path.basename(filename))[0].split("_")
+    info = {}
+
+    for i in part:
+        key, value = i.split("=")
+        info[key] = value
+
+    for key in info:
+        if key in ["stress"]:
+            continue
+        else:
+            info[key] = int(info[key])
+
+    return info
 
 
 def pinning(system: model.System, target_element: int, target_A: int) -> np.ndarray:
@@ -118,6 +141,8 @@ def cli_main(cli_args=None):
     3.  Push a specific element and minimise energy.
     """
 
+    progname = entry_points["cli_main"]
+
     if cli_args is None:
         cli_args = sys.argv[1:]
     else:
@@ -170,14 +195,14 @@ def cli_main(cli_args=None):
     target_A = args.size  # number of blocks to keep unpinned
     target_element = args.element  # element to trigger
 
-    with h5py.File(args.file, "r") as data:
+    with h5py.File(args.file, "r") as file:
 
-        system = System.init(data)
-        eps_kick = data["/run/epsd/kick"][...]
+        system = System.init(file)
+        eps_kick = file["/run/epsd/kick"][...]
 
         # (*) Determine at which increment a push could be applied
 
-        inc_system, inc_push = System.pushincrements(system, data, target_stress)
+        inc_system, inc_push = System.pushincrements(system, file, target_stress)
 
         # (*) Reload specific increment based on target stress and system-spanning increment
 
@@ -188,7 +213,7 @@ def cli_main(cli_args=None):
         inc = inc_push[i]
         assert target_inc_system == inc_system[i]
 
-        system.setU(data[f"/disp/{inc:d}"])
+        system.setU(file[f"/disp/{inc:d}"])
         idx_n = system.plastic_CurrentIndex()
         system.addSimpleShearToFixedStress(target_stress)
         idx = system.plastic_CurrentIndex()
@@ -213,16 +238,16 @@ def cli_main(cli_args=None):
 
         print("done:", args.output, ", niter = ", niter)
 
-        root = f"/meta/{entry_main}"
-        output[f"{root}/file"] = args.file
-        output[f"{root}/version"] = version
-        output[f"{root}/version_dependencies"] = model.version_dependencies()
-        output[f"{root}/target_stress"] = target_stress
-        output[f"{root}/target_inc_system"] = target_inc_system
-        output[f"{root}/target_A"] = target_A
-        output[f"{root}/target_element"] = target_element
-        output[f"{root}/S"] = np.sum(idx - idx_n)
-        output[f"{root}/A"] = np.sum(idx != idx_n)
+        meta = output.create_group(f"/meta/{progname}")
+        meta.attrs["file"] = args.file
+        meta.attrs["version"] = version
+        meta.attrs["dependencies"] = System.dependencies(model)
+        meta.attrs["target_stress"] = target_stress
+        meta.attrs["target_inc_system"] = target_inc_system
+        meta.attrs["target_A"] = target_A
+        meta.attrs["target_element"] = target_element
+        meta.attrs["S"] = np.sum(idx - idx_n)
+        meta.attrs["A"] = np.sum(idx != idx_n)
 
 
 def cli_collect(cli_args=None):
@@ -230,6 +255,8 @@ def cli_collect(cli_args=None):
     Collect output of several pushes in a single output-file.
     Requires files to be named "stress=X_A=X_id=X_incc=X_element=X" (in any order).
     """
+
+    progname = entry_points["cli_collect"]
 
     if cli_args is None:
         cli_args = sys.argv[1:]
@@ -245,8 +272,14 @@ def cli_collect(cli_args=None):
         formatter_class=MyFormatter, description=textwrap.dedent(cli_collect.__doc__)
     )
 
+    parser.add_argument("files", type=str, nargs="*", help="Files to add")
+
     parser.add_argument(
-        "-a", "--min-a", type=int, help="Save events only with A > ...", default=10
+        "-a",
+        "--min-a",
+        type=int,
+        help="Save events only with A > ... (to save disk space)",
+        default=10,
     )
 
     parser.add_argument(
@@ -254,7 +287,7 @@ def cli_collect(cli_args=None):
         "--output",
         type=str,
         help="Output file ('a')",
-        default=f"{entry_collect}.h5",
+        default=f"{progname}.h5",
     )
 
     parser.add_argument(
@@ -262,10 +295,15 @@ def cli_collect(cli_args=None):
         "--error",
         type=str,
         help="Store list of corrupted files",
-        default=f"{entry_collect}.yaml",
+        default=f"{progname}.yaml",
     )
 
-    parser.add_argument("files", type=str, nargs="*", help="Files to add")
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="version",
+        version=version,
+    )
 
     args = parser.parse_args(cli_args)
 
@@ -274,84 +312,64 @@ def cli_collect(cli_args=None):
 
     corrupted = []
     existing = []
-    version = None
-    deps = None
 
     with h5py.File(args.output, "a") as output:
 
-        for file in tqdm.tqdm(args.files):
+        if "/meta" not in output:
+            meta = output.create_group("/meta")
+            meta.attrs["version"] = version
+            meta.attrs["dependencies"] = System.dependencies(model)
+        else:
+            meta = output["/meta"]
+            assert meta.attrs["version"] == version
+            assert list(meta.attrs["dependencies"]) == System.dependencies(model)
+
+        for filename in tqdm.tqdm(args.files):
 
             try:
-                with h5py.File(file, "r") as data:
+                with h5py.File(filename, "r") as file:
                     pass
             except:
-                corrupted += [file]
+                corrupted += [filename]
                 continue
 
-            with h5py.File(file, "r") as data:
-                paths = list(g5.getdatasets(data))
-                verify = g5.verify(data, paths)
+            with h5py.File(filename, "r") as file:
+                paths = list(g5.getdatasets(file))
+                verify = g5.verify(file, paths)
                 if paths != verify:
-                    corrupted += [file]
+                    corrupted += [filename]
                     continue
 
-            with h5py.File(file, "r") as data:
+            with h5py.File(filename, "r") as file:
 
-                basename = os.path.splitext(os.path.basename(file))[0]
-                stress = basename.split("stress=")[1].split("_")[0]
-                A = basename.split("A=")[1].split("_")[0]
-                simid = basename.split("id=")[1].split("_")[0]
-                incc = basename.split("incc=")[1].split("_")[0]
-                element = basename.split("element=")[1].split("_")[0]
+                info = interpret_filename(filename)
+                meta = file["/meta/{:s}".format(entry_points["cli_main"])]
+                assert meta.attrs["version"] == version
+                assert list(meta.attrs["dependencies"]) == System.dependencies(model)
+                assert meta.attrs["target_inc_system"] == info["incc"]
+                assert meta.attrs["target_A"] == info["A"]
+                assert meta.attrs["target_element"] == info["element"]
+                assert interpret_filename(meta.attrs["file"])["id"] == info["id"]
 
-                # alias meta-data
-                # (allow for typos in previous versions)
-
-                if entry_main in data["meta"]:
-                    meta = data["meta"][entry_main]
-                    root_meta = f"/meta/{entry_main}"
-                elif "PushAndTrigger" in data["meta"]:
-                    meta = data["meta"]["PushAndTrigger"]
-                    root_meta = "/meta/PushAndTrigger"
-                else:
-                    raise OSError("Unknown input")
-
-                if version is None:
-                    version = meta["version"].asstr()[...]
-                    deps = list(meta["version_dependencies"].asstr()[...])
-                    output["/meta/version"] = version
-                    output["/meta/version_dependencies"] = deps
-                else:
-                    assert version == meta["version"].asstr()[...]
-                    assert deps == list(meta["version_dependencies"].asstr()[...])
-
-                assert int(incc) == meta["target_inc_system"][...]
-                assert int(A) == meta["target_A"][...]
-                assert int(element) == meta["target_element"][...]
-                assert int(simid) == int(
-                    os.path.splitext(str(meta["file"].asstr()[...]).split("id=")[1])[0]
-                )
-
-                root = f"/data/stress={stress}/A={A}/id={simid}/incc={incc}/element={element}"
+                root = (
+                    "/data"
+                    "/stress={stress:s}"
+                    "/A={A:d}"
+                    "/id={id:03d}"
+                    "/incc={incc:d}"
+                    "/element={element:d}"
+                ).format(**info)
 
                 if root in output:
-                    existing += [file]
+                    existing += [filename]
                     continue
 
-                source_datasets = [
-                    f"{root_meta:s}/file",
-                    f"{root_meta:s}/target_stress",
-                    f"{root_meta:s}/S",
-                    f"{root_meta:s}/A",
-                ]
+                datasets = ["meta"]
 
-                dest_datasets = ["/file", "/target_stress", "/S", "/A"]
+                if meta.attrs["A"] >= args.min_a:
+                    datasets = ["/disp/0", "/disp/1"] + datasets
 
-                if meta["A"][...] >= args.min_a:
-                    source_datasets = ["/disp/0", "/disp/1"] + source_datasets
-                    dest_datasets = ["/disp/0", "/disp/1"] + dest_datasets
-
-                g5.copydatasets(data, output, source_datasets, dest_datasets, root)
+                g5.copydatasets(file, output, datasets, root=root)
 
     if len(corrupted) > 0 or len(existing) > 0:
         shelephant.yaml.dump(
@@ -364,6 +382,8 @@ def cli_collect_combine(cli_args=None):
     Combine two or more collections, see PinAndTrigger_collect to obtain them from
     individual runs.
     """
+
+    progname = entry_points["cli_collect_combine"]
 
     if cli_args is None:
         cli_args = sys.argv[1:]
@@ -385,7 +405,7 @@ def cli_collect_combine(cli_args=None):
         "--output",
         type=str,
         help="Output file (overwritten)",
-        default=f"{entry_collect_combine}.h5",
+        default=f"{progname}.h5",
     )
 
     parser.add_argument(
@@ -408,18 +428,17 @@ def cli_collect_combine(cli_args=None):
 
     with h5py.File(args.output, "a") as output:
 
-        for file in tqdm.tqdm(args.files[1:]):
+        for filename in tqdm.tqdm(args.files[1:]):
 
-            with h5py.File(file, "r") as data:
+            with h5py.File(filename, "r") as file:
 
-                for key in ["/meta/version", "/meta/version_dependencies"]:
-                    assert g5.equal(output, data, key)
+                for key in ["version", "dependencies"]:
+                    assert list(file["meta"].attrs[key]) == list(
+                        output["meta"].attrs[key]
+                    )
 
-                paths = list(g5.getdatasets(data))
-                paths.remove("/meta/version")
-                paths.remove("/meta/version_dependencies")
-
-                g5.copydatasets(data, output, paths)
+                paths = list(g5.getdatasets(file))
+                g5.copydatasets(file, output, paths)
 
 
 def cli_job(cli_args=None):
@@ -484,10 +503,19 @@ def cli_job(cli_args=None):
     )
 
     parser.add_argument(
-        "-e", "--executable", type=str, default=entry_main, help="Executable to use"
+        "-e",
+        "--executable",
+        type=str,
+        default=entry_points["cli_main"],
+        help="Executable to use",
     )
 
-    parser.add_argument("-f", "--finished", type=str, help=f"Result of {entry_collect}")
+    parser.add_argument(
+        "-f",
+        "--finished",
+        type=str,
+        help="Result of {:s}".format(entry_points["cli_collect"]),
+    )
 
     args = parser.parse_args(cli_args)
 
@@ -505,13 +533,13 @@ def cli_job(cli_args=None):
             simpaths = list(g5.getpaths(file, max_depth=6))
             simpaths = [path.replace("/...", "") for path in simpaths]
 
-    with h5py.File(args.info, "r") as data:
+    with h5py.File(args.info, "r") as file:
 
-        files = [os.path.join(basedir, f) for f in data["/files"].asstr()[...]]
-        N = data["/normalisation/N"][...]
-        sig0 = data["/normalisation/sig0"][...]
-        sigc = data["/averages/sigd_bottom"][...] * sig0
-        sign = data["/averages/sigd_top"][...] * sig0
+        files = [os.path.join(basedir, f) for f in file["/files"].asstr()[...]]
+        N = file["/normalisation/N"][...]
+        sig0 = file["/normalisation/sig0"][...]
+        sigc = file["/averages/sigd_bottom"][...] * sig0
+        sign = file["/averages/sigd_top"][...] * sig0
 
         stress_names = [
             "stress=0d6",
@@ -556,7 +584,15 @@ def cli_job(cli_args=None):
                 [0, int(N / 2)], [args.size], trigger
             ):
 
-                root = f"/data/{stress_name}/A={A:d}/{simid}/incc={incc:d}/element={element:d}"
+                root = (
+                    f"/data"
+                    f"/{stress_name}"
+                    f"/A={A:d}"
+                    f"/{simid}"
+                    f"/incc={incc:d}"
+                    f"/element={element:d}"
+                )
+
                 if root in simpaths:
                     continue
 

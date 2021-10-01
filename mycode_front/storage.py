@@ -34,10 +34,8 @@ def dset_extend1d(file: h5py.File, key: str, i: int, value: TypeVar("T")):
     """
 
     dset = file[key]
-
     if dset.size <= i:
         dset.resize((i + 1,))
-
     dset[i] = value
 
 
@@ -52,6 +50,5 @@ def dump_with_atttrs(file: h5py.File, key: str, data: TypeVar("T"), **kwargs):
     """
 
     file[key] = data
-
     for attr in kwargs:
         file[key].attrs[attr] = kwargs[attr]

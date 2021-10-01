@@ -134,7 +134,7 @@ class MyTests(unittest.TestCase):
         with open("PinAndTrigger_1-of-1.slurm") as file:
             cmd = (
                 file.read()
-                .split("\n")[-2]
+                .split("\n")[-3]
                 .split("stdbuf -o0 -e0 PinAndTrigger ")[1]
                 .split(" ")
             )
