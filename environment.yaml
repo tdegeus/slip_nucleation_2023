@@ -16,6 +16,7 @@ dependencies:
   - make
   - ninja
   - parallel
+  - pre-commit
   - python
   - python-frictionqpotfem
   - python-gmatelastoplasticqpot
