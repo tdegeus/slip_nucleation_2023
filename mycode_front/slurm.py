@@ -17,6 +17,15 @@ slurm_defaults = dict(
 )
 
 
+def snippet_initenv(cmd="source $HOME/myinit/compiler_conda.sh"):
+    """
+    Return code to initialise the environment.
+    :param cmd: The command to run.
+    :return: str
+    """
+    return f"# Initialise the environment\n{cmd}"
+
+
 def snippet_export_omp_num_threads(ncores=1):
     """
     Return code to set OMP_NUM_THREADS
@@ -28,109 +37,16 @@ def snippet_export_omp_num_threads(ncores=1):
 def snippet_load_conda(condabase: str = default_condabase):
     """
     Return code to load the Conda environment.
+    This function assumes that these BASH-functions are present:
+    -   ``conda_activate_existing``
+    -   ``get_simd_envname``
+    Use snippet_initenv() to set them.
+
     :param condabase: Base name of the Conda environment, appended '_E5v4' and '_s6g1'".
     :return: str
     """
 
-    ret = [
-        textwrap.dedent(
-            """
-            # --- Functions to load/clean Conda environment ---
-
-            # check if a list contains a string
-            # param: string list
-            contains ()
-            {
-                local e match="$1"
-                shift
-                for e; do [[ "$e" == "$match" ]] && return 0; done
-                return 1
-            }
-
-            # print current environment
-            conda_echo_env()
-            {
-                echo "conda env: $CONDA_DEFAULT_ENV"
-            }
-
-            # deactivate all environments, except base
-            conda_deactivate ()
-            {
-                while [[ "$CONDA_DEFAULT_ENV" != "base" ]]; do
-                    conda deactivate
-                done
-                conda_echo_env
-            }
-
-            # activate environment starting from base
-            # param: environment_name
-            conda_activate ()
-            {
-                conda_deactivate
-                conda activate "$1"
-                conda_echo_env
-            }
-
-            # activate the first present environment
-            # param: environment_name ...
-            conda_activate_first_existing ()
-            {
-                conda_deactivate
-
-                ENVS=($(conda env list | awk '{print $1}'))
-
-                for env in "$@"
-                do
-                    if contains "$env" "${ENVS[@]}"; then
-                        conda activate "$env"
-                        conda_echo_env
-                        return 0
-                    fi
-                done
-
-                echo "ERROR: Failed to activate any environment"
-                exit 1
-            }
-
-            # remove and create environment(s)
-            # param: environment_name ...
-            conda_clean ()
-            {
-                conda_deactivate
-
-                ENVS=($(conda env list | awk '{print $1}'))
-
-                for env in "$@"
-                do
-                    if contains "$env" "${ENVS[@]}"; then
-                        echo "conda remove -n $env"
-                        conda env remove -n "$env"
-                    fi
-                    echo "conda create -n $env"
-                    mamba create -n "$env" -y
-                done
-            }
-
-            # get name postfix for current SYS_TYPE (return empty string if SYS_TYPE is unknown)
-            function get_simd_envname()
-            {
-                if [[ "${SYS_TYPE}" == *E5v4* ]]; then
-                    echo "_E5v4"
-                elif [[ "${SYS_TYPE}" == *s6g1* ]]; then
-                    echo "_s6g1"
-                elif [[ "${SYS_TYPE}" == *S6g1* ]]; then
-                    echo "_s6g1"
-                else
-                    echo ""
-                fi
-            }
-
-            # ---
-            """
-        )
-    ]
-
-    ret += ["# Activate hardware optimised environment (or fallback environment)"]
+    ret = ["# Activate hardware optimised environment (or fallback environment)"]
     ret += [f'conda_activate_existing "{condabase}$(get_simd_envname)" "{condabase}"']
     ret += []
 
@@ -146,7 +62,7 @@ def snippet_flush(cmd):
     return "stdbuf -o0 -e0 " + cmd
 
 
-def script_exec(cmd, omp_num_threads=True, conda=True, flush=True):
+def script_exec(cmd, initenv=True, omp_num_threads=True, conda=True, flush=True):
     """
     Return code to execute a command.
     Optionally a number of extra commands are run before the command itself, see options.
@@ -158,6 +74,7 @@ def script_exec(cmd, omp_num_threads=True, conda=True, flush=True):
         slurm.script_exec(cmd, conda=dict(condabase="my"))
 
     :param cmd: The command.
+    :param initenv: Init the environment (see snippet_initenv()).
     :param omp_num_threads: Number of cores to use (see snippet_export_omp_num_threads()).
     :param conda: Load conda environment (see defaults of snippet_load_conda()).
     :param flush: Flush the buffer of stdout.
@@ -167,8 +84,8 @@ def script_exec(cmd, omp_num_threads=True, conda=True, flush=True):
     ret = []
 
     for opt, func in zip(
-        [omp_num_threads, conda],
-        [snippet_export_omp_num_threads, snippet_load_conda],
+        [initenv, omp_num_threads, conda],
+        [snippet_initenv, snippet_export_omp_num_threads, snippet_load_conda],
     ):
         if opt is True:
             ret += [func(), ""]
@@ -192,6 +109,7 @@ def serial_group(
     group: int,
     outdir: str = os.getcwd(),
     sbatch: dict = {},
+    initenv=True,
     omp_num_threads=True,
     conda=True,
     flush=True,
@@ -204,6 +122,7 @@ def serial_group(
     :param group: Number of commands to group per job-script.
     :param outdir: Directory where to write the job-scripts (nothing in changed for the commands).
     :param sbatch: Job options.
+    :param initenv: Init the environment (see snippet_initenv()).
     :param omp_num_threads: Number of cores to use (see snippet_export_omp_num_threads()).
     :param conda: Load conda environment (see defaults of snippet_load_conda()).
     :param flush: Flush the buffer of stdout for each commands.
@@ -233,6 +152,7 @@ def serial_group(
 
         command = script_exec(
             "\n".join(selection),
+            initenv=initenv,
             omp_num_threads=omp_num_threads,
             conda=conda,
             flush=False,
