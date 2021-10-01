@@ -20,7 +20,6 @@ from . import System
 from ._version import version
 
 
-
 entry_points = dict(
     cli_main="PinAndTrigger",
     cli_job="PinAndTrigger_job",
@@ -182,9 +181,7 @@ def cli_main(cli_args=None):
         "-a", "--size", type=int, help="Number of elements to keep unpinned"
     )
 
-    parser.add_argument(
-        "-v", "--version", action="version", version=version
-    )
+    parser.add_argument("-v", "--version", action="version", version=version)
 
     args = parser.parse_args(cli_args)
 
@@ -275,19 +272,14 @@ def cli_collect(cli_args=None):
         formatter_class=MyFormatter, description=textwrap.dedent(cli_collect.__doc__)
     )
 
-    parser.add_argument(
-        "files",
-        type=str,
-        nargs="*",
-        help="Files to add"
-    )
+    parser.add_argument("files", type=str, nargs="*", help="Files to add")
 
     parser.add_argument(
         "-a",
         "--min-a",
         type=int,
         help="Save events only with A > ... (to save disk space)",
-        default=10
+        default=10,
     )
 
     parser.add_argument(
@@ -323,12 +315,12 @@ def cli_collect(cli_args=None):
 
     with h5py.File(args.output, "a") as output:
 
-        if f"/meta" not in output:
-            meta = output.create_group(f"/meta")
+        if "/meta" not in output:
+            meta = output.create_group("/meta")
             meta.attrs["version"] = version
             meta.attrs["dependencies"] = System.dependencies(model)
         else:
-            meta = output[f"/meta"]
+            meta = output["/meta"]
             assert meta.attrs["version"] == version
             assert list(meta.attrs["dependencies"]) == System.dependencies(model)
 
@@ -359,7 +351,14 @@ def cli_collect(cli_args=None):
                 assert meta.attrs["target_element"] == info["element"]
                 assert interpret_filename(meta.attrs["file"])["id"] == info["id"]
 
-                root = "/data/stress={stress:s}/A={A:d}/id={id:03d}/incc={incc:d}/element={element:d}".format(**info)
+                root = (
+                    "/data"
+                    "/stress={stress:s}"
+                    "/A={A:d}"
+                    "/id={id:03d}"
+                    "/incc={incc:d}"
+                    "/element={element:d}"
+                ).format(**info)
 
                 if root in output:
                     existing += [filename]
@@ -434,7 +433,9 @@ def cli_collect_combine(cli_args=None):
             with h5py.File(filename, "r") as file:
 
                 for key in ["version", "dependencies"]:
-                    assert list(file["meta"].attrs[key]) == list(output["meta"].attrs[key])
+                    assert list(file["meta"].attrs[key]) == list(
+                        output["meta"].attrs[key]
+                    )
 
                 paths = list(g5.getdatasets(file))
                 g5.copydatasets(file, output, paths)
@@ -502,10 +503,19 @@ def cli_job(cli_args=None):
     )
 
     parser.add_argument(
-        "-e", "--executable", type=str, default=entry_points["cli_main"], help="Executable to use"
+        "-e",
+        "--executable",
+        type=str,
+        default=entry_points["cli_main"],
+        help="Executable to use",
     )
 
-    parser.add_argument("-f", "--finished", type=str, help="Result of {:s}".format(entry_points["cli_collect"]))
+    parser.add_argument(
+        "-f",
+        "--finished",
+        type=str,
+        help="Result of {:s}".format(entry_points["cli_collect"]),
+    )
 
     args = parser.parse_args(cli_args)
 
@@ -574,7 +584,15 @@ def cli_job(cli_args=None):
                 [0, int(N / 2)], [args.size], trigger
             ):
 
-                root = f"/data/{stress_name}/A={A:d}/{simid}/incc={incc:d}/element={element:d}"
+                root = (
+                    f"/data"
+                    f"/{stress_name}"
+                    f"/A={A:d}"
+                    f"/{simid}"
+                    f"/incc={incc:d}"
+                    f"/element={element:d}"
+                )
+
                 if root in simpaths:
                     continue
 

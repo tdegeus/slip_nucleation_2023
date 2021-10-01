@@ -1,21 +1,21 @@
 channels:
-  - conda-forge
+- conda-forge
 
 dependencies:
-  - cmake
-  - make
-  - lapack
-  - openblas
-  - xtensor
-  - xtensor-blas
-  - xsimd
-  - goosefem
-  - gmatelastoplasticqpot
-  - cpppath
-  - highfive
-  - docopt.cpp
-  - fmt
-  - python
-  - h5py
-  - gooseslurm
-  - parallel
+- cmake
+- make
+- lapack
+- openblas
+- xtensor
+- xtensor-blas
+- xsimd
+- goosefem
+- gmatelastoplasticqpot
+- cpppath
+- highfive
+- docopt.cpp
+- fmt
+- python
+- h5py
+- gooseslurm
+- parallel
