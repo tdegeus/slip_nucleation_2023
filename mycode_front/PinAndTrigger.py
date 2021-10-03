@@ -984,4 +984,13 @@ def cli_getdynamics_sync_A_combine(cli_args=None):
             with h5py.File(filename, "r") as file:
 
                 paths = list(g5.getdatapaths(file))
-                g5.copy(file, output, paths)
+                exists = np.in1d(paths, list(g5.getdatapaths(output)))
+
+                if np.sum(exists) > 0:
+                    paths = np.array(paths)
+                    print("The following paths are already present and are skipped")
+                    print("\n".join(paths[exists]))
+                    paths = list(paths[np.logical_not(exists)])
+
+                if len(paths) > 0:
+                    g5.copy(file, output, paths)
