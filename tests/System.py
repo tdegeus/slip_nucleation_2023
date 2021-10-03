@@ -134,7 +134,9 @@ class MyTests(unittest.TestCase):
 
         # PinAndTrigger : extract dynamics (try running only, not really test)
 
-        paths = my.PinAndTrigger.cli_getdynamics_sync_A_job(["-c", collectname, "-i", infoname, dirname])
+        paths = my.PinAndTrigger.cli_getdynamics_sync_A_job(
+            ["-c", collectname, "-i", infoname, dirname]
+        )
 
         for path in paths:
             dirname = os.path.dirname(path)
@@ -154,7 +156,6 @@ class MyTests(unittest.TestCase):
 
         dirname = "mytest"
         idname = "id=0.h5"
-        filename = os.path.join(dirname, idname)
         infoname = os.path.join(dirname, "EnsembleInfo.h5")
 
         my.PinAndTrigger.cli_job(["-a", 4, infoname, "-o", dirname, "-n", int(1e9)])

@@ -1,6 +1,7 @@
 import argparse
 import itertools
 import os
+import re
 import shutil
 import sys
 import textwrap
@@ -14,7 +15,6 @@ import numpy as np
 import QPot  # noqa: F401
 import shelephant
 import tqdm
-import re
 import yaml
 
 from . import slurm
@@ -37,7 +37,7 @@ def interpret_filename(filename):
     Split filename in useful information.
     """
 
-    part = os.path.splitext(os.path.basename(filename))[0].split("_")
+    part = re.split("_|/", os.path.splitext(filename)[0])
     info = {}
 
     for i in part:
@@ -323,25 +323,25 @@ def cli_collect(cli_args=None):
             assert meta.attrs["version"] == version
             assert list(meta.attrs["dependencies"]) == System.dependencies(model)
 
-        for filename in tqdm.tqdm(args.files):
+        for filepath in tqdm.tqdm(args.files):
 
             try:
-                with h5py.File(filename, "r") as file:
+                with h5py.File(filepath, "r") as file:
                     pass
             except:
-                corrupted += [filename]
+                corrupted += [filepath]
                 continue
 
-            with h5py.File(filename, "r") as file:
+            with h5py.File(filepath, "r") as file:
                 paths = list(g5.getdatasets(file))
                 verify = g5.verify(file, paths)
                 if paths != verify:
-                    corrupted += [filename]
+                    corrupted += [filepath]
                     continue
 
-            with h5py.File(filename, "r") as file:
+            with h5py.File(filepath, "r") as file:
 
-                info = interpret_filename(filename)
+                info = interpret_filename(os.path.basename(filepath))
                 meta = file["/meta/{:s}".format(entry_points["cli_main"])]
                 assert meta.attrs["version"] == version
                 assert list(meta.attrs["dependencies"]) == System.dependencies(model)
@@ -360,7 +360,7 @@ def cli_collect(cli_args=None):
                 ).format(**info)
 
                 if root in output:
-                    existing += [filename]
+                    existing += [filepath]
                     continue
 
                 datasets = ["meta"]
@@ -406,7 +406,7 @@ def cli_collect_combine(cli_args=None):
         default=f"{progname}.h5",
     )
 
-    parser.add_argument("-f", "--force", action="store_true", help="Overwrite output file")
+    parser.add_argument("-f", "--force", action="store_true", help="Overwrite output")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("files", type=str, nargs="*", help="Files to add")
 
@@ -428,8 +428,11 @@ def cli_collect_combine(cli_args=None):
 
             with h5py.File(filename, "r") as file:
 
+                m = file["meta"]
+                n = output["meta"]
+
                 for key in ["version", "dependencies"]:
-                    assert list(file["meta"].attrs[key]) == list(output["meta"].attrs[key])
+                    assert list(m.attrs[key]) == list(n.attrs[key])
 
                 paths = list(g5.getdatapaths(file))
                 paths.remove("/meta")
@@ -559,7 +562,7 @@ def cli_job(cli_args=None):
         ]
 
         system = None
-        ret = []
+        commands = []
 
         for filename, (stress, stress_name) in itertools.product(
             files, zip(stresses, stress_names)
@@ -614,6 +617,8 @@ def cli_job(cli_args=None):
         outdir=args.output,
         sbatch={"time": args.time},
     )
+
+    return commands
 
 
 def getdynamics_sync_A(
@@ -728,7 +733,7 @@ def cli_getdynamics_sync_A(cli_args=None):
     To generate use ``PinAndTrigger_getdynamics_sync_A_job``.
     """
 
-    progname = entry_points["cli_getdynamics_sync_A"]
+    entry_points["cli_getdynamics_sync_A"]
 
     if cli_args is None:
         cli_args = sys.argv[1:]
@@ -771,9 +776,6 @@ def cli_getdynamics_sync_A(cli_args=None):
 
                 meta = file["data"][path]["meta"][entry_points["cli_main"]]
                 origsim = meta.attrs["file"]
-                info = interpret_filename(origsim)
-                e = int(re.split(r"(element=)([0-9]*)", path)[2])
-                a = int(re.split(r"(A=)([0-9]*)", path)[2])
 
                 with h5py.File(origsim, "r") as mysim:
                     if system is None:
@@ -784,7 +786,14 @@ def cli_getdynamics_sync_A(cli_args=None):
 
                 system.setU(file["data"][path]["disp"]["0"][...])
 
-                ret = getdynamics_sync_A(system=system, target_element=meta.attrs["target_element"], target_A=meta.attrs["target_A"], eps_kick=eps_kick, sig0=sig0, t0=t0)
+                ret = getdynamics_sync_A(
+                    system=system,
+                    target_element=meta.attrs["target_element"],
+                    target_A=meta.attrs["target_A"],
+                    eps_kick=eps_kick,
+                    sig0=sig0,
+                    t0=t0,
+                )
 
                 for key in ret:
                     output[f"/data/{path}/{key}"] = ret[key]
@@ -816,7 +825,7 @@ def cli_getdynamics_sync_A_job(cli_args=None):
         "--output",
         type=str,
         default=progname,
-        help='Output base-name (appended with number and extension)',
+        help="Output base-name (appended with number and extension)",
     )
 
     parser.add_argument(
@@ -824,7 +833,9 @@ def cli_getdynamics_sync_A_job(cli_args=None):
         "--collect",
         type=str,
         default="{:s}.h5".format(entry_points["cli_collect"]),
-        help='Existing data, generated with "{:s}" (read-only)'.format(entry_points["cli_main"]),
+        help='Existing data, generated with "{:s}" (read-only)'.format(
+            entry_points["cli_main"]
+        ),
     )
 
     parser.add_argument(
@@ -862,10 +873,17 @@ def cli_getdynamics_sync_A_job(cli_args=None):
         paths = np.array([path.split("data/")[1].split("/...")[0] for path in paths])
 
         # lists with stress/element/A of each realisation
-        stress = [re.split(r"(stress\=[0-9A-z]*)", path)[1] for path in paths]
-        element = [re.split(r"(element\=[0-9]*)", path)[1] for path in paths]
-        a_target = [int(re.split(r"(A\=)([0-9]*)", path)[2]) for path in paths]
-        a_real = [int(file[g5.join("/data", path, "meta", entry_points["cli_main"])].attrs["A"]) for path in paths]
+        stress = []
+        element = []
+        a_target = []
+        a_real = []
+        for path in paths:
+            info = interpret_filename(path)
+            meta = file[g5.join("data", path, "meta", entry_points["cli_main"], root=True)]
+            stress += [info["stress"]]
+            element += [info["element"]]
+            a_target += [info["A"]]
+            a_real += [meta.attrs["A"]]
         stress = np.array(stress)
         element = np.array(element)
         a_target = np.array(a_target)
@@ -873,12 +891,14 @@ def cli_getdynamics_sync_A_job(cli_args=None):
 
         # lists with possible stress/element/A identifiers (unique)
         Stress = np.unique(stress)
-        Element = np.unique(element)
+        np.unique(element)
         A_target = np.unique(a_target)
 
         files = []
         for a, s in itertools.product(A_target, Stress):
-            subset = paths[(a_real > 0) * (a_real > a - 10) * (a_real < a + 10) * (stress == s)]
+            subset = paths[
+                (a_real > 0) * (a_real > a - 10) * (a_real < a + 10) * (stress == s)
+            ]
             files += list(subset)
 
     if len(files) == 0:
@@ -887,7 +907,9 @@ def cli_getdynamics_sync_A_job(cli_args=None):
     chunks = int(np.ceil(len(files) / float(args.group)))
     devided = np.array_split(files, chunks)
     njob = len(devided)
-    fmt = args.output + "_{0:" + str(int(np.ceil(np.log10(njob)))) + "d}-of-" + str(njob)
+    fmt = (
+        args.output + "_{0:" + str(int(np.ceil(np.log10(njob)))) + "d}-of-" + str(njob)
+    )
     ret = []
 
     for i, group in enumerate(devided):
@@ -907,8 +929,7 @@ def cli_getdynamics_sync_A_job(cli_args=None):
         )
 
         shelephant.yaml.dump(cname, config)
-        slurm.serial("{0:s} {1:s}".format(progname, cname), bname, outdir=args.outdir)
+        slurm.serial(f"{progname:s} {cname:s}", bname, outdir=args.outdir)
         ret += [cname]
 
     return ret
-
