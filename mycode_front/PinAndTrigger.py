@@ -6,9 +6,9 @@ import re
 import shutil
 import sys
 import textwrap
-import enstat
 
 import click
+import enstat
 import FrictionQPotFEM.UniformSingleLayer2d as model
 import GooseFEM  # noqa: F401
 import GooseHDF5 as g5
@@ -1071,11 +1071,11 @@ def getdynamics_sync_A_average(filepath: str):
                 ret[stress] = {}
             if A not in ret[stress]:
                 ret[stress][A] = dict(
-                    pinned = pinned,
-                    sig_xx = enstat.mean.StaticNd(),
-                    sig_xy = enstat.mean.StaticNd(),
-                    sig_yy = enstat.mean.StaticNd(),
-                    t = enstat.mean.StaticNd(),
+                    pinned=pinned,
+                    sig_xx=enstat.mean.StaticNd(),
+                    sig_xy=enstat.mean.StaticNd(),
+                    sig_yy=enstat.mean.StaticNd(),
+                    t=enstat.mean.StaticNd(),
                 )
 
             assert np.all(pinned == ret[stress][A]["pinned"])
@@ -1145,4 +1145,3 @@ def cli_getdynamics_sync_A_average(cli_args=None):
                     else:
                         output[g5.join(k, "mean", root=True)] = d.mean()
                         output[g5.join(k, "variance", root=True)] = d.variance()
-
