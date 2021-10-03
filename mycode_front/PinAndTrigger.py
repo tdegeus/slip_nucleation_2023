@@ -1053,39 +1053,46 @@ def getdynamics_sync_A_average(filepaths: list[str]):
 
             for path in tqdm.tqdm(paths):
 
-                pinned = file["data"][path]["pinned"][...]
-                sig_xx = file["data"][path]["sig_xx"][...]
-                sig_xy = file["data"][path]["sig_xy"][...]
-                sig_yy = file["data"][path]["sig_yy"][...]
-                t = file["data"][path]["t"][...]
+                # todo remove
+                try:
 
-                renum = center_pinned(pinned)
-                pinned = pinned[renum]
-                sig_xx = sig_xx[:, renum]
-                sig_xy = sig_xy[:, renum]
-                sig_yy = sig_yy[:, renum]
+                    pinned = file["data"][path]["pinned"][...]
+                    sig_xx = file["data"][path]["sig_xx"][...]
+                    sig_xy = file["data"][path]["sig_xy"][...]
+                    sig_yy = file["data"][path]["sig_yy"][...]
+                    t = file["data"][path]["t"][...]
 
-                info = interpret_filename(path)
-                stress = info["stress"]
-                A = info["A"]
+                    renum = center_pinned(pinned)
+                    pinned = pinned[renum]
+                    sig_xx = sig_xx[:, renum]
+                    sig_xy = sig_xy[:, renum]
+                    sig_yy = sig_yy[:, renum]
 
-                if stress not in ret:
-                    ret[stress] = {}
-                if A not in ret[stress]:
-                    ret[stress][A] = dict(
-                        pinned=pinned,
-                        sig_xx=enstat.mean.StaticNd(),
-                        sig_xy=enstat.mean.StaticNd(),
-                        sig_yy=enstat.mean.StaticNd(),
-                        t=enstat.mean.StaticNd(),
-                    )
+                    info = interpret_filename(path)
+                    stress = info["stress"]
+                    A = info["A"]
 
-                assert np.all(pinned == ret[stress][A]["pinned"])
+                    if stress not in ret:
+                        ret[stress] = {}
+                    if A not in ret[stress]:
+                        ret[stress][A] = dict(
+                            pinned=pinned,
+                            sig_xx=enstat.mean.StaticNd(),
+                            sig_xy=enstat.mean.StaticNd(),
+                            sig_yy=enstat.mean.StaticNd(),
+                            t=enstat.mean.StaticNd(),
+                        )
 
-                ret[stress][A]["sig_xx"].add_sample(sig_xx)
-                ret[stress][A]["sig_xy"].add_sample(sig_xy)
-                ret[stress][A]["sig_yy"].add_sample(sig_yy)
-                ret[stress][A]["t"].add_sample(t)
+                    assert np.all(pinned == ret[stress][A]["pinned"])
+
+                    ret[stress][A]["sig_xx"].add_sample(sig_xx)
+                    ret[stress][A]["sig_xy"].add_sample(sig_xy)
+                    ret[stress][A]["sig_yy"].add_sample(sig_yy)
+                    ret[stress][A]["t"].add_sample(t)
+
+                except:
+
+                    pass
 
     return ret
 
