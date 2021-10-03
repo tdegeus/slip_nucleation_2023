@@ -1,4 +1,5 @@
 import argparse
+import inspect
 import itertools
 import os
 import re
@@ -29,7 +30,17 @@ entry_points = dict(
     cli_collect_combine="PinAndTrigger_collect_combine",
     cli_getdynamics_sync_A="PinAndTrigger_getdynamics_sync_A",
     cli_getdynamics_sync_A_job="PinAndTrigger_getdynamics_sync_A_job",
+    cli_getdynamics_sync_A_combine="PinAndTrigger_getdynamics_sync_A_combine",
 )
+
+
+def replace_entry_point(docstring):
+    """
+    Replace ":py:func:`...`" with the relevant entry_point name
+    """
+    for ep in entry_points:
+        docstring = docstring.replace(r":py:func:`{:s}`".format(ep), entry_points[ep])
+    return docstring
 
 
 def interpret_filename(filename):
@@ -933,3 +944,62 @@ def cli_getdynamics_sync_A_job(cli_args=None):
         ret += [cname]
 
     return ret
+
+
+
+def cli_getdynamics_sync_A_combine(cli_args=None):
+    """
+    Combine output from :py:func:`cli_getdynamics_sync_A`
+    """
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    docstring = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    progname = entry_points[funcname]
+
+    if cli_args is None:
+        cli_args = sys.argv[1:]
+    else:
+        cli_args = [str(arg) for arg in cli_args]
+
+    class MyFormatter(
+        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
+    ):
+        pass
+
+    parser = argparse.ArgumentParser(
+        formatter_class=MyFormatter, description=replace_entry_point(docstring)
+    )
+
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        default=f"{progname}.h5",
+        help="Output file",
+    )
+
+    parser.add_argument("-f", "--force", action="store_true", help="Overwrite output")
+    parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("files", nargs="*", type=str, help="Input files")
+
+    args = parser.parse_args(cli_args)
+
+    assert len(args.files) > 0
+    assert np.all([os.path.isfile(os.path.realpath(path)) for path in args.files])
+
+    if not args.force:
+        if os.path.isfile(args.output):
+            if not click.confirm(f'Overwrite "{args.output}"?'):
+                raise OSError("Cancelled")
+
+    shutil.copyfile(args.files[0], args.output)
+
+    with h5py.File(args.output, "a") as output:
+
+        for filename in tqdm.tqdm(args.files[1:]):
+
+            with h5py.File(filename, "r") as file:
+
+                paths = list(g5.getdatapaths(file))
+                g5.copy(file, output, paths)
+

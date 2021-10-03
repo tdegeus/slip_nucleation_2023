@@ -107,7 +107,7 @@ def serial(
     command: str,
     basename: str,
     outdir: str = os.getcwd(),
-    sbatch: dict = {},
+    sbatch: dict = None,
     initenv=True,
     omp_num_threads=True,
     conda=True,
@@ -125,6 +125,9 @@ def serial(
     :param conda: Load conda environment (see defaults of snippet_load_conda()).
     :param flush: Flush the buffer of stdout for each commands.
     """
+
+    if sbatch is None:
+        sbatch = {}
 
     assert "job-name" not in sbatch
     assert "out" not in sbatch
@@ -155,7 +158,7 @@ def serial_group(
     basename: str,
     group: int,
     outdir: str = os.getcwd(),
-    sbatch: dict = {},
+    sbatch: dict = None,
     initenv=True,
     omp_num_threads=True,
     conda=True,
@@ -177,6 +180,9 @@ def serial_group(
 
     if len(commands) == 0:
         return
+
+    if sbatch is None:
+        sbatch = {}
 
     assert "job-name" not in sbatch
     assert "out" not in sbatch

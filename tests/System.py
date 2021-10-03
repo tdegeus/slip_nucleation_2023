@@ -135,7 +135,7 @@ class MyTests(unittest.TestCase):
         # PinAndTrigger : extract dynamics (try running only, not really test)
 
         paths = my.PinAndTrigger.cli_getdynamics_sync_A_job(
-            ["-c", collectname, "-i", infoname, dirname]
+            ["-c", collectname, "-i", infoname, "--group", 2, dirname]
         )
 
         for path in paths:
@@ -145,6 +145,10 @@ class MyTests(unittest.TestCase):
             os.chdir(dirname)
             my.PinAndTrigger.cli_getdynamics_sync_A([filename])
             os.chdir(pwd)
+
+        dynname = os.path.join(dirname, "mydynamics.h5")
+
+        my.PinAndTrigger.cli_getdynamics_sync_A_combine(["-o", dynname] + [path.replace(".yaml", ".h5") for path in paths])
 
         shutil.rmtree(dirname)
 
