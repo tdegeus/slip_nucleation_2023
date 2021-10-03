@@ -103,6 +103,53 @@ def script_exec(cmd, initenv=True, omp_num_threads=True, conda=True, flush=True)
     return "\n".join(ret)
 
 
+def serial(
+    command: str,
+    basename: str,
+    outdir: str = os.getcwd(),
+    sbatch: dict = {},
+    initenv=True,
+    omp_num_threads=True,
+    conda=True,
+    flush=True,
+):
+    """
+    Group a number of commands per job-script.
+
+    :param commands: List of commands.
+    :param basename: Base-name of the job-scripts (and their log-scripts),
+    :param outdir: Directory where to write the job-scripts (nothing in changed for the commands).
+    :param sbatch: Job options.
+    :param initenv: Init the environment (see snippet_initenv()).
+    :param omp_num_threads: Number of cores to use (see snippet_export_omp_num_threads()).
+    :param conda: Load conda environment (see defaults of snippet_load_conda()).
+    :param flush: Flush the buffer of stdout for each commands.
+    """
+
+    assert "job-name" not in sbatch
+    assert "out" not in sbatch
+    sbatch.setdefault("nodes", 1)
+    sbatch.setdefault("ntasks", 1)
+    sbatch.setdefault("cpus-per-task", 1)
+    sbatch.setdefault("time", "24h")
+    sbatch.setdefault("account", slurm_defaults["account"])
+    sbatch.setdefault("partition", "serial")
+
+    command = script_exec(
+        command,
+        initenv=initenv,
+        omp_num_threads=omp_num_threads,
+        conda=conda,
+        flush=flush,
+    )
+
+    sbatch["job-name"] = basename
+    sbatch["out"] = basename + "_%j.out"
+
+    with open(os.path.join(outdir, basename + ".slurm"), "w") as file:
+        file.write(GooseSLURM.scripts.plain(command=command, **sbatch))
+
+
 def serial_group(
     commands: list[str],
     basename: str,

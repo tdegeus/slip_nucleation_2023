@@ -12,6 +12,13 @@ sys.path.insert(0, os.path.abspath(root))
 import mycode_front as my  # noqa: E402
 
 
+def getfilebase(path):
+    """
+    Remove directory and extension.
+    """
+    return os.path.splitext(os.path.basename(path))[0]
+
+
 class MyTests(unittest.TestCase):
     def test_generate(self):
 
@@ -58,7 +65,7 @@ class MyTests(unittest.TestCase):
         self.assertTrue(np.allclose(epsd, historic["epsd"]))
         self.assertTrue(np.allclose(sigd, historic["sigd"]))
 
-        # PinAndTrigger : full run + collection (try running only, not real test)
+        # PinAndTrigger : full run + collection (try running only, not really test)
 
         iss = np.argwhere(A == N).ravel()
         sign = np.mean(sigd[iss - 1])
@@ -125,7 +132,30 @@ class MyTests(unittest.TestCase):
             ]
         )
 
-        # PinAndTrigger : job-creation (try running only, not real test)
+        # PinAndTrigger : extract dynamics (try running only, not really test)
+
+        paths = my.PinAndTrigger.cli_getdynamics_sync_A_job(["-c", collectname, "-i", infoname, dirname])
+
+        for path in paths:
+            dirname = os.path.dirname(path)
+            filename = os.path.basename(path)
+            pwd = os.getcwd()
+            os.chdir(dirname)
+            my.PinAndTrigger.cli_getdynamics_sync_A([filename])
+            os.chdir(pwd)
+
+        shutil.rmtree(dirname)
+
+    def PinAndTrigger_cli_job(self):
+        """
+        Tries running only, not really a test
+        """
+        return
+
+        dirname = "mytest"
+        idname = "id=0.h5"
+        filename = os.path.join(dirname, idname)
+        infoname = os.path.join(dirname, "EnsembleInfo.h5")
 
         my.PinAndTrigger.cli_job(["-a", 4, infoname, "-o", dirname, "-n", int(1e9)])
 

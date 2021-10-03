@@ -14,6 +14,8 @@ import numpy as np
 import QPot  # noqa: F401
 import shelephant
 import tqdm
+import re
+import yaml
 
 from . import slurm
 from . import System
@@ -25,6 +27,8 @@ entry_points = dict(
     cli_job="PinAndTrigger_job",
     cli_collect="PinAndTrigger_collect",
     cli_collect_combine="PinAndTrigger_collect_combine",
+    cli_getdynamics_sync_A="PinAndTrigger_getdynamics_sync_A",
+    cli_getdynamics_sync_A_job="PinAndTrigger_getdynamics_sync_A_job",
 )
 
 
@@ -239,7 +243,7 @@ def cli_main(cli_args=None):
         print("done:", args.output, ", niter = ", niter)
 
         meta = output.create_group(f"/meta/{progname}")
-        meta.attrs["file"] = args.file
+        meta.attrs["file"] = os.path.relpath(args.file, os.path.dirname(args.output))
         meta.attrs["version"] = version
         meta.attrs["dependencies"] = System.dependencies(model)
         meta.attrs["target_stress"] = target_stress
@@ -298,12 +302,7 @@ def cli_collect(cli_args=None):
         default=f"{progname}.yaml",
     )
 
-    parser.add_argument(
-        "-v",
-        "--version",
-        action="version",
-        version=version,
-    )
+    parser.add_argument("-v", "--version", action="version", version=version)
 
     args = parser.parse_args(cli_args)
 
@@ -365,11 +364,10 @@ def cli_collect(cli_args=None):
                     continue
 
                 datasets = ["meta"]
-
                 if meta.attrs["A"] >= args.min_a:
-                    datasets = ["/disp/0", "/disp/1"] + datasets
+                    datasets += ["/disp/0", "/disp/1"]
 
-                g5.copydatasets(file, output, datasets, root=root)
+                g5.copy(file, output, datasets, root=root)
 
     if len(corrupted) > 0 or len(existing) > 0:
         shelephant.yaml.dump(
@@ -408,10 +406,8 @@ def cli_collect_combine(cli_args=None):
         default=f"{progname}.h5",
     )
 
-    parser.add_argument(
-        "-f", "--force", action="store_true", help="Force overwrite of output file"
-    )
-
+    parser.add_argument("-f", "--force", action="store_true", help="Overwrite output file")
+    parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("files", type=str, nargs="*", help="Files to add")
 
     args = parser.parse_args(cli_args)
@@ -433,12 +429,11 @@ def cli_collect_combine(cli_args=None):
             with h5py.File(filename, "r") as file:
 
                 for key in ["version", "dependencies"]:
-                    assert list(file["meta"].attrs[key]) == list(
-                        output["meta"].attrs[key]
-                    )
+                    assert list(file["meta"].attrs[key]) == list(output["meta"].attrs[key])
 
-                paths = list(g5.getdatasets(file))
-                g5.copydatasets(file, output, paths)
+                paths = list(g5.getdatapaths(file))
+                paths.remove("/meta")
+                g5.copy(file, output, paths)
 
 
 def cli_job(cli_args=None):
@@ -517,6 +512,8 @@ def cli_job(cli_args=None):
         help="Result of {:s}".format(entry_points["cli_collect"]),
     )
 
+    parser.add_argument("-v", "--version", action="version", version=version)
+
     args = parser.parse_args(cli_args)
 
     assert os.path.isfile(os.path.realpath(args.info))
@@ -562,7 +559,7 @@ def cli_job(cli_args=None):
         ]
 
         system = None
-        commands = []
+        ret = []
 
         for filename, (stress, stress_name) in itertools.product(
             files, zip(stresses, stress_names)
@@ -617,3 +614,301 @@ def cli_job(cli_args=None):
         outdir=args.output,
         sbatch={"time": args.time},
     )
+
+
+def getdynamics_sync_A(
+    system: model.System,
+    target_element: int,
+    target_A: int,
+    eps_kick: float,
+    sig0: float,
+    t0: float,
+) -> dict:
+    """
+    Run the dynamics of an event, saving the state at the interface at every "A".
+
+    :param system:
+        The initialised system, initialised to the proper displacement
+        (but not pinned down yet).
+
+    :param target_element:
+        The element to trigger.
+
+    :param target_A:
+        Number of blocks to keep unpinned (``target_A / 2`` on both sides of ``target_element``).
+
+    :param sig0
+        Stress normalisation.
+
+    :param t0
+        Time normalisation.
+
+    :param eps_kick:
+        Strain kick to use.
+
+    :return:
+        Dictionary with the following fields:
+        *   Shape ``(target_A, N)``:
+            -   sig_xx, sig_xy, sig_yy: the average stress along the interface.
+        *   Shape ``(target_A, target_A)``:
+            -   idx: the current potential index along the interface.
+        *   Shape ``(target_A)``:
+            -   t: the duration since nucleating the event.
+            -   Sig_xx, Sig_xy, Sig_yy: the macroscopic stress.
+    """
+
+    plastic = system.plastic()
+    N = plastic.size
+    dV = system.quad().AsTensor(2, system.quad().dV())
+    plastic_dV = dV[plastic, ...]
+    pinned = pinsystem(system, target_element, target_A)
+    idx_n = system.plastic_CurrentIndex()[:, 0].astype(int)
+    system.triggerElementWithLocalSimpleShear(eps_kick, target_element)
+
+    a_n = 0
+    a = 0
+
+    ret = dict(
+        pinned=pinned,
+        sig_xx=np.zeros((target_A, N), dtype=np.float64),
+        sig_xy=np.zeros((target_A, N), dtype=np.float64),
+        sig_yy=np.zeros((target_A, N), dtype=np.float64),
+        idx=np.zeros((target_A, N), dtype=np.uint64),
+        t=np.zeros(target_A, dtype=np.float64),
+        Sig_xx=np.zeros((target_A), dtype=np.float64),
+        Sig_xy=np.zeros((target_A), dtype=np.float64),
+        Sig_yy=np.zeros((target_A), dtype=np.float64),
+    )
+
+    while True:
+
+        niter = system.timeStepsUntilEvent()
+        idx = system.plastic_CurrentIndex()[:, 0].astype(int)
+
+        if np.sum(idx != idx_n) > a:
+            a_n = a
+            a = np.sum(idx != idx_n)
+            sig = np.average(system.Sig(), weights=dV, axis=(0, 1))
+            plastic_sig = np.average(system.plastic_Sig(), weights=plastic_dV, axis=1)
+
+            # store to output (broadcast if needed)
+            ret["sig_xx"][a_n:a, :] = plastic_sig[:, 0, 0].reshape(1, -1) / sig0
+            ret["sig_xy"][a_n:a, :] = plastic_sig[:, 0, 1].reshape(1, -1) / sig0
+            ret["sig_yy"][a_n:a, :] = plastic_sig[:, 1, 1].reshape(1, -1) / sig0
+            ret["idx"][a_n:a, :] = idx.reshape(1, -1)
+            ret["t"][a_n:a] = system.t() / t0
+            ret["Sig_xx"][a_n:a] = sig[0, 0] / sig0
+            ret["Sig_xy"][a_n:a] = sig[0, 1] / sig0
+            ret["Sig_yy"][a_n:a] = sig[1, 1] / sig0
+
+        if a >= target_A:
+            break
+
+        if niter == 0:
+            break
+
+    ret["idx"] = ret["idx"][:, np.logical_not(pinned)]
+
+    return ret
+
+
+def cli_getdynamics_sync_A(cli_args=None):
+    """
+    This script use a configuration file as follows:
+
+    .. code-block:: yaml
+
+        collected: PinAndTrigger_collect.h5
+        info: EnsembleInfo.h5
+        output: myoutput.h5
+        paths:
+          - stress=0d6/A=100/id=183/incc=45/element=0
+          - stress=0d6/A=100/id=232/incc=41/element=729
+
+    To generate use ``PinAndTrigger_getdynamics_sync_A_job``.
+    """
+
+    progname = entry_points["cli_getdynamics_sync_A"]
+
+    if cli_args is None:
+        cli_args = sys.argv[1:]
+    else:
+        cli_args = [str(arg) for arg in cli_args]
+
+    class MyFormatter(
+        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
+    ):
+        pass
+
+    parser = argparse.ArgumentParser(
+        formatter_class=MyFormatter, description=textwrap.dedent(cli_main.__doc__)
+    )
+
+    parser.add_argument("file", type=str, help="YAML configuration file")
+
+    parser.add_argument("-v", "--version", action="version", version=version)
+
+    args = parser.parse_args(cli_args)
+
+    assert os.path.isfile(os.path.realpath(args.file))
+
+    with open(args.file) as file:
+        config = yaml.load(file.read(), Loader=yaml.FullLoader)
+
+    assert os.path.isfile(os.path.realpath(config["info"]))
+
+    with h5py.File(config["info"], "r") as file:
+        sig0 = file["/normalisation/sig0"][...]
+        t0 = file["/normalisation/t0"][...]
+
+    system = None
+
+    with h5py.File(config["output"], "w") as output:
+
+        with h5py.File(config["collected"], "r") as file:
+
+            for path in config["paths"]:
+
+                meta = file["data"][path]["meta"][entry_points["cli_main"]]
+                origsim = meta.attrs["file"]
+                info = interpret_filename(origsim)
+                e = int(re.split(r"(element=)([0-9]*)", path)[2])
+                a = int(re.split(r"(A=)([0-9]*)", path)[2])
+
+                with h5py.File(origsim, "r") as mysim:
+                    if system is None:
+                        system = System.init(mysim)
+                        eps_kick = mysim["/run/epsd/kick"][...]
+                    else:
+                        system.reset_epsy(System.read_epsy(mysim))
+
+                system.setU(file["data"][path]["disp"]["0"][...])
+
+                ret = getdynamics_sync_A(system=system, target_element=meta.attrs["target_element"], target_A=meta.attrs["target_A"], eps_kick=eps_kick, sig0=sig0, t0=t0)
+
+                for key in ret:
+                    output[f"/data/{path}/{key}"] = ret[key]
+
+
+def cli_getdynamics_sync_A_job(cli_args=None):
+    """
+    Generate configuration file to rerun dynamics.
+    """
+
+    progname = entry_points["cli_getdynamics_sync_A"]
+
+    if cli_args is None:
+        cli_args = sys.argv[1:]
+    else:
+        cli_args = [str(arg) for arg in cli_args]
+
+    class MyFormatter(
+        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
+    ):
+        pass
+
+    parser = argparse.ArgumentParser(
+        formatter_class=MyFormatter, description=textwrap.dedent(cli_main.__doc__)
+    )
+
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        default=progname,
+        help='Output base-name (appended with number and extension)',
+    )
+
+    parser.add_argument(
+        "-c",
+        "--collect",
+        type=str,
+        default="{:s}.h5".format(entry_points["cli_collect"]),
+        help='Existing data, generated with "{:s}" (read-only)'.format(entry_points["cli_main"]),
+    )
+
+    parser.add_argument(
+        "-i",
+        "--info",
+        type=str,
+        default="{:s}.h5".format(System.entry_points["cli_ensembleinfo"]),
+        help="EnsembleInfo to read normalisation (read-only)",
+    )
+
+    parser.add_argument(
+        "-n",
+        "--group",
+        type=int,
+        default=50,
+        help="Number of runs to group in a single job.",
+    )
+
+    parser.add_argument("outdir", type=str, help="Output directory")
+
+    args = parser.parse_args(cli_args)
+
+    assert os.path.isfile(os.path.realpath(args.collect))
+    assert os.path.isfile(os.path.realpath(args.info))
+
+    config = dict(
+        collected=args.collect,
+        info=args.info,
+    )
+
+    with h5py.File(args.collect, "r") as file:
+
+        # list with realisations
+        paths = list(g5.getdatasets(file, root="data", max_depth=5))
+        paths = np.array([path.split("data/")[1].split("/...")[0] for path in paths])
+
+        # lists with stress/element/A of each realisation
+        stress = [re.split(r"(stress\=[0-9A-z]*)", path)[1] for path in paths]
+        element = [re.split(r"(element\=[0-9]*)", path)[1] for path in paths]
+        a_target = [int(re.split(r"(A\=)([0-9]*)", path)[2]) for path in paths]
+        a_real = [int(file[g5.join("/data", path, "meta", entry_points["cli_main"])].attrs["A"]) for path in paths]
+        stress = np.array(stress)
+        element = np.array(element)
+        a_target = np.array(a_target)
+        a_real = np.array(a_real)
+
+        # lists with possible stress/element/A identifiers (unique)
+        Stress = np.unique(stress)
+        Element = np.unique(element)
+        A_target = np.unique(a_target)
+
+        files = []
+        for a, s in itertools.product(A_target, Stress):
+            subset = paths[(a_real > 0) * (a_real > a - 10) * (a_real < a + 10) * (stress == s)]
+            files += list(subset)
+
+    if len(files) == 0:
+        return
+
+    chunks = int(np.ceil(len(files) / float(args.group)))
+    devided = np.array_split(files, chunks)
+    njob = len(devided)
+    fmt = args.output + "_{0:" + str(int(np.ceil(np.log10(njob)))) + "d}-of-" + str(njob)
+    ret = []
+
+    for i, group in enumerate(devided):
+
+        bname = fmt.format(i + 1)
+        cname = os.path.join(args.outdir, bname + ".yaml")
+        oname = os.path.join(args.outdir, bname + ".h5")
+
+        assert not os.path.isfile(os.path.realpath(cname))
+        assert not os.path.isfile(os.path.realpath(oname))
+
+        config = dict(
+            collected=os.path.relpath(args.collect, args.outdir),
+            info=os.path.relpath(args.info, args.outdir),
+            output=os.path.relpath(oname, args.outdir),
+            paths=[str(g) for g in group],
+        )
+
+        shelephant.yaml.dump(cname, config)
+        slurm.serial("{0:s} {1:s}".format(progname, cname), bname, outdir=args.outdir)
+        ret += [cname]
+
+    return ret
+
