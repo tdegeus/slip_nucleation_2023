@@ -4,6 +4,7 @@ dependencies:
 - cmake
 - cpppath
 - docopt.cpp
+- enstat
 - fmt
 - frictionqpotfem
 - gitpython

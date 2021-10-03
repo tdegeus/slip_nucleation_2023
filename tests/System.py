@@ -147,10 +147,13 @@ class MyTests(unittest.TestCase):
             os.chdir(pwd)
 
         dynname = os.path.join(dirname, "mydynamics.h5")
+        avname = os.path.join(dirname, "mydynamics_av.h5")
 
         my.PinAndTrigger.cli_getdynamics_sync_A_combine(
             ["-o", dynname] + [path.replace(".yaml", ".h5") for path in paths]
         )
+
+        my.PinAndTrigger.cli_getdynamics_sync_A_average(["-o", avname, dynname])
 
         shutil.rmtree(dirname)
 

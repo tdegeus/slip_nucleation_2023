@@ -6,6 +6,7 @@ import re
 import shutil
 import sys
 import textwrap
+import enstat
 
 import click
 import FrictionQPotFEM.UniformSingleLayer2d as model
@@ -31,6 +32,7 @@ entry_points = dict(
     cli_getdynamics_sync_A="PinAndTrigger_getdynamics_sync_A",
     cli_getdynamics_sync_A_job="PinAndTrigger_getdynamics_sync_A_job",
     cli_getdynamics_sync_A_combine="PinAndTrigger_getdynamics_sync_A_combine",
+    cli_getdynamics_sync_A_average="PinAndTrigger_getdynamics_sync_A_average",
 )
 
 
@@ -62,6 +64,42 @@ def interpret_filename(filename):
             info[key] = int(info[key])
 
     return info
+
+
+def center_of_mass(x, L):
+    """
+    Compute the center of mass of a periodic system.
+
+    :param x: List of coordinates.
+    :param L: Length of the system.
+    :return: Coordinate of the center of mass.
+    """
+
+    if np.allclose(x, 0):
+        return 0
+
+    theta = 2.0 * np.pi * x / L
+    xi = np.cos(theta)
+    zeta = np.sin(theta)
+    xi_bar = np.mean(xi)
+    zeta_bar = np.mean(zeta)
+    theta_bar = np.arctan2(-zeta_bar, -xi_bar) + np.pi
+    return L * theta_bar / (2.0 * np.pi)
+
+
+def center_pinned(ispinned):
+    """
+    Renumber such that the center of mass is in the middle.
+
+    :param ispinned: Per block if it is pinned.
+    :return: List of indices
+    """
+
+    N = ispinned.size
+    center = center_of_mass(np.argwhere(ispinned).ravel(), N)
+    M = int((N - N % 2) / 2)
+    C = int(center)
+    return np.roll(np.arange(N), M - C)
 
 
 def pinning(system: model.System, target_element: int, target_A: int) -> np.ndarray:
@@ -994,3 +1032,117 @@ def cli_getdynamics_sync_A_combine(cli_args=None):
 
                 if len(paths) > 0:
                     g5.copy(file, output, paths)
+
+
+def getdynamics_sync_A_average(filepath: str):
+    """
+    Get the averages on fixed A.
+
+    :param filepath: File with the raw data.
+    :return: dict, per stress, A, and variable.
+    """
+
+    with h5py.File(filepath, "r") as file:
+
+        paths = list(g5.getdatasets(file, max_depth=6))
+        paths = [path.replace("/...", "").replace("/data/", "") for path in paths]
+
+        ret = {}
+
+        for path in tqdm.tqdm(paths):
+
+            pinned = file["data"][path]["pinned"][...]
+            sig_xx = file["data"][path]["sig_xx"][...]
+            sig_xy = file["data"][path]["sig_xy"][...]
+            sig_yy = file["data"][path]["sig_yy"][...]
+            t = file["data"][path]["t"][...]
+
+            renum = center_pinned(pinned)
+            pinned = pinned[renum]
+            sig_xx = sig_xx[:, renum]
+            sig_xy = sig_xy[:, renum]
+            sig_yy = sig_yy[:, renum]
+
+            info = interpret_filename(path)
+            stress = info["stress"]
+            A = info["A"]
+
+            if stress not in ret:
+                ret[stress] = {}
+            if A not in ret[stress]:
+                ret[stress][A] = dict(
+                    pinned = pinned,
+                    sig_xx = enstat.mean.StaticNd(),
+                    sig_xy = enstat.mean.StaticNd(),
+                    sig_yy = enstat.mean.StaticNd(),
+                    t = enstat.mean.StaticNd(),
+                )
+
+            assert np.all(pinned == ret[stress][A]["pinned"])
+
+            ret[stress][A]["sig_xx"].add_sample(sig_xx)
+            ret[stress][A]["sig_xy"].add_sample(sig_xy)
+            ret[stress][A]["sig_yy"].add_sample(sig_yy)
+            ret[stress][A]["t"].add_sample(t)
+
+    return ret
+
+
+def cli_getdynamics_sync_A_average(cli_args=None):
+    """
+    Average output from :py:func:`cli_getdynamics_sync_A`
+    """
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    docstring = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    progname = entry_points[funcname]
+
+    if cli_args is None:
+        cli_args = sys.argv[1:]
+    else:
+        cli_args = [str(arg) for arg in cli_args]
+
+    class MyFormatter(
+        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
+    ):
+        pass
+
+    parser = argparse.ArgumentParser(
+        formatter_class=MyFormatter, description=replace_entry_point(docstring)
+    )
+
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        default=f"{progname}.h5",
+        help="Output file (overwritten)",
+    )
+    parser.add_argument("-f", "--force", action="store_true", help="Overwrite output")
+    parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("input", type=str, help="Input file")
+
+    args = parser.parse_args(cli_args)
+
+    assert os.path.isfile(os.path.realpath(args.input))
+
+    if not args.force:
+        if os.path.isfile(args.output):
+            if not click.confirm(f'Overwrite "{args.output}"?'):
+                raise OSError("Cancelled")
+
+    data = getdynamics_sync_A_average(args.input)
+
+    with h5py.File(args.output, "w") as output:
+
+        for stress in data:
+            for A in data[stress]:
+                for key in data[stress][A]:
+                    d = data[stress][A][key]
+                    k = f"/stress={stress}/A={A:d}/{key}"
+                    if key in ["pinned"]:
+                        output[k] = d
+                    else:
+                        output[g5.join(k, "mean", root=True)] = d.mean()
+                        output[g5.join(k, "variance", root=True)] = d.variance()
+
