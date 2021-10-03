@@ -51,7 +51,7 @@ def snippet_load_conda(condabase: str = default_condabase):
     """
     Return code to load the Conda environment.
     This function assumes that these BASH-functions are present:
-    -   ``conda_activate_existing``
+    -   ``conda_activate_first_existing``
     -   ``get_simd_envname``
     Use snippet_initenv() to set them.
 
@@ -60,7 +60,7 @@ def snippet_load_conda(condabase: str = default_condabase):
     """
 
     ret = ["# Activate hardware optimised environment (or fallback environment)"]
-    ret += [f'conda_activate_existing "{condabase}$(get_simd_envname)" "{condabase}"']
+    ret += [f'conda_activate_first_existing "{condabase}$(get_simd_envname)" "{condabase}"']
     ret += []
 
     return "\n".join(ret)
