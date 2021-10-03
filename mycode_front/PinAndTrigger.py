@@ -744,6 +744,15 @@ def getdynamics_sync_A(
         if niter == 0:
             break
 
+    ret["sig_xx"][a_n + 1:, :] = ret["sig_xx"][a_n, :].reshape(1, -1)
+    ret["sig_xy"][a_n + 1:, :] = ret["sig_xy"][a_n, :].reshape(1, -1)
+    ret["sig_yy"][a_n + 1:, :] = ret["sig_yy"][a_n, :].reshape(1, -1)
+    ret["idx"][a_n + 1:, :] = ret["idx"][a_n, :].reshape(1, -1)
+    ret["t"][a_n + 1:] = ret["t"][a_n]
+    ret["Sig_xx"][a_n + 1:] = ret["Sig_xx"][a_n]
+    ret["Sig_xy"][a_n + 1:] = ret["Sig_xy"][a_n]
+    ret["Sig_yy"][a_n + 1:] = ret["Sig_yy"][a_n]
+
     ret["idx"] = ret["idx"][:, np.logical_not(pinned)]
 
     return ret
@@ -1034,6 +1043,23 @@ def cli_getdynamics_sync_A_combine(cli_args=None):
                     g5.copy(file, output, paths)
 
 
+def dict_remove_empty(arg):
+    """
+    Remove fields with empty list from dictionary.
+    """
+
+    rm = []
+    for key in arg:
+        if len(arg[key]) == 0:
+            rm += [key]
+
+    for key in rm:
+        arg.pop(key)
+
+    return arg
+
+
+
 def getdynamics_sync_A_average(filepaths: list[str]):
     """
     Get the averages on fixed A.
@@ -1043,33 +1069,67 @@ def getdynamics_sync_A_average(filepaths: list[str]):
     """
 
     ret = {}
-    visited = []
+    duplicate = {}
+    corrupted = {}
+    visited = {}
 
     for filepath in filepaths:
+
+        duplicate[filepath] = []
+        corrupted[filepath] = []
 
         with h5py.File(filepath, "r") as file:
 
             paths = list(g5.getdatasets(file, max_depth=6))
             paths = [path.replace("/...", "").replace("/data/", "") for path in paths]
-            exists = np.in1d(paths, visited)
-
-            if np.sum(exists) > 0:
-                paths = np.array(paths)
-                print("The following paths are already present and are skipped")
-                print("\n".join(paths[exists]))
-                paths = list(paths[np.logical_not(exists)])
 
             for path in tqdm.tqdm(paths):
 
                 if "pinned" not in file["data"][path]:
-                    print(f"Corrupted data {path}")
+                    corrupted[filepath] += [path]
                     continue
+
+                info = interpret_filename(path)
+                stress = info["stress"]
+                A = info["A"]
+                s = info["id"]
+                e = info["element"]
+                i = info["incc"]
+
+                # todo: simplify using defaultdict
+
+                if stress not in visited:
+                    visited[stress] = {}
+
+                if s not in visited[stress]:
+                    visited[stress][s] = {}
+
+                if A not in visited[stress][s]:
+                    visited[stress][s][A] = {}
+
+                if e not in visited[stress][s][A]:
+                    visited[stress][s][A][e] = []
+
+                if i in visited[stress][s][A][e]:
+                    duplicate[filepath] += [path]
+                    continue
+                else:
+                    visited[stress][s][A][e] += [i]
 
                 pinned = file["data"][path]["pinned"][...]
                 sig_xx = file["data"][path]["sig_xx"][...]
                 sig_xy = file["data"][path]["sig_xy"][...]
                 sig_yy = file["data"][path]["sig_yy"][...]
+                idx = file["data"][path]["idx"][...].astype(np.int64)
                 t = file["data"][path]["t"][...]
+
+                # todo: bug in old data, last entry not fixed
+                j = np.argmin(idx[:, 0])
+                if j == 0 and idx[j, 0] == 0:
+                    continue
+                if j > 0 and idx[j, 0] == 0:
+                    idx[j:, :] = idx[j - 1, :].reshape(1, -1)
+
 
                 renum = center_pinned(pinned)
                 pinned = pinned[renum]
@@ -1077,18 +1137,21 @@ def getdynamics_sync_A_average(filepaths: list[str]):
                 sig_xy = sig_xy[:, renum]
                 sig_yy = sig_yy[:, renum]
 
-                info = interpret_filename(path)
-                stress = info["stress"]
-                A = info["A"]
+                # todo: improve
+                for i in range(1, idx.shape[0]):
+                    idx[i, :] -= idx[0, :]
+                idx[0, :] = 0
 
                 if stress not in ret:
                     ret[stress] = {}
+
                 if A not in ret[stress]:
                     ret[stress][A] = dict(
                         pinned=pinned,
                         sig_xx=enstat.mean.StaticNd(),
                         sig_xy=enstat.mean.StaticNd(),
                         sig_yy=enstat.mean.StaticNd(),
+                        nyield=enstat.mean.StaticNd(),
                         t=enstat.mean.StaticNd(),
                     )
 
@@ -1097,9 +1160,15 @@ def getdynamics_sync_A_average(filepaths: list[str]):
                 ret[stress][A]["sig_xx"].add_sample(sig_xx)
                 ret[stress][A]["sig_xy"].add_sample(sig_xy)
                 ret[stress][A]["sig_yy"].add_sample(sig_yy)
+                ret[stress][A]["nyield"].add_sample(idx)
                 ret[stress][A]["t"].add_sample(t)
 
-    return ret
+    error = dict(
+        duplicate = dict_remove_empty(duplicate),
+        corrupted = dict_remove_empty(corrupted),
+    )
+
+    return ret, error
 
 
 def cli_getdynamics_sync_A_average(cli_args=None):
@@ -1132,6 +1201,16 @@ def cli_getdynamics_sync_A_average(cli_args=None):
         default=f"{progname}.h5",
         help="Output file (overwritten)",
     )
+
+    parser.add_argument(
+        "-e",
+        "--error",
+        type=str,
+        help="List of corrupted files (if found)",
+        default=f"{progname}.yaml",
+    )
+
+    parser.add_argument("--throw", action="store_true", help="Throw on error")
     parser.add_argument("-f", "--force", action="store_true", help="Overwrite output")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("files", nargs="*", type=str, help="Input files")
@@ -1145,7 +1224,13 @@ def cli_getdynamics_sync_A_average(cli_args=None):
             if not click.confirm(f'Overwrite "{args.output}"?'):
                 raise OSError("Cancelled")
 
-    data = getdynamics_sync_A_average(args.files)
+    data, error = getdynamics_sync_A_average(args.files)
+
+    if len(error["corrupted"]) > 0 or len(error["duplicate"]) > 0:
+        if args.throw:
+            raise OSError("Error while reading")
+        else:
+            shelephant.yaml.dump(args.error, error, force=True)
 
     with h5py.File(args.output, "w") as output:
 
@@ -1159,3 +1244,6 @@ def cli_getdynamics_sync_A_average(cli_args=None):
                     else:
                         output[g5.join(k, "mean", root=True)] = d.mean()
                         output[g5.join(k, "variance", root=True)] = d.variance()
+                        output[g5.join(k, "norm", root=True)] = d.norm()
+                        output[g5.join(k, "first", root=True)] = d.first()
+                        output[g5.join(k, "second", root=True)] = d.second()

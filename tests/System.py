@@ -149,15 +149,18 @@ class MyTests(unittest.TestCase):
         dynname = os.path.join(dirname, "mydynamics.h5")
         avname = os.path.join(dirname, "mydynamics_av.h5")
         avname2 = os.path.join(dirname, "mydynamics_av2.h5")
+        avname3 = os.path.join(dirname, "mydynamics_av3.h5")
+        ename3 = os.path.join(dirname, "mydynamics_av3.yaml")
 
         my.PinAndTrigger.cli_getdynamics_sync_A_combine(
             ["-o", dynname] + [path.replace(".yaml", ".h5") for path in paths]
         )
 
-        my.PinAndTrigger.cli_getdynamics_sync_A_average(["-o", avname, dynname])
+        my.PinAndTrigger.cli_getdynamics_sync_A_average(["--throw", "-o", avname, dynname])
         my.PinAndTrigger.cli_getdynamics_sync_A_average(
-            ["-o", avname2] + [path.replace(".yaml", ".h5") for path in paths]
+            ["--throw", "-o", avname2] + [path.replace(".yaml", ".h5") for path in paths]
         )
+        my.PinAndTrigger.cli_getdynamics_sync_A_average(["-o", avname3, "-e", avname3, dynname, dynname])
 
         shutil.rmtree(dirname)
 
