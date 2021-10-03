@@ -1,4 +1,5 @@
 import argparse
+import inspect
 import os
 import sys
 import textwrap
@@ -15,6 +16,15 @@ entry_points = dict(
 slurm_defaults = dict(
     account="pcsl",
 )
+
+
+def replace_entry_point(docstring):
+    """
+    Replace ":py:func:`...`" with the relevant entry_point name
+    """
+    for ep in entry_points:
+        docstring = docstring.replace(fr":py:func:`{ep:s}`", entry_points[ep])
+    return docstring
 
 
 def snippet_initenv(cmd="source $HOME/myinit/compiler_conda.sh"):
@@ -224,6 +234,9 @@ def cli_serial_group(cli_args=None):
     Job-script to run commands.
     """
 
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    docstring = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+
     if cli_args is None:
         cli_args = sys.argv[1:]
     else:
@@ -235,8 +248,7 @@ def cli_serial_group(cli_args=None):
         pass
 
     parser = argparse.ArgumentParser(
-        formatter_class=MyFormatter,
-        description=textwrap.dedent(cli_serial_group.__doc__),
+        formatter_class=MyFormatter, description=replace_entry_point(docstring)
     )
 
     parser.add_argument(

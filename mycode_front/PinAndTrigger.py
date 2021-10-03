@@ -156,7 +156,9 @@ def cli_main(cli_args=None):
     3.  Push a specific element and minimise energy.
     """
 
-    progname = entry_points["cli_main"]
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    docstring = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    progname = entry_points[funcname]
 
     if cli_args is None:
         cli_args = sys.argv[1:]
@@ -169,33 +171,15 @@ def cli_main(cli_args=None):
         pass
 
     parser = argparse.ArgumentParser(
-        formatter_class=MyFormatter, description=textwrap.dedent(cli_main.__doc__)
+        formatter_class=MyFormatter, description=replace_entry_point(docstring)
     )
 
-    parser.add_argument(
-        "-f", "--file", type=str, help="Filename of simulation file (read-only)"
-    )
-
-    parser.add_argument(
-        "-o", "--output", type=str, help="Filename of output file (overwritten)"
-    )
-
-    parser.add_argument(
-        "-s", "--stress", type=float, help="Stress as which to trigger (in real units)"
-    )
-
-    parser.add_argument(
-        "-i", "--incc", type=int, help="Increment number of last system-spanning event"
-    )
-
-    parser.add_argument(
-        "-e", "--element", type=int, help="Element to push (index along the weak layer)"
-    )
-
-    parser.add_argument(
-        "-a", "--size", type=int, help="Number of elements to keep unpinned"
-    )
-
+    parser.add_argument("-f", "--file", type=str, help="Simulation (read-only)")
+    parser.add_argument("-o", "--output", type=str, help="Output file (overwritten)")
+    parser.add_argument("-s", "--stress", type=float, help="Trigger stress (real unit)")
+    parser.add_argument("-i", "--incc", type=int, help="Last system-spanning event")
+    parser.add_argument("-e", "--element", type=int, help="Plastic element to push")
+    parser.add_argument("-a", "--size", type=int, help="#elements to keep unpinned")
     parser.add_argument("-v", "--version", action="version", version=version)
 
     args = parser.parse_args(cli_args)
@@ -271,7 +255,9 @@ def cli_collect(cli_args=None):
     Requires files to be named "stress=X_A=X_id=X_incc=X_element=X" (in any order).
     """
 
-    progname = entry_points["cli_collect"]
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    docstring = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    progname = entry_points[funcname]
 
     if cli_args is None:
         cli_args = sys.argv[1:]
@@ -284,10 +270,8 @@ def cli_collect(cli_args=None):
         pass
 
     parser = argparse.ArgumentParser(
-        formatter_class=MyFormatter, description=textwrap.dedent(cli_collect.__doc__)
+        formatter_class=MyFormatter, description=replace_entry_point(docstring)
     )
-
-    parser.add_argument("files", type=str, nargs="*", help="Files to add")
 
     parser.add_argument(
         "-a",
@@ -301,7 +285,7 @@ def cli_collect(cli_args=None):
         "-o",
         "--output",
         type=str,
-        help="Output file ('a')",
+        help="Output file (appended)",
         default=f"{progname}.h5",
     )
 
@@ -309,11 +293,12 @@ def cli_collect(cli_args=None):
         "-e",
         "--error",
         type=str,
-        help="Store list of corrupted files",
+        help="List of corrupted files (if found)",
         default=f"{progname}.yaml",
     )
 
     parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("files", type=str, nargs="*", help="Files to add")
 
     args = parser.parse_args(cli_args)
 
@@ -388,11 +373,13 @@ def cli_collect(cli_args=None):
 
 def cli_collect_combine(cli_args=None):
     """
-    Combine two or more collections, see PinAndTrigger_collect to obtain them from
+    Combine two or more collections, see :py:func:`cli_collect` to obtain them from
     individual runs.
     """
 
-    progname = entry_points["cli_collect_combine"]
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    docstring = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    progname = entry_points[funcname]
 
     if cli_args is None:
         cli_args = sys.argv[1:]
@@ -406,7 +393,7 @@ def cli_collect_combine(cli_args=None):
 
     parser = argparse.ArgumentParser(
         formatter_class=MyFormatter,
-        description=textwrap.dedent(cli_collect_combine.__doc__),
+        description=replace_entry_point(docstring),
     )
 
     parser.add_argument(
@@ -458,10 +445,14 @@ def cli_job(cli_args=None):
     Note that the assumption is made that the push on the different elements of the same system
     in the same still still results in sufficiently independent measurements.
 
-    Use "PinAndTrigger_job_compact" to run for A that are smaller than the one used here.
+    Use "?? (todo)" to run for A that are smaller than the one used here.
     That function skips all events that are know to be too small,
     and therefore less time is waisted on computing small events.
     """
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    docstring = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    entry_points[funcname]
 
     if cli_args is None:
         cli_args = sys.argv[1:]
@@ -474,7 +465,7 @@ def cli_job(cli_args=None):
         pass
 
     parser = argparse.ArgumentParser(
-        formatter_class=MyFormatter, description=textwrap.dedent(cli_collect.__doc__)
+        formatter_class=MyFormatter, description=replace_entry_point(docstring)
     )
 
     parser.add_argument("info", type=str, help="EnsembleInfo (read-only)")
@@ -512,14 +503,6 @@ def cli_job(cli_args=None):
     )
 
     parser.add_argument(
-        "-e",
-        "--executable",
-        type=str,
-        default=entry_points["cli_main"],
-        help="Executable to use",
-    )
-
-    parser.add_argument(
         "-f",
         "--finished",
         type=str,
@@ -536,7 +519,7 @@ def cli_job(cli_args=None):
         assert os.path.isfile(os.path.realpath(args.finished))
 
     basedir = os.path.dirname(args.info)
-    executable = args.executable
+    executable = entry_points["cli_main"]
 
     simpaths = []
     if args.finished:
@@ -623,7 +606,7 @@ def cli_job(cli_args=None):
 
     slurm.serial_group(
         commands,
-        basename=args.executable.replace(" ", "_"),
+        basename=executable,
         group=args.group,
         outdir=args.output,
         sbatch={"time": args.time},
@@ -741,10 +724,12 @@ def cli_getdynamics_sync_A(cli_args=None):
           - stress=0d6/A=100/id=183/incc=45/element=0
           - stress=0d6/A=100/id=232/incc=41/element=729
 
-    To generate use ``PinAndTrigger_getdynamics_sync_A_job``.
+    To generate use :py:func`cli_getdynamics_sync_A_job`.
     """
 
-    entry_points["cli_getdynamics_sync_A"]
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    docstring = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    entry_points[funcname]
 
     if cli_args is None:
         cli_args = sys.argv[1:]
@@ -757,12 +742,11 @@ def cli_getdynamics_sync_A(cli_args=None):
         pass
 
     parser = argparse.ArgumentParser(
-        formatter_class=MyFormatter, description=textwrap.dedent(cli_main.__doc__)
+        formatter_class=MyFormatter, description=replace_entry_point(docstring)
     )
 
-    parser.add_argument("file", type=str, help="YAML configuration file")
-
     parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("file", type=str, help="YAML configuration file")
 
     args = parser.parse_args(cli_args)
 
@@ -812,10 +796,12 @@ def cli_getdynamics_sync_A(cli_args=None):
 
 def cli_getdynamics_sync_A_job(cli_args=None):
     """
-    Generate configuration file to rerun dynamics.
+    Generate configuration files to rerun dynamics.
     """
 
-    progname = entry_points["cli_getdynamics_sync_A"]
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    docstring = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    progname = entry_points[funcname]
 
     if cli_args is None:
         cli_args = sys.argv[1:]
@@ -828,14 +814,14 @@ def cli_getdynamics_sync_A_job(cli_args=None):
         pass
 
     parser = argparse.ArgumentParser(
-        formatter_class=MyFormatter, description=textwrap.dedent(cli_main.__doc__)
+        formatter_class=MyFormatter, description=replace_entry_point(docstring)
     )
 
     parser.add_argument(
         "-o",
         "--output",
         type=str,
-        default=progname,
+        default=entry_points["cli_getdynamics_sync_A"],
         help="Output base-name (appended with number and extension)",
     )
 
@@ -844,9 +830,7 @@ def cli_getdynamics_sync_A_job(cli_args=None):
         "--collect",
         type=str,
         default="{:s}.h5".format(entry_points["cli_collect"]),
-        help='Existing data, generated with "{:s}" (read-only)'.format(
-            entry_points["cli_main"]
-        ),
+        help="Existing data (see {:s}) (read-only)".format(entry_points["cli_main"]),
     )
 
     parser.add_argument(
@@ -970,14 +954,7 @@ def cli_getdynamics_sync_A_combine(cli_args=None):
         formatter_class=MyFormatter, description=replace_entry_point(docstring)
     )
 
-    parser.add_argument(
-        "-o",
-        "--output",
-        type=str,
-        default=f"{progname}.h5",
-        help="Output file",
-    )
-
+    parser.add_argument("-o", "--output", type=str, default=f"{progname}.h5")
     parser.add_argument("-f", "--force", action="store_true", help="Overwrite output")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("files", nargs="*", type=str, help="Input files")

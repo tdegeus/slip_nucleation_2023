@@ -5,7 +5,9 @@
 -   Get basic output.
 """
 import argparse
+import inspect
 import os
+import re
 import sys
 import textwrap
 import uuid
@@ -41,12 +43,21 @@ def dependencies(system: model.System) -> list[str]:
     return sorted(list(model.version_dependencies()) + ["prrng=" + prrng.version()])
 
 
+def replace_entry_point(docstring):
+    """
+    Replace ":py:func:`...`" with the relevant entry_point name
+    """
+    for ep in entry_points:
+        docstring = docstring.replace(fr":py:func:`{ep:s}`", entry_points[ep])
+    return docstring
+
+
 def interpret_filename(filename):
     """
     Split filename in useful information.
     """
 
-    part = os.path.splitext(os.path.basename(filename))[0].split("_")
+    part = re.split("_|/", os.path.splitext(filename)[0])
     info = {}
 
     for i in part:
@@ -414,6 +425,10 @@ def cli_generate(cli_args=None):
     Generate IO files, including job-scripts to run simulations.
     """
 
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    docstring = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    entry_points[funcname]
+
     if cli_args is None:
         cli_args = sys.argv[1:]
     else:
@@ -425,54 +440,15 @@ def cli_generate(cli_args=None):
         pass
 
     parser = argparse.ArgumentParser(
-        formatter_class=MyFormatter,
-        description=textwrap.dedent(cli_generate.__doc__),
+        formatter_class=MyFormatter, description=replace_entry_point(docstring)
     )
 
-    parser.add_argument(
-        "outdir",
-        type=str,
-        help="Output directory",
-    )
-
-    parser.add_argument(
-        "-N",
-        "--size",
-        type=int,
-        default=2 * (3 ** 6),
-        help="Number of plastic blocks",
-    )
-
-    parser.add_argument(
-        "-n",
-        "--nsim",
-        type=int,
-        default=1,
-        help="Number of simulations to generate",
-    )
-
-    parser.add_argument(
-        "-s",
-        "--start",
-        type=int,
-        default=0,
-        help="Starting simulation (sets the seed)",
-    )
-
-    parser.add_argument(
-        "-w",
-        "--time",
-        type=str,
-        default="72h",
-        help="Walltime to allocate for the job",
-    )
-
-    parser.add_argument(
-        "-v",
-        "--version",
-        action="version",
-        version=version,
-    )
+    parser.add_argument("outdir", type=str, help="Output directory")
+    parser.add_argument("-N", "--size", type=int, default=2 * (3 ** 6), help="#blocks")
+    parser.add_argument("-n", "--nsim", type=int, default=1, help="#simulations")
+    parser.add_argument("-s", "--start", type=int, default=0, help="Start simulation")
+    parser.add_argument("-w", "--time", type=str, default="72h", help="Walltime")
+    parser.add_argument("-v", "--version", action="version", version=version)
 
     args = parser.parse_args(cli_args)
 
@@ -488,11 +464,11 @@ def cli_generate(cli_args=None):
             seed=i * args.size,
         )
 
-    progname = entry_points["cli_run"]
-    commands = [f"{progname} {file}" for file in files]
+    executable = entry_points["cli_run"]
+    commands = [f"{executable} {file}" for file in files]
     slurm.serial_group(
         commands,
-        basename=progname,
+        basename=executable,
         group=1,
         outdir=args.outdir,
         sbatch={"time": args.time},
@@ -608,6 +584,9 @@ def cli_run(cli_args=None):
     Run simulation.
     """
 
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    docstring = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+
     if cli_args is None:
         cli_args = sys.argv[1:]
     else:
@@ -619,29 +598,12 @@ def cli_run(cli_args=None):
         pass
 
     parser = argparse.ArgumentParser(
-        formatter_class=MyFormatter,
-        description=textwrap.dedent(cli_run.__doc__),
+        formatter_class=MyFormatter, description=replace_entry_point(docstring)
     )
 
-    parser.add_argument(
-        "file",
-        type=str,
-        help="Simulation file",
-    )
-
-    parser.add_argument(
-        "-f",
-        "--force",
-        action="store_true",
-        help="Allow uncommitted changed",
-    )
-
-    parser.add_argument(
-        "-v",
-        "--version",
-        action="version",
-        version=version,
-    )
+    parser.add_argument("-f", "--force", action="store_true", help="Allow uncommitted")
+    parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("file", type=str, help="Simulation file")
 
     args = parser.parse_args(cli_args)
 
@@ -759,6 +721,10 @@ def cli_ensembleinfo(cli_args=None):
     a single output file.
     """
 
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    docstring = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    progname = entry_points[funcname]
+
     if cli_args is None:
         cli_args = sys.argv[1:]
     else:
@@ -770,36 +736,15 @@ def cli_ensembleinfo(cli_args=None):
         pass
 
     parser = argparse.ArgumentParser(
-        formatter_class=MyFormatter,
-        description=textwrap.dedent(cli_ensembleinfo.__doc__),
+        formatter_class=MyFormatter, description=replace_entry_point(docstring)
     )
 
-    parser.add_argument(
-        "-o",
-        "--output",
-        type=str,
-        default=entry_points["cli_ensembleinfo"],
-        help="Output file",
-    )
-
-    parser.add_argument(
-        "-f",
-        "--force",
-        action="store_true",
-        help="Force overwrite of output file if it exists",
-    )
-
-    parser.add_argument(
-        "-v",
-        "--version",
-        action="version",
-        version=version,
-    )
-
+    parser.add_argument("-o", "--output", type=str, default=f"{progname}.h5")
+    parser.add_argument("-f", "--force", action="store_true", help="Force overwrite")
+    parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("files", nargs="*", type=str, help="Files to read")
 
     args = parser.parse_args(cli_args)
-    progname = entry_points["cli_ensembleinfo"]
 
     assert len(args.files) > 0
     assert np.all([os.path.isfile(os.path.realpath(file)) for file in args.files])
