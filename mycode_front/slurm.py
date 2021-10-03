@@ -7,6 +7,8 @@ import textwrap
 import GooseSLURM
 import numpy as np
 
+from ._version import version
+
 default_condabase = "code_velocity"
 
 entry_points = dict(
@@ -251,39 +253,12 @@ def cli_serial_group(cli_args=None):
         formatter_class=MyFormatter, description=replace_entry_point(docstring)
     )
 
-    parser.add_argument(
-        "files",
-        nargs="*",
-        type=str,
-        help="Files to run",
-    )
-
-    parser.add_argument(
-        "-o", "--outdir", type=str, default=os.getcwd(), help="Output directory"
-    )
-
-    parser.add_argument(
-        "-c",
-        "--command",
-        type=str,
-        help="Command to use",
-    )
-
-    parser.add_argument(
-        "-n",
-        "--group",
-        type=int,
-        default=1,
-        help="Number of commands to group in a single job",
-    )
-
-    parser.add_argument(
-        "-w",
-        "--time",
-        type=str,
-        default="24h",
-        help="Walltime to allocate for the job",
-    )
+    parser.add_argument("-o", "--outdir", type=str, default=".", help="Output dir")
+    parser.add_argument("-c", "--command", type=str, help="Command to use")
+    parser.add_argument("-n", "--group", type=int, default=1, help="#commands to group")
+    parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
+    parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("files", nargs="*", type=str, help="Files")
 
     args = parser.parse_args(cli_args)
 
