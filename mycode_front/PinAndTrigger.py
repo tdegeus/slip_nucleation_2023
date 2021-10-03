@@ -1034,56 +1034,58 @@ def cli_getdynamics_sync_A_combine(cli_args=None):
                     g5.copy(file, output, paths)
 
 
-def getdynamics_sync_A_average(filepath: str):
+def getdynamics_sync_A_average(filepaths: list[str]):
     """
     Get the averages on fixed A.
 
-    :param filepath: File with the raw data.
+    :param filepaths: Files with the raw data.
     :return: dict, per stress, A, and variable.
     """
 
-    with h5py.File(filepath, "r") as file:
+    ret = {}
 
-        paths = list(g5.getdatasets(file, max_depth=6))
-        paths = [path.replace("/...", "").replace("/data/", "") for path in paths]
+    for filepath in filepaths:
 
-        ret = {}
+        with h5py.File(filepath, "r") as file:
 
-        for path in tqdm.tqdm(paths):
+            paths = list(g5.getdatasets(file, max_depth=6))
+            paths = [path.replace("/...", "").replace("/data/", "") for path in paths]
 
-            pinned = file["data"][path]["pinned"][...]
-            sig_xx = file["data"][path]["sig_xx"][...]
-            sig_xy = file["data"][path]["sig_xy"][...]
-            sig_yy = file["data"][path]["sig_yy"][...]
-            t = file["data"][path]["t"][...]
+            for path in tqdm.tqdm(paths):
 
-            renum = center_pinned(pinned)
-            pinned = pinned[renum]
-            sig_xx = sig_xx[:, renum]
-            sig_xy = sig_xy[:, renum]
-            sig_yy = sig_yy[:, renum]
+                pinned = file["data"][path]["pinned"][...]
+                sig_xx = file["data"][path]["sig_xx"][...]
+                sig_xy = file["data"][path]["sig_xy"][...]
+                sig_yy = file["data"][path]["sig_yy"][...]
+                t = file["data"][path]["t"][...]
 
-            info = interpret_filename(path)
-            stress = info["stress"]
-            A = info["A"]
+                renum = center_pinned(pinned)
+                pinned = pinned[renum]
+                sig_xx = sig_xx[:, renum]
+                sig_xy = sig_xy[:, renum]
+                sig_yy = sig_yy[:, renum]
 
-            if stress not in ret:
-                ret[stress] = {}
-            if A not in ret[stress]:
-                ret[stress][A] = dict(
-                    pinned=pinned,
-                    sig_xx=enstat.mean.StaticNd(),
-                    sig_xy=enstat.mean.StaticNd(),
-                    sig_yy=enstat.mean.StaticNd(),
-                    t=enstat.mean.StaticNd(),
-                )
+                info = interpret_filename(path)
+                stress = info["stress"]
+                A = info["A"]
 
-            assert np.all(pinned == ret[stress][A]["pinned"])
+                if stress not in ret:
+                    ret[stress] = {}
+                if A not in ret[stress]:
+                    ret[stress][A] = dict(
+                        pinned=pinned,
+                        sig_xx=enstat.mean.StaticNd(),
+                        sig_xy=enstat.mean.StaticNd(),
+                        sig_yy=enstat.mean.StaticNd(),
+                        t=enstat.mean.StaticNd(),
+                    )
 
-            ret[stress][A]["sig_xx"].add_sample(sig_xx)
-            ret[stress][A]["sig_xy"].add_sample(sig_xy)
-            ret[stress][A]["sig_yy"].add_sample(sig_yy)
-            ret[stress][A]["t"].add_sample(t)
+                assert np.all(pinned == ret[stress][A]["pinned"])
+
+                ret[stress][A]["sig_xx"].add_sample(sig_xx)
+                ret[stress][A]["sig_xy"].add_sample(sig_xy)
+                ret[stress][A]["sig_yy"].add_sample(sig_yy)
+                ret[stress][A]["t"].add_sample(t)
 
     return ret
 
@@ -1120,18 +1122,18 @@ def cli_getdynamics_sync_A_average(cli_args=None):
     )
     parser.add_argument("-f", "--force", action="store_true", help="Overwrite output")
     parser.add_argument("-v", "--version", action="version", version=version)
-    parser.add_argument("input", type=str, help="Input file")
+    parser.add_argument("files", nargs="*", type=str, help="Input files")
 
     args = parser.parse_args(cli_args)
 
-    assert os.path.isfile(os.path.realpath(args.input))
+    assert np.all([os.path.isfile(os.path.realpath(path)) for path in args.files])
 
     if not args.force:
         if os.path.isfile(args.output):
             if not click.confirm(f'Overwrite "{args.output}"?'):
                 raise OSError("Cancelled")
 
-    data = getdynamics_sync_A_average(args.input)
+    data = getdynamics_sync_A_average(args.files)
 
     with h5py.File(args.output, "w") as output:
 
