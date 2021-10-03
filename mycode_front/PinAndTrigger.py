@@ -1043,6 +1043,7 @@ def getdynamics_sync_A_average(filepaths: list[str]):
     """
 
     ret = {}
+    visited = []
 
     for filepath in filepaths:
 
@@ -1050,49 +1051,53 @@ def getdynamics_sync_A_average(filepaths: list[str]):
 
             paths = list(g5.getdatasets(file, max_depth=6))
             paths = [path.replace("/...", "").replace("/data/", "") for path in paths]
+            exists = np.in1d(paths, visited)
+
+            if np.sum(exists) > 0:
+                paths = np.array(paths)
+                print("The following paths are already present and are skipped")
+                print("\n".join(paths[exists]))
+                paths = list(paths[np.logical_not(exists)])
 
             for path in tqdm.tqdm(paths):
 
-                # todo remove
-                try:
+                if "pinned" not in file["data"][path]:
+                    print(f"Corrupted data {path}")
+                    continue
 
-                    pinned = file["data"][path]["pinned"][...]
-                    sig_xx = file["data"][path]["sig_xx"][...]
-                    sig_xy = file["data"][path]["sig_xy"][...]
-                    sig_yy = file["data"][path]["sig_yy"][...]
-                    t = file["data"][path]["t"][...]
+                pinned = file["data"][path]["pinned"][...]
+                sig_xx = file["data"][path]["sig_xx"][...]
+                sig_xy = file["data"][path]["sig_xy"][...]
+                sig_yy = file["data"][path]["sig_yy"][...]
+                t = file["data"][path]["t"][...]
 
-                    renum = center_pinned(pinned)
-                    pinned = pinned[renum]
-                    sig_xx = sig_xx[:, renum]
-                    sig_xy = sig_xy[:, renum]
-                    sig_yy = sig_yy[:, renum]
+                renum = center_pinned(pinned)
+                pinned = pinned[renum]
+                sig_xx = sig_xx[:, renum]
+                sig_xy = sig_xy[:, renum]
+                sig_yy = sig_yy[:, renum]
 
-                    info = interpret_filename(path)
-                    stress = info["stress"]
-                    A = info["A"]
+                info = interpret_filename(path)
+                stress = info["stress"]
+                A = info["A"]
 
-                    if stress not in ret:
-                        ret[stress] = {}
-                    if A not in ret[stress]:
-                        ret[stress][A] = dict(
-                            pinned=pinned,
-                            sig_xx=enstat.mean.StaticNd(),
-                            sig_xy=enstat.mean.StaticNd(),
-                            sig_yy=enstat.mean.StaticNd(),
-                            t=enstat.mean.StaticNd(),
-                        )
+                if stress not in ret:
+                    ret[stress] = {}
+                if A not in ret[stress]:
+                    ret[stress][A] = dict(
+                        pinned=pinned,
+                        sig_xx=enstat.mean.StaticNd(),
+                        sig_xy=enstat.mean.StaticNd(),
+                        sig_yy=enstat.mean.StaticNd(),
+                        t=enstat.mean.StaticNd(),
+                    )
 
-                    assert np.all(pinned == ret[stress][A]["pinned"])
+                assert np.all(pinned == ret[stress][A]["pinned"])
 
-                    ret[stress][A]["sig_xx"].add_sample(sig_xx)
-                    ret[stress][A]["sig_xy"].add_sample(sig_xy)
-                    ret[stress][A]["sig_yy"].add_sample(sig_yy)
-                    ret[stress][A]["t"].add_sample(t)
-
-                except:
-
-                    pass
+                ret[stress][A]["sig_xx"].add_sample(sig_xx)
+                ret[stress][A]["sig_xy"].add_sample(sig_xy)
+                ret[stress][A]["sig_yy"].add_sample(sig_yy)
+                ret[stress][A]["t"].add_sample(t)
 
     return ret
 
