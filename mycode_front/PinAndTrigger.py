@@ -1,6 +1,8 @@
 import argparse
+import inspect
 import itertools
 import os
+import re
 import shutil
 import sys
 import textwrap
@@ -14,6 +16,7 @@ import numpy as np
 import QPot  # noqa: F401
 import shelephant
 import tqdm
+import yaml
 
 from . import slurm
 from . import System
@@ -25,7 +28,19 @@ entry_points = dict(
     cli_job="PinAndTrigger_job",
     cli_collect="PinAndTrigger_collect",
     cli_collect_combine="PinAndTrigger_collect_combine",
+    cli_getdynamics_sync_A="PinAndTrigger_getdynamics_sync_A",
+    cli_getdynamics_sync_A_job="PinAndTrigger_getdynamics_sync_A_job",
+    cli_getdynamics_sync_A_combine="PinAndTrigger_getdynamics_sync_A_combine",
 )
+
+
+def replace_entry_point(docstring):
+    """
+    Replace ":py:func:`...`" with the relevant entry_point name
+    """
+    for ep in entry_points:
+        docstring = docstring.replace(fr":py:func:`{ep:s}`", entry_points[ep])
+    return docstring
 
 
 def interpret_filename(filename):
@@ -33,7 +48,7 @@ def interpret_filename(filename):
     Split filename in useful information.
     """
 
-    part = os.path.splitext(os.path.basename(filename))[0].split("_")
+    part = re.split("_|/", os.path.splitext(filename)[0])
     info = {}
 
     for i in part:
@@ -141,7 +156,9 @@ def cli_main(cli_args=None):
     3.  Push a specific element and minimise energy.
     """
 
-    progname = entry_points["cli_main"]
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    docstring = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    progname = entry_points[funcname]
 
     if cli_args is None:
         cli_args = sys.argv[1:]
@@ -154,33 +171,15 @@ def cli_main(cli_args=None):
         pass
 
     parser = argparse.ArgumentParser(
-        formatter_class=MyFormatter, description=textwrap.dedent(cli_main.__doc__)
+        formatter_class=MyFormatter, description=replace_entry_point(docstring)
     )
 
-    parser.add_argument(
-        "-f", "--file", type=str, help="Filename of simulation file (read-only)"
-    )
-
-    parser.add_argument(
-        "-o", "--output", type=str, help="Filename of output file (overwritten)"
-    )
-
-    parser.add_argument(
-        "-s", "--stress", type=float, help="Stress as which to trigger (in real units)"
-    )
-
-    parser.add_argument(
-        "-i", "--incc", type=int, help="Increment number of last system-spanning event"
-    )
-
-    parser.add_argument(
-        "-e", "--element", type=int, help="Element to push (index along the weak layer)"
-    )
-
-    parser.add_argument(
-        "-a", "--size", type=int, help="Number of elements to keep unpinned"
-    )
-
+    parser.add_argument("-f", "--file", type=str, help="Simulation (read-only)")
+    parser.add_argument("-o", "--output", type=str, help="Output file (overwritten)")
+    parser.add_argument("-s", "--stress", type=float, help="Trigger stress (real unit)")
+    parser.add_argument("-i", "--incc", type=int, help="Last system-spanning event")
+    parser.add_argument("-e", "--element", type=int, help="Plastic element to push")
+    parser.add_argument("-a", "--size", type=int, help="#elements to keep unpinned")
     parser.add_argument("-v", "--version", action="version", version=version)
 
     args = parser.parse_args(cli_args)
@@ -239,7 +238,7 @@ def cli_main(cli_args=None):
         print("done:", args.output, ", niter = ", niter)
 
         meta = output.create_group(f"/meta/{progname}")
-        meta.attrs["file"] = args.file
+        meta.attrs["file"] = os.path.relpath(args.file, os.path.dirname(args.output))
         meta.attrs["version"] = version
         meta.attrs["dependencies"] = System.dependencies(model)
         meta.attrs["target_stress"] = target_stress
@@ -256,7 +255,9 @@ def cli_collect(cli_args=None):
     Requires files to be named "stress=X_A=X_id=X_incc=X_element=X" (in any order).
     """
 
-    progname = entry_points["cli_collect"]
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    docstring = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    progname = entry_points[funcname]
 
     if cli_args is None:
         cli_args = sys.argv[1:]
@@ -269,10 +270,8 @@ def cli_collect(cli_args=None):
         pass
 
     parser = argparse.ArgumentParser(
-        formatter_class=MyFormatter, description=textwrap.dedent(cli_collect.__doc__)
+        formatter_class=MyFormatter, description=replace_entry_point(docstring)
     )
-
-    parser.add_argument("files", type=str, nargs="*", help="Files to add")
 
     parser.add_argument(
         "-a",
@@ -286,7 +285,7 @@ def cli_collect(cli_args=None):
         "-o",
         "--output",
         type=str,
-        help="Output file ('a')",
+        help="Output file (appended)",
         default=f"{progname}.h5",
     )
 
@@ -294,16 +293,12 @@ def cli_collect(cli_args=None):
         "-e",
         "--error",
         type=str,
-        help="Store list of corrupted files",
+        help="List of corrupted files (if found)",
         default=f"{progname}.yaml",
     )
 
-    parser.add_argument(
-        "-v",
-        "--version",
-        action="version",
-        version=version,
-    )
+    parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("files", type=str, nargs="*", help="Files to add")
 
     args = parser.parse_args(cli_args)
 
@@ -324,25 +319,25 @@ def cli_collect(cli_args=None):
             assert meta.attrs["version"] == version
             assert list(meta.attrs["dependencies"]) == System.dependencies(model)
 
-        for filename in tqdm.tqdm(args.files):
+        for filepath in tqdm.tqdm(args.files):
 
             try:
-                with h5py.File(filename, "r") as file:
+                with h5py.File(filepath, "r") as file:
                     pass
             except:
-                corrupted += [filename]
+                corrupted += [filepath]
                 continue
 
-            with h5py.File(filename, "r") as file:
+            with h5py.File(filepath, "r") as file:
                 paths = list(g5.getdatasets(file))
                 verify = g5.verify(file, paths)
                 if paths != verify:
-                    corrupted += [filename]
+                    corrupted += [filepath]
                     continue
 
-            with h5py.File(filename, "r") as file:
+            with h5py.File(filepath, "r") as file:
 
-                info = interpret_filename(filename)
+                info = interpret_filename(os.path.basename(filepath))
                 meta = file["/meta/{:s}".format(entry_points["cli_main"])]
                 assert meta.attrs["version"] == version
                 assert list(meta.attrs["dependencies"]) == System.dependencies(model)
@@ -361,15 +356,14 @@ def cli_collect(cli_args=None):
                 ).format(**info)
 
                 if root in output:
-                    existing += [filename]
+                    existing += [filepath]
                     continue
 
                 datasets = ["meta"]
-
                 if meta.attrs["A"] >= args.min_a:
-                    datasets = ["/disp/0", "/disp/1"] + datasets
+                    datasets += ["/disp/0", "/disp/1"]
 
-                g5.copydatasets(file, output, datasets, root=root)
+                g5.copy(file, output, datasets, root=root)
 
     if len(corrupted) > 0 or len(existing) > 0:
         shelephant.yaml.dump(
@@ -379,11 +373,13 @@ def cli_collect(cli_args=None):
 
 def cli_collect_combine(cli_args=None):
     """
-    Combine two or more collections, see PinAndTrigger_collect to obtain them from
+    Combine two or more collections, see :py:func:`cli_collect` to obtain them from
     individual runs.
     """
 
-    progname = entry_points["cli_collect_combine"]
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    docstring = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    progname = entry_points[funcname]
 
     if cli_args is None:
         cli_args = sys.argv[1:]
@@ -397,7 +393,7 @@ def cli_collect_combine(cli_args=None):
 
     parser = argparse.ArgumentParser(
         formatter_class=MyFormatter,
-        description=textwrap.dedent(cli_collect_combine.__doc__),
+        description=replace_entry_point(docstring),
     )
 
     parser.add_argument(
@@ -408,10 +404,8 @@ def cli_collect_combine(cli_args=None):
         default=f"{progname}.h5",
     )
 
-    parser.add_argument(
-        "-f", "--force", action="store_true", help="Force overwrite of output file"
-    )
-
+    parser.add_argument("-f", "--force", action="store_true", help="Overwrite output")
+    parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("files", type=str, nargs="*", help="Files to add")
 
     args = parser.parse_args(cli_args)
@@ -432,13 +426,15 @@ def cli_collect_combine(cli_args=None):
 
             with h5py.File(filename, "r") as file:
 
-                for key in ["version", "dependencies"]:
-                    assert list(file["meta"].attrs[key]) == list(
-                        output["meta"].attrs[key]
-                    )
+                m = file["meta"]
+                n = output["meta"]
 
-                paths = list(g5.getdatasets(file))
-                g5.copydatasets(file, output, paths)
+                for key in ["version", "dependencies"]:
+                    assert list(m.attrs[key]) == list(n.attrs[key])
+
+                paths = list(g5.getdatapaths(file))
+                paths.remove("/meta")
+                g5.copy(file, output, paths)
 
 
 def cli_job(cli_args=None):
@@ -449,10 +445,14 @@ def cli_job(cli_args=None):
     Note that the assumption is made that the push on the different elements of the same system
     in the same still still results in sufficiently independent measurements.
 
-    Use "PinAndTrigger_job_compact" to run for A that are smaller than the one used here.
+    Use "?? (todo)" to run for A that are smaller than the one used here.
     That function skips all events that are know to be too small,
     and therefore less time is waisted on computing small events.
     """
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    docstring = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    entry_points[funcname]
 
     if cli_args is None:
         cli_args = sys.argv[1:]
@@ -465,7 +465,7 @@ def cli_job(cli_args=None):
         pass
 
     parser = argparse.ArgumentParser(
-        formatter_class=MyFormatter, description=textwrap.dedent(cli_collect.__doc__)
+        formatter_class=MyFormatter, description=replace_entry_point(docstring)
     )
 
     parser.add_argument("info", type=str, help="EnsembleInfo (read-only)")
@@ -503,19 +503,13 @@ def cli_job(cli_args=None):
     )
 
     parser.add_argument(
-        "-e",
-        "--executable",
-        type=str,
-        default=entry_points["cli_main"],
-        help="Executable to use",
-    )
-
-    parser.add_argument(
         "-f",
         "--finished",
         type=str,
         help="Result of {:s}".format(entry_points["cli_collect"]),
     )
+
+    parser.add_argument("-v", "--version", action="version", version=version)
 
     args = parser.parse_args(cli_args)
 
@@ -525,7 +519,7 @@ def cli_job(cli_args=None):
         assert os.path.isfile(os.path.realpath(args.finished))
 
     basedir = os.path.dirname(args.info)
-    executable = args.executable
+    executable = entry_points["cli_main"]
 
     simpaths = []
     if args.finished:
@@ -612,8 +606,376 @@ def cli_job(cli_args=None):
 
     slurm.serial_group(
         commands,
-        basename=args.executable.replace(" ", "_"),
+        basename=executable,
         group=args.group,
         outdir=args.output,
         sbatch={"time": args.time},
     )
+
+    return commands
+
+
+def getdynamics_sync_A(
+    system: model.System,
+    target_element: int,
+    target_A: int,
+    eps_kick: float,
+    sig0: float,
+    t0: float,
+) -> dict:
+    """
+    Run the dynamics of an event, saving the state at the interface at every "A".
+
+    :param system:
+        The initialised system, initialised to the proper displacement
+        (but not pinned down yet).
+
+    :param target_element:
+        The element to trigger.
+
+    :param target_A:
+        Number of blocks to keep unpinned (``target_A / 2`` on both sides of ``target_element``).
+
+    :param sig0
+        Stress normalisation.
+
+    :param t0
+        Time normalisation.
+
+    :param eps_kick:
+        Strain kick to use.
+
+    :return:
+        Dictionary with the following fields:
+        *   Shape ``(target_A, N)``:
+            -   sig_xx, sig_xy, sig_yy: the average stress along the interface.
+        *   Shape ``(target_A, target_A)``:
+            -   idx: the current potential index along the interface.
+        *   Shape ``(target_A)``:
+            -   t: the duration since nucleating the event.
+            -   Sig_xx, Sig_xy, Sig_yy: the macroscopic stress.
+    """
+
+    plastic = system.plastic()
+    N = plastic.size
+    dV = system.quad().AsTensor(2, system.quad().dV())
+    plastic_dV = dV[plastic, ...]
+    pinned = pinsystem(system, target_element, target_A)
+    idx_n = system.plastic_CurrentIndex()[:, 0].astype(int)
+    system.triggerElementWithLocalSimpleShear(eps_kick, target_element)
+
+    a_n = 0
+    a = 0
+
+    ret = dict(
+        pinned=pinned,
+        sig_xx=np.zeros((target_A, N), dtype=np.float64),
+        sig_xy=np.zeros((target_A, N), dtype=np.float64),
+        sig_yy=np.zeros((target_A, N), dtype=np.float64),
+        idx=np.zeros((target_A, N), dtype=np.uint64),
+        t=np.zeros(target_A, dtype=np.float64),
+        Sig_xx=np.zeros((target_A), dtype=np.float64),
+        Sig_xy=np.zeros((target_A), dtype=np.float64),
+        Sig_yy=np.zeros((target_A), dtype=np.float64),
+    )
+
+    while True:
+
+        niter = system.timeStepsUntilEvent()
+        idx = system.plastic_CurrentIndex()[:, 0].astype(int)
+
+        if np.sum(idx != idx_n) > a:
+            a_n = a
+            a = np.sum(idx != idx_n)
+            sig = np.average(system.Sig(), weights=dV, axis=(0, 1))
+            plastic_sig = np.average(system.plastic_Sig(), weights=plastic_dV, axis=1)
+
+            # store to output (broadcast if needed)
+            ret["sig_xx"][a_n:a, :] = plastic_sig[:, 0, 0].reshape(1, -1) / sig0
+            ret["sig_xy"][a_n:a, :] = plastic_sig[:, 0, 1].reshape(1, -1) / sig0
+            ret["sig_yy"][a_n:a, :] = plastic_sig[:, 1, 1].reshape(1, -1) / sig0
+            ret["idx"][a_n:a, :] = idx.reshape(1, -1)
+            ret["t"][a_n:a] = system.t() / t0
+            ret["Sig_xx"][a_n:a] = sig[0, 0] / sig0
+            ret["Sig_xy"][a_n:a] = sig[0, 1] / sig0
+            ret["Sig_yy"][a_n:a] = sig[1, 1] / sig0
+
+        if a >= target_A:
+            break
+
+        if niter == 0:
+            break
+
+    ret["idx"] = ret["idx"][:, np.logical_not(pinned)]
+
+    return ret
+
+
+def cli_getdynamics_sync_A(cli_args=None):
+    """
+    This script use a configuration file as follows:
+
+    .. code-block:: yaml
+
+        collected: PinAndTrigger_collect.h5
+        info: EnsembleInfo.h5
+        output: myoutput.h5
+        paths:
+          - stress=0d6/A=100/id=183/incc=45/element=0
+          - stress=0d6/A=100/id=232/incc=41/element=729
+
+    To generate use :py:func`cli_getdynamics_sync_A_job`.
+    """
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    docstring = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    entry_points[funcname]
+
+    if cli_args is None:
+        cli_args = sys.argv[1:]
+    else:
+        cli_args = [str(arg) for arg in cli_args]
+
+    class MyFormatter(
+        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
+    ):
+        pass
+
+    parser = argparse.ArgumentParser(
+        formatter_class=MyFormatter, description=replace_entry_point(docstring)
+    )
+
+    parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("file", type=str, help="YAML configuration file")
+
+    args = parser.parse_args(cli_args)
+
+    assert os.path.isfile(os.path.realpath(args.file))
+
+    with open(args.file) as file:
+        config = yaml.load(file.read(), Loader=yaml.FullLoader)
+
+    assert os.path.isfile(os.path.realpath(config["info"]))
+
+    with h5py.File(config["info"], "r") as file:
+        sig0 = file["/normalisation/sig0"][...]
+        t0 = file["/normalisation/t0"][...]
+
+    system = None
+
+    with h5py.File(config["output"], "w") as output:
+
+        with h5py.File(config["collected"], "r") as file:
+
+            for path in config["paths"]:
+
+                meta = file["data"][path]["meta"][entry_points["cli_main"]]
+                origsim = meta.attrs["file"]
+
+                with h5py.File(origsim, "r") as mysim:
+                    if system is None:
+                        system = System.init(mysim)
+                        eps_kick = mysim["/run/epsd/kick"][...]
+                    else:
+                        system.reset_epsy(System.read_epsy(mysim))
+
+                system.setU(file["data"][path]["disp"]["0"][...])
+
+                ret = getdynamics_sync_A(
+                    system=system,
+                    target_element=meta.attrs["target_element"],
+                    target_A=meta.attrs["target_A"],
+                    eps_kick=eps_kick,
+                    sig0=sig0,
+                    t0=t0,
+                )
+
+                for key in ret:
+                    output[f"/data/{path}/{key}"] = ret[key]
+
+
+def cli_getdynamics_sync_A_job(cli_args=None):
+    """
+    Generate configuration files to rerun dynamics.
+    """
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    docstring = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    progname = entry_points[funcname]
+
+    if cli_args is None:
+        cli_args = sys.argv[1:]
+    else:
+        cli_args = [str(arg) for arg in cli_args]
+
+    class MyFormatter(
+        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
+    ):
+        pass
+
+    parser = argparse.ArgumentParser(
+        formatter_class=MyFormatter, description=replace_entry_point(docstring)
+    )
+
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        default=entry_points["cli_getdynamics_sync_A"],
+        help="Output base-name (appended with number and extension)",
+    )
+
+    parser.add_argument(
+        "-c",
+        "--collect",
+        type=str,
+        default="{:s}.h5".format(entry_points["cli_collect"]),
+        help="Existing data (see {:s}) (read-only)".format(entry_points["cli_main"]),
+    )
+
+    parser.add_argument(
+        "-i",
+        "--info",
+        type=str,
+        default="{:s}.h5".format(System.entry_points["cli_ensembleinfo"]),
+        help="EnsembleInfo to read normalisation (read-only)",
+    )
+
+    parser.add_argument(
+        "-n",
+        "--group",
+        type=int,
+        default=50,
+        help="Number of runs to group in a single job.",
+    )
+
+    parser.add_argument("outdir", type=str, help="Output directory")
+
+    args = parser.parse_args(cli_args)
+
+    assert os.path.isfile(os.path.realpath(args.collect))
+    assert os.path.isfile(os.path.realpath(args.info))
+
+    config = dict(
+        collected=args.collect,
+        info=args.info,
+    )
+
+    with h5py.File(args.collect, "r") as file:
+
+        # list with realisations
+        paths = list(g5.getdatasets(file, root="data", max_depth=5))
+        paths = np.array([path.split("data/")[1].split("/...")[0] for path in paths])
+
+        # lists with stress/element/A of each realisation
+        stress = []
+        element = []
+        a_target = []
+        a_real = []
+        for path in paths:
+            info = interpret_filename(path)
+            meta = g5.join("data", path, "meta", entry_points["cli_main"], root=True)
+            meta = file[meta]
+            stress += [info["stress"]]
+            element += [info["element"]]
+            a_target += [info["A"]]
+            a_real += [meta.attrs["A"]]
+        stress = np.array(stress)
+        element = np.array(element)
+        a_target = np.array(a_target)
+        a_real = np.array(a_real)
+
+        # lists with possible stress/element/A identifiers (unique)
+        Stress = np.unique(stress)
+        np.unique(element)
+        A_target = np.unique(a_target)
+
+        files = []
+        for a, s in itertools.product(A_target, Stress):
+            subset = paths[
+                (a_real > 0) * (a_real > a - 10) * (a_real < a + 10) * (stress == s)
+            ]
+            files += list(subset)
+
+    if len(files) == 0:
+        return
+
+    chunks = int(np.ceil(len(files) / float(args.group)))
+    devided = np.array_split(files, chunks)
+    njob = len(devided)
+    fmt = (
+        args.output + "_{0:" + str(int(np.ceil(np.log10(njob)))) + "d}-of-" + str(njob)
+    )
+    ret = []
+
+    for i, group in enumerate(devided):
+
+        bname = fmt.format(i + 1)
+        cname = os.path.join(args.outdir, bname + ".yaml")
+        oname = os.path.join(args.outdir, bname + ".h5")
+
+        assert not os.path.isfile(os.path.realpath(cname))
+        assert not os.path.isfile(os.path.realpath(oname))
+
+        config = dict(
+            collected=os.path.relpath(args.collect, args.outdir),
+            info=os.path.relpath(args.info, args.outdir),
+            output=os.path.relpath(oname, args.outdir),
+            paths=[str(g) for g in group],
+        )
+
+        shelephant.yaml.dump(cname, config)
+        slurm.serial(f"{progname:s} {cname:s}", bname, outdir=args.outdir)
+        ret += [cname]
+
+    return ret
+
+
+def cli_getdynamics_sync_A_combine(cli_args=None):
+    """
+    Combine output from :py:func:`cli_getdynamics_sync_A`
+    """
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    docstring = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    progname = entry_points[funcname]
+
+    if cli_args is None:
+        cli_args = sys.argv[1:]
+    else:
+        cli_args = [str(arg) for arg in cli_args]
+
+    class MyFormatter(
+        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
+    ):
+        pass
+
+    parser = argparse.ArgumentParser(
+        formatter_class=MyFormatter, description=replace_entry_point(docstring)
+    )
+
+    parser.add_argument("-o", "--output", type=str, default=f"{progname}.h5")
+    parser.add_argument("-f", "--force", action="store_true", help="Overwrite output")
+    parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("files", nargs="*", type=str, help="Input files")
+
+    args = parser.parse_args(cli_args)
+
+    assert len(args.files) > 0
+    assert np.all([os.path.isfile(os.path.realpath(path)) for path in args.files])
+
+    if not args.force:
+        if os.path.isfile(args.output):
+            if not click.confirm(f'Overwrite "{args.output}"?'):
+                raise OSError("Cancelled")
+
+    shutil.copyfile(args.files[0], args.output)
+
+    with h5py.File(args.output, "a") as output:
+
+        for filename in tqdm.tqdm(args.files[1:]):
+
+            with h5py.File(filename, "r") as file:
+
+                paths = list(g5.getdatapaths(file))
+                g5.copy(file, output, paths)

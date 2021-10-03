@@ -1,4 +1,5 @@
 import argparse
+import inspect
 import os
 import sys
 import textwrap
@@ -15,6 +16,15 @@ entry_points = dict(
 slurm_defaults = dict(
     account="pcsl",
 )
+
+
+def replace_entry_point(docstring):
+    """
+    Replace ":py:func:`...`" with the relevant entry_point name
+    """
+    for ep in entry_points:
+        docstring = docstring.replace(fr":py:func:`{ep:s}`", entry_points[ep])
+    return docstring
 
 
 def snippet_initenv(cmd="source $HOME/myinit/compiler_conda.sh"):
@@ -103,12 +113,62 @@ def script_exec(cmd, initenv=True, omp_num_threads=True, conda=True, flush=True)
     return "\n".join(ret)
 
 
+def serial(
+    command: str,
+    basename: str,
+    outdir: str = os.getcwd(),
+    sbatch: dict = None,
+    initenv=True,
+    omp_num_threads=True,
+    conda=True,
+    flush=True,
+):
+    """
+    Group a number of commands per job-script.
+
+    :param commands: List of commands.
+    :param basename: Base-name of the job-scripts (and their log-scripts),
+    :param outdir: Directory where to write the job-scripts (nothing in changed for the commands).
+    :param sbatch: Job options.
+    :param initenv: Init the environment (see snippet_initenv()).
+    :param omp_num_threads: Number of cores to use (see snippet_export_omp_num_threads()).
+    :param conda: Load conda environment (see defaults of snippet_load_conda()).
+    :param flush: Flush the buffer of stdout for each commands.
+    """
+
+    if sbatch is None:
+        sbatch = {}
+
+    assert "job-name" not in sbatch
+    assert "out" not in sbatch
+    sbatch.setdefault("nodes", 1)
+    sbatch.setdefault("ntasks", 1)
+    sbatch.setdefault("cpus-per-task", 1)
+    sbatch.setdefault("time", "24h")
+    sbatch.setdefault("account", slurm_defaults["account"])
+    sbatch.setdefault("partition", "serial")
+
+    command = script_exec(
+        command,
+        initenv=initenv,
+        omp_num_threads=omp_num_threads,
+        conda=conda,
+        flush=flush,
+    )
+
+    sbatch["job-name"] = basename
+    sbatch["out"] = basename + "_%j.out"
+
+    with open(os.path.join(outdir, basename + ".slurm"), "w") as file:
+        file.write(GooseSLURM.scripts.plain(command=command, **sbatch))
+
+
 def serial_group(
     commands: list[str],
     basename: str,
     group: int,
     outdir: str = os.getcwd(),
-    sbatch: dict = {},
+    sbatch: dict = None,
     initenv=True,
     omp_num_threads=True,
     conda=True,
@@ -130,6 +190,9 @@ def serial_group(
 
     if len(commands) == 0:
         return
+
+    if sbatch is None:
+        sbatch = {}
 
     assert "job-name" not in sbatch
     assert "out" not in sbatch
@@ -171,6 +234,9 @@ def cli_serial_group(cli_args=None):
     Job-script to run commands.
     """
 
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    docstring = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+
     if cli_args is None:
         cli_args = sys.argv[1:]
     else:
@@ -182,8 +248,7 @@ def cli_serial_group(cli_args=None):
         pass
 
     parser = argparse.ArgumentParser(
-        formatter_class=MyFormatter,
-        description=textwrap.dedent(cli_serial_group.__doc__),
+        formatter_class=MyFormatter, description=replace_entry_point(docstring)
     )
 
     parser.add_argument(
