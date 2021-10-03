@@ -5,6 +5,7 @@ from setuptools import setup
 
 library = "mycode_front"
 
+
 def read_entry_points(module):
 
     entry_points = []

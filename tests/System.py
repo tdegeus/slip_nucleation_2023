@@ -148,7 +148,9 @@ class MyTests(unittest.TestCase):
 
         dynname = os.path.join(dirname, "mydynamics.h5")
 
-        my.PinAndTrigger.cli_getdynamics_sync_A_combine(["-o", dynname] + [path.replace(".yaml", ".h5") for path in paths])
+        my.PinAndTrigger.cli_getdynamics_sync_A_combine(
+            ["-o", dynname] + [path.replace(".yaml", ".h5") for path in paths]
+        )
 
         shutil.rmtree(dirname)
 
@@ -159,7 +161,6 @@ class MyTests(unittest.TestCase):
         return
 
         dirname = "mytest"
-        idname = "id=0.h5"
         infoname = os.path.join(dirname, "EnsembleInfo.h5")
 
         my.PinAndTrigger.cli_job(["-a", 4, infoname, "-o", dirname, "-n", int(1e9)])

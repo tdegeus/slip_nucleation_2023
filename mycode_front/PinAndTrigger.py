@@ -39,7 +39,7 @@ def replace_entry_point(docstring):
     Replace ":py:func:`...`" with the relevant entry_point name
     """
     for ep in entry_points:
-        docstring = docstring.replace(r":py:func:`{:s}`".format(ep), entry_points[ep])
+        docstring = docstring.replace(fr":py:func:`{ep:s}`", entry_points[ep])
     return docstring
 
 
@@ -890,7 +890,8 @@ def cli_getdynamics_sync_A_job(cli_args=None):
         a_real = []
         for path in paths:
             info = interpret_filename(path)
-            meta = file[g5.join("data", path, "meta", entry_points["cli_main"], root=True)]
+            meta = g5.join("data", path, "meta", entry_points["cli_main"], root=True)
+            meta = file[meta]
             stress += [info["stress"]]
             element += [info["element"]]
             a_target += [info["A"]]
@@ -944,7 +945,6 @@ def cli_getdynamics_sync_A_job(cli_args=None):
         ret += [cname]
 
     return ret
-
 
 
 def cli_getdynamics_sync_A_combine(cli_args=None):
@@ -1002,4 +1002,3 @@ def cli_getdynamics_sync_A_combine(cli_args=None):
 
                 paths = list(g5.getdatapaths(file))
                 g5.copy(file, output, paths)
-
