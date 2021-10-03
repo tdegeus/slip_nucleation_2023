@@ -13,6 +13,7 @@ default_condabase = "code_velocity"
 
 entry_points = dict(
     cli_serial_group="JobSerialGroup",
+    cli_serial="JobSerial",
 )
 
 slurm_defaults = dict(
@@ -270,6 +271,49 @@ def cli_serial_group(cli_args=None):
         commands,
         basename=args.command,
         group=args.group,
+        outdir=args.outdir,
+        sbatch={"time": args.time},
+    )
+
+
+def cli_serial(cli_args=None):
+    """
+    Job-script to run a command.
+    """
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    docstring = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+
+    if cli_args is None:
+        cli_args = sys.argv[1:]
+    else:
+        cli_args = [str(arg) for arg in cli_args]
+
+    class MyFormatter(
+        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
+    ):
+        pass
+
+    parser = argparse.ArgumentParser(
+        formatter_class=MyFormatter, description=replace_entry_point(docstring)
+    )
+
+    parser.add_argument("-o", "--outdir", type=str, default=".", help="Output dir")
+    parser.add_argument("-n", "--name", type=str, help="Job name (default: from command)")
+    parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
+    parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("command", type=str, help="The command")
+
+    args = parser.parse_args(cli_args)
+
+    basename = args.name
+
+    if not basename:
+        basename = args.command.split(" ")[0]
+
+    serial(
+        args.command,
+        basename=basename,
         outdir=args.outdir,
         sbatch={"time": args.time},
     )
