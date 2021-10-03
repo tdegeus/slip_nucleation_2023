@@ -954,7 +954,13 @@ def cli_getdynamics_sync_A_combine(cli_args=None):
         formatter_class=MyFormatter, description=replace_entry_point(docstring)
     )
 
-    parser.add_argument("-o", "--output", type=str, default=f"{progname}.h5")
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        default=f"{progname}.h5",
+        help="Output file (overwritten)",
+    )
     parser.add_argument("-f", "--force", action="store_true", help="Overwrite output")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("files", nargs="*", type=str, help="Input files")
