@@ -8,6 +8,7 @@ import sys
 import textwrap
 
 from collections import defaultdict
+from nested_dict import nested_dict
 
 import click
 import enstat
