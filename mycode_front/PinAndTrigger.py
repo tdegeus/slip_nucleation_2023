@@ -1077,24 +1077,27 @@ def getdynamics_sync_A_check(filepaths: list[str]):
     Paths = {} # non-corrupted paths per file
     Unique = defaultdict(list) # unique subset of "Paths"
     Corrupted = {} # corrupted paths per file
-    Duplicate = nested_dict() # duplicate paths per file (with pointer to duplicate)
+    Duplicate = defaultdict(dict) # duplicate paths per file (with pointer to duplicate)
     Visited = nested_dict() # internal check for duplicates
 
     # get paths, filter corrupted data
 
     for filepath in tqdm.tqdm(filepaths):
 
-        with h5py.File(filepath, "r") as file:
+        if os.path.splitext(filepath)[1] in [".yml", ".yaml"]:
+            Paths[filepath] = shelephant.yaml.read(filepath)["paths"]
+            continue
 
+        with h5py.File(filepath, "r") as file:
             paths = list(g5.getdatasets(file, max_depth=6))
             paths = [path.replace("/...", "").replace("/data/", "") for path in paths]
             has_data = [True if "pinned" in file["data"][path] else False for path in paths]
             paths = np.array(paths)
             has_data = np.array(has_data)
             no_data = np.logical_not(has_data)
-            Paths[filepath] = list(paths[has_data])
+            Paths[filepath] = [str(path) for path in paths[has_data]]
             if np.any(no_data):
-                Corrupted[filepath] = list(paths[no_data])
+                Corrupted[filepath] = [str(path) for path in paths[no_data]]
 
     # check duplicates
 
@@ -1110,13 +1113,31 @@ def getdynamics_sync_A_check(filepaths: list[str]):
             i = info["incc"]
 
             if i in Visited[stress][s][A][e]:
-                Duplicate[filepath][path] = filepaths[Visited[stress][s][A][e][i]]
+                other = filepaths[Visited[stress][s][A][e][i]]
+                Duplicate[filepath][path] = other
+                Duplicate[other][path] = filepath
             else:
                 Unique[filepath].append(path)
 
             Visited[stress][s][A][e][i] = ifile
 
-    return dict(duplicate=Duplicate, corrupted=Corrupted, unique=Unique)
+    Summary = dict(
+        unique = 0,
+        corrupted = 0,
+        duplicate = 0,
+    )
+
+    for filepath in Unique:
+        Summary["unique"] += len(Unique[filepath])
+
+    for filepath in Corrupted:
+        Summary["corrupted"] += len(Corrupted[filepath])
+
+    for filepath in Duplicate:
+        Summary["duplicate"] += len(Duplicate[filepath])
+    Summary["duplicate"] = int(Summary["duplicate"] / 2)
+
+    return dict(duplicate=dict(Duplicate), corrupted=dict(Corrupted), unique=dict(Unique), summary=Summary)
 
 
 def cli_getdynamics_sync_A_check(cli_args=None):
