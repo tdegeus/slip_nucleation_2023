@@ -1087,8 +1087,10 @@ def getdynamics_sync_A_check(filepaths: list[str]):
         with h5py.File(filepath, "r") as file:
 
             paths = list(g5.getdatasets(file, max_depth=6))
-            paths = np.array([path.replace("/...", "").replace("/data/", "") for path in paths])
-            has_data = np.array([True for path in paths if "pinned" in file["data"][path]])
+            paths = [path.replace("/...", "").replace("/data/", "") for path in paths]
+            has_data = [True for path in paths if "pinned" in file["data"][path] else False]
+            path = np.array(path)
+            has_data = np.array(has_data)
             no_data = np.logical_not(has_data)
             Paths[filepath] = list(paths[has_data])
             if np.any(no_data):
