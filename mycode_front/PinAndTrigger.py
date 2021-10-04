@@ -1082,7 +1082,7 @@ def getdynamics_sync_A_check(filepaths: list[str]):
 
     # get paths, filter corrupted data
 
-    for filepath in filepaths:
+    for filepath in tqdm.tqdm(filepaths):
 
         with h5py.File(filepath, "r") as file:
 
