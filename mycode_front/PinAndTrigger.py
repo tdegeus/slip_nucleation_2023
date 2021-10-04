@@ -7,6 +7,8 @@ import shutil
 import sys
 import textwrap
 
+from collections import defaultdict
+
 import click
 import enstat
 import FrictionQPotFEM.UniformSingleLayer2d as model
@@ -31,6 +33,7 @@ entry_points = dict(
     cli_collect_combine="PinAndTrigger_collect_combine",
     cli_getdynamics_sync_A="PinAndTrigger_getdynamics_sync_A",
     cli_getdynamics_sync_A_job="PinAndTrigger_getdynamics_sync_A_job",
+    cli_getdynamics_sync_A_check="PinAndTrigger_getdynamics_sync_A_check",
     cli_getdynamics_sync_A_combine="PinAndTrigger_getdynamics_sync_A_combine",
     cli_getdynamics_sync_A_average="PinAndTrigger_getdynamics_sync_A_average",
 )
@@ -1057,6 +1060,112 @@ def dict_remove_empty(arg):
         arg.pop(key)
 
     return arg
+
+
+def getdynamics_sync_A_check(filepaths: list[str]):
+    """
+    Check integrity of files spanning the ensemble.
+
+    :param filepaths: Files with the raw data.
+    :return: dict with:
+        - "duplicate": duplicate paths per file (with pointer to duplicate)
+        - "corrupted": corrupted paths per file
+        - "unique": paths per file, such that a unique subset is taken.
+    """
+
+    Paths = {} # non-corrupted paths per file
+    Unique = defaultdict(list) # unique subset of "Paths"
+    Corrupted = {} # corrupted paths per file
+    Duplicate = nested_dict() # duplicate paths per file (with pointer to duplicate)
+    Visited = nested_dict() # internal check for duplicates
+
+    # get paths, filter corrupted data
+
+    for filepath in filepaths:
+
+        with h5py.File(filepath, "r") as file:
+
+            paths = list(g5.getdatasets(file, max_depth=6))
+            paths = np.array([path.replace("/...", "").replace("/data/", "") for path in paths])
+            has_data = np.array([True for path in paths if "pinned" in file["data"][path]])
+            no_data = np.logical_not(has_data)
+            Paths[filepath] = list(paths[has_data])
+            if np.any(no_data):
+                Corrupted[filepath] = list(paths[no_data])
+
+    # check duplicates
+
+    for ifile, filepath in enumerate(tqdm.tqdm(filepaths)):
+
+        for path in Paths[filepath]:
+
+            info = interpret_filename(path)
+            stress = info["stress"]
+            A = info["A"]
+            s = info["id"]
+            e = info["element"]
+            i = info["incc"]
+
+            if i in Visited[stress][s][A][e]:
+                Duplicate[filepath][path] = filepaths[Visited[stress][s][A][e][i]]
+            else:
+                Unique[filepath].append(path)
+
+            Visited[stress][s][A][e][i] = ifile
+
+    return dict(duplicate=Duplicate, corrupted=Corrupted, unique=Unique)
+
+
+def cli_getdynamics_sync_A_check(cli_args=None):
+    """
+    Check output from :py:func:`cli_getdynamics_sync_A`
+    """
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    docstring = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    progname = entry_points[funcname]
+
+    if cli_args is None:
+        cli_args = sys.argv[1:]
+    else:
+        cli_args = [str(arg) for arg in cli_args]
+
+    class MyFormatter(
+        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
+    ):
+        pass
+
+    parser = argparse.ArgumentParser(
+        formatter_class=MyFormatter, description=replace_entry_point(docstring)
+    )
+
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        default=f"{progname}.yaml",
+        help="Output file (overwritten)",
+    )
+
+    parser.add_argument("-f", "--force", action="store_true", help="Overwrite output")
+    parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("files", nargs="*", type=str, help="Input files")
+
+    args = parser.parse_args(cli_args)
+
+    assert np.all([os.path.isfile(os.path.realpath(path)) for path in args.files])
+
+    if not args.force:
+        if os.path.isfile(args.output):
+            if not click.confirm(f'Overwrite "{args.output}"?'):
+                raise OSError("Cancelled")
+
+    output = getdynamics_sync_A_check(args.files)
+    shelephant.yaml.dump(args.output, output, force=True)
+
+
+
+
 
 
 
