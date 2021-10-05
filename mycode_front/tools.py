@@ -1,4 +1,15 @@
+import GMatElastoPlasticQPot.Cartesian2d as GMat
 import numpy as np
+
+
+def sigd(xx, xy, yy):
+
+    Sig = np.empty(list(xx.shape) + [2, 2])
+    Sig[..., 0, 0] = xx
+    Sig[..., 0, 1] = xy
+    Sig[..., 1, 0] = xy
+    Sig[..., 1, 1] = yy
+    return GMat.Sigd(Sig)
 
 
 def _center_of_mass(x, L):
