@@ -32,6 +32,7 @@ entry_points = dict(
     cli_job="PinAndTrigger_job",
     cli_collect="PinAndTrigger_collect",
     cli_collect_combine="PinAndTrigger_collect_combine",
+    cli_output_scalar="PinAndTrigger_output_scalar",
     cli_getdynamics_sync_A="PinAndTrigger_getdynamics_sync_A",
     cli_getdynamics_sync_A_job="PinAndTrigger_getdynamics_sync_A_job",
     cli_getdynamics_sync_A_check="PinAndTrigger_getdynamics_sync_A_check",
@@ -619,6 +620,136 @@ def cli_job(cli_args=None):
     )
 
     return commands
+
+
+def output_scalar(filepath: str, sig0: float):
+    """
+    Interpret scalar data of an ensemble, collected by :py:func:`cli_collect`.
+
+    :param filepath: File with the ensemble.
+    :param sig0: Stress normalisation.
+    """
+
+    system = None
+    ret = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+    dirname = os.path.dirname(filepath)
+
+    with h5py.File(filepath, "r") as file:
+
+        # list with realisations
+        paths = list(g5.getdatasets(file, root="data", max_depth=5))
+        paths = np.array([path.split("data/")[1].split("/...")[0] for path in paths])
+
+        for path in paths:
+            info = interpret_filename(path)
+            root = g5.join("data", path, root=True)
+            root = file[root]
+            meta = g5.join("data", path, "meta", entry_points["cli_main"], root=True)
+            meta = file[meta]
+
+            if "disp" not in root:
+                continue
+
+            with h5py.File(os.path.join(dirname, meta.attrs["file"]), "r") as simfile:
+                if system is None:
+                    system = System.init(simfile)
+                    dV = system.quad().AsTensor(2, system.quad().dV())
+                    plastic = system.plastic()
+                    plastic_dV = dV[plastic, ...]
+                else:
+                    system.reset_epsy(System.read_epsy(simfile))
+
+            system.setU(root["disp"]["0"][...])
+            pinsystem(system, meta.attrs["target_element"], meta.attrs["target_A"])
+            idx_n = system.plastic_CurrentIndex()[:, 0].astype(int)
+
+            system.setU(root["disp"]["1"][...])
+            idx = system.plastic_CurrentIndex()[:, 0].astype(int)
+
+            w = idx != idx_n
+            s = np.sum(idx - idx_n)
+            a = np.sum(idx != idx_n)
+            Sig = np.average(system.Sig(), weights=dV, axis=(0, 1)) / sig0
+            plastic_sig = np.average(system.plastic_Sig(), weights=plastic_dV, axis=1)
+            Sig /= sig0
+            plastic_sig /= sig0
+
+            stress = "stress={stress:s}".format(**info)
+            A = "A={A:d}".format(**info)
+            ret[stress][A]["S"].append(s)
+            ret[stress][A]["A"].append(a)
+            ret[stress][A]["Sig_xx"].append(Sig[0, 0])
+            ret[stress][A]["Sig_xy"].append(Sig[0, 1])
+            ret[stress][A]["Sig_yy"].append(Sig[1, 1])
+
+            if s > 0:
+                crack_sig = np.average(plastic_sig, weights=w, axis=0)
+                ret[stress][A]["crack_sig_xx"].append(crack_sig[0, 0])
+                ret[stress][A]["crack_sig_xy"].append(crack_sig[0, 1])
+                ret[stress][A]["crack_sig_yy"].append(crack_sig[1, 1])
+            else:
+                ret[stress][A]["crack_sig_xx"].append(np.NaN)
+                ret[stress][A]["crack_sig_xy"].append(np.NaN)
+                ret[stress][A]["crack_sig_yy"].append(np.NaN)
+
+    return ret
+
+
+def cli_output_scalar(cli_args=None):
+    """
+    Interpret scalar data of an ensemble, collected by :py:func:`cli_collect`.
+    """
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    docstring = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    progname = entry_points[funcname]
+
+    if cli_args is None:
+        cli_args = sys.argv[1:]
+    else:
+        cli_args = [str(arg) for arg in cli_args]
+
+    class MyFormatter(
+        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
+    ):
+        pass
+
+    parser = argparse.ArgumentParser(
+        formatter_class=MyFormatter, description=replace_entry_point(docstring)
+    )
+
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        default=f"{progname}.h5",
+        help="Output file (overwritten)",
+    )
+
+    parser.add_argument(
+        "-i",
+        "--info",
+        type=str,
+        default="{:s}.h5".format(System.entry_points["cli_ensembleinfo"]),
+        help="EnsembleInfo to read normalisation (read-only)",
+    )
+
+    parser.add_argument("-f", "--force", action="store_true", help="Overwrite output")
+    parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("file", type=str, help="Input file")
+
+    args = parser.parse_args(cli_args)
+
+    assert os.path.isfile(os.path.realpath(args.file))
+    assert os.path.isfile(os.path.realpath(args.info))
+
+    with h5py.File(args.info, "r") as file:
+        sig0 = file["/normalisation/sig0"][...]
+
+    data = output_scalar(args.file, sig0)
+
+    with h5py.File(args.output, "w") as output:
+        g5.dump(output, data)
 
 
 def getdynamics_sync_A(
