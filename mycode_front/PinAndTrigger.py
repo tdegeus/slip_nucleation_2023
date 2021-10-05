@@ -35,6 +35,7 @@ entry_points = dict(
     cli_collect_combine="PinAndTrigger_collect_combine",
     cli_collect_update="PinAndTrigger_collect_update",
     cli_output_scalar="PinAndTrigger_output_scalar",
+    cli_output_spatial="PinAndTrigger_output_spatial",
     cli_getdynamics_sync_A="PinAndTrigger_getdynamics_sync_A",
     cli_getdynamics_sync_A_job="PinAndTrigger_getdynamics_sync_A_job",
     cli_getdynamics_sync_A_check="PinAndTrigger_getdynamics_sync_A_check",
@@ -730,6 +731,7 @@ def output_scalar(filepath: str, sig0: float):
 
     :param filepath: File with the ensemble.
     :param sig0: Stress normalisation.
+    :return: Dictionary with output per stress/A.
     """
 
     system = None
@@ -852,6 +854,157 @@ def cli_output_scalar(cli_args=None):
 
     with h5py.File(args.output, "w") as output:
         g5.dump(output, data)
+
+
+def output_spatial(filepath: str, sig0: float):
+    """
+    Interpret spatial average of an ensemble, collected by :py:func:`cli_collect`.
+    Note that this implies interpolation to a regular grid.
+
+    :param filepath: File with the ensemble.
+    :param sig0: Stress normalisation.
+    :return: Dictionary with output per stress/A (as 'matrix').
+    """
+
+    system = None
+    ret = {}
+    dirname = os.path.dirname(filepath)
+
+    with h5py.File(filepath, "r") as file:
+
+        # list with realisations
+        paths = list(g5.getdatasets(file, root="data", max_depth=5))
+        paths = np.array([path.split("data/")[1].split("/...")[0] for path in paths])
+
+        for path in paths:
+            info = interpret_filename(path)
+            root = g5.join("data", path, root=True)
+            root = file[root]
+            meta = g5.join("data", path, "meta", entry_points["cli_main"], root=True)
+            meta = file[meta]
+
+            if "disp" not in root:
+                continue
+
+            with h5py.File(os.path.join(dirname, meta.attrs["file"]), "r") as simfile:
+                if system is None:
+                    system = System.init(simfile)
+                    dV = system.quad().AsTensor(2, system.quad().dV())
+                    plastic = system.plastic()
+                    mesh = GooseFEM.Mesh.Quad4.FineLayer(system.coor(), system.conn())
+                    mapping = GooseFEM.Mesh.Quad4.Map.FineLayer2Regular(mesh)
+                    regular = mapping.getRegularMesh()
+                    elmat = regular.elementgrid()
+                    isplastic = np.zeros((system.conn().shape[0]), dtype=bool)
+                    isplastic[plastic] = True
+                else:
+                    system.reset_epsy(System.read_epsy(simfile))
+
+            system.setU(root["disp"]["0"][...])
+            pinsystem(system, meta.attrs["target_element"], meta.attrs["target_A"])
+            idx_n = system.plastic_CurrentIndex()[:, 0].astype(int)
+
+            system.setU(root["disp"]["1"][...])
+            idx = system.plastic_CurrentIndex()[:, 0].astype(int)
+
+            shift = tools.center_avalanche(idx != idx_n)
+            _elmat = np.roll(elmat, shift, axis=1).ravel()
+            s = np.roll(idx - idx_n, shift)
+            a = np.roll(idx != idx_n, shift)
+            Sig = system.Sig() / sig0
+            Sig = np.average(Sig, weights=dV, axis=(1,))
+
+            def to_regular(field):
+                return mapping.mapToRegular(field)[_elmat].reshape(elmat.shape)
+
+            stress = "stress={stress:s}".format(**info)
+            A = "A={A:d}".format(**info)
+
+            if stress not in ret:
+                ret[stress] = {}
+            if A not in ret[stress]:
+                ret[stress][A] = {
+                    "S": enstat.mean.StaticNd(),
+                    "A": enstat.mean.StaticNd(),
+                    "sig_xx": enstat.mean.StaticNd(),
+                    "sig_xy": enstat.mean.StaticNd(),
+                    "sig_yy": enstat.mean.StaticNd(),
+                    "isplastic": enstat.mean.StaticNd(),
+                }
+
+            ret[stress][A]["S"].add_sample(s)
+            ret[stress][A]["A"].add_sample(a.astype(int))
+            ret[stress][A]["sig_xx"].add_sample(to_regular(Sig[:, 0, 0]))
+            ret[stress][A]["sig_xy"].add_sample(to_regular(Sig[:, 0, 1]))
+            ret[stress][A]["sig_yy"].add_sample(to_regular(Sig[:, 1, 1]))
+            ret[stress][A]["isplastic"].add_sample(to_regular(isplastic))
+
+    return ret
+
+
+def cli_output_spatial(cli_args=None):
+    """
+    Interpret spatial average an ensemble, collected by :py:func:`cli_collect`.
+    """
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    docstring = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    progname = entry_points[funcname]
+
+    if cli_args is None:
+        cli_args = sys.argv[1:]
+    else:
+        cli_args = [str(arg) for arg in cli_args]
+
+    class MyFormatter(
+        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
+    ):
+        pass
+
+    parser = argparse.ArgumentParser(
+        formatter_class=MyFormatter, description=replace_entry_point(docstring)
+    )
+
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        default=f"{progname}.h5",
+        help="Output file (overwritten)",
+    )
+
+    parser.add_argument(
+        "-i",
+        "--info",
+        type=str,
+        default="{:s}.h5".format(System.entry_points["cli_ensembleinfo"]),
+        help="EnsembleInfo to read normalisation (read-only)",
+    )
+
+    parser.add_argument("-f", "--force", action="store_true", help="Overwrite output")
+    parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("file", type=str, help="Input file")
+
+    args = parser.parse_args(cli_args)
+
+    assert os.path.isfile(os.path.realpath(args.file))
+    assert os.path.isfile(os.path.realpath(args.info))
+
+    with h5py.File(args.info, "r") as file:
+        sig0 = file["/normalisation/sig0"][...]
+
+    data = output_spatial(args.file, sig0)
+
+    with h5py.File(args.output, "w") as output:
+        for stress in data:
+            for A in data[stress]:
+                for key in data[stress][A]:
+                    root = f"{stress}/{A}/{key}/"
+                    output[root + "mean"] = data[stress][A][key].mean()
+                    output[root + "variance"] = data[stress][A][key].variance()
+                    output[root + "norm"] = data[stress][A][key].norm()
+                    output[root + "first"] = data[stress][A][key].first()
+                    output[root + "second"] = data[stress][A][key].second()
 
 
 def getdynamics_sync_A(
