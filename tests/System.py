@@ -72,7 +72,7 @@ class MyTests(unittest.TestCase):
         sigc = np.mean(sigd[iss])
 
         sigtarget = 0.5 * (sigc + sign)
-        pushincs = [iss[-30], iss[-20], iss[-10], iss[-4]]
+        pushincs = [iss[-30], iss[-20], iss[-15], iss[-10], iss[-4]]
         fmt = os.path.join(dirname, "stress=mid_A=4_id=0_incc={0:d}_element=0.h5")
         pushnames = [fmt.format(i) for i in pushincs]
 
@@ -146,17 +146,20 @@ class MyTests(unittest.TestCase):
             my.PinAndTrigger.cli_getdynamics_sync_A([filename])
             os.chdir(pwd)
 
-        dynname = os.path.join(dirname, "mydynamics.h5")
-        avname = os.path.join(dirname, "mydynamics_av.h5")
-        avname2 = os.path.join(dirname, "mydynamics_av2.h5")
-
         my.PinAndTrigger.cli_getdynamics_sync_A_combine(
-            ["-o", dynname] + [path.replace(".yaml", ".h5") for path in paths]
+            ["-f", "-o", os.path.join(dirname, "mydynamics.h5")]
+            + [path.replace(".yaml", ".h5") for path in paths]
         )
 
-        my.PinAndTrigger.cli_getdynamics_sync_A_average(["-o", avname, dynname])
         my.PinAndTrigger.cli_getdynamics_sync_A_average(
-            ["-o", avname2] + [path.replace(".yaml", ".h5") for path in paths]
+            [
+                "-f",
+                "-o",
+                os.path.join(dirname, "myaverage.h5"),
+                "-s",
+                os.path.join(dirname, "myaverage.yaml"),
+            ]
+            + paths
         )
 
         shutil.rmtree(dirname)

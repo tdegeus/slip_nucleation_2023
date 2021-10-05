@@ -6,6 +6,7 @@ import re
 import shutil
 import sys
 import textwrap
+from collections import defaultdict
 
 import click
 import enstat
@@ -18,9 +19,11 @@ import QPot  # noqa: F401
 import shelephant
 import tqdm
 import yaml
+from nested_dict import nested_dict
 
 from . import slurm
 from . import System
+from . import tools
 from ._version import version
 
 
@@ -31,6 +34,7 @@ entry_points = dict(
     cli_collect_combine="PinAndTrigger_collect_combine",
     cli_getdynamics_sync_A="PinAndTrigger_getdynamics_sync_A",
     cli_getdynamics_sync_A_job="PinAndTrigger_getdynamics_sync_A_job",
+    cli_getdynamics_sync_A_check="PinAndTrigger_getdynamics_sync_A_check",
     cli_getdynamics_sync_A_combine="PinAndTrigger_getdynamics_sync_A_combine",
     cli_getdynamics_sync_A_average="PinAndTrigger_getdynamics_sync_A_average",
 )
@@ -64,42 +68,6 @@ def interpret_filename(filename):
             info[key] = int(info[key])
 
     return info
-
-
-def center_of_mass(x, L):
-    """
-    Compute the center of mass of a periodic system.
-
-    :param x: List of coordinates.
-    :param L: Length of the system.
-    :return: Coordinate of the center of mass.
-    """
-
-    if np.allclose(x, 0):
-        return 0
-
-    theta = 2.0 * np.pi * x / L
-    xi = np.cos(theta)
-    zeta = np.sin(theta)
-    xi_bar = np.mean(xi)
-    zeta_bar = np.mean(zeta)
-    theta_bar = np.arctan2(-zeta_bar, -xi_bar) + np.pi
-    return L * theta_bar / (2.0 * np.pi)
-
-
-def center_pinned(ispinned):
-    """
-    Renumber such that the center of mass is in the middle.
-
-    :param ispinned: Per block if it is pinned.
-    :return: List of indices
-    """
-
-    N = ispinned.size
-    center = center_of_mass(np.argwhere(ispinned).ravel(), N)
-    M = int((N - N % 2) / 2)
-    C = int(center)
-    return np.roll(np.arange(N), M - C)
 
 
 def pinning(system: model.System, target_element: int, target_A: int) -> np.ndarray:
@@ -1034,72 +1002,233 @@ def cli_getdynamics_sync_A_combine(cli_args=None):
                     g5.copy(file, output, paths)
 
 
-def getdynamics_sync_A_average(filepaths: list[str]):
+def getdynamics_sync_A_check(filepaths: list[str]):
+    """
+    Check integrity of files spanning the ensemble.
+
+    :param filepaths: Files with the raw data.
+    :return: dict with:
+        - "duplicate": duplicate paths per file (with pointer to duplicate)
+        - "corrupted": corrupted paths per file
+        - "unique": paths per file, such that a unique subset is taken.
+        - "summary" : a basic summary of the above
+    """
+
+    Paths = {}  # non-corrupted paths per file
+    Unique = defaultdict(list)  # unique subset of "Paths"
+    Corrupted = {}  # corrupted paths per file
+    Duplicate = defaultdict(dict)  # duplicate paths per file
+    Visited = nested_dict()  # internal check for duplicates
+
+    # get paths, filter corrupted data
+
+    for filepath in tqdm.tqdm(filepaths):
+
+        if os.path.splitext(filepath)[1] in [".yml", ".yaml"]:
+            info = shelephant.yaml.read(filepath)
+            root = os.path.join(os.path.dirname(filepath), info["output"])
+            Paths[root] = info["paths"]
+            continue
+
+        with h5py.File(filepath, "r") as file:
+            paths = list(g5.getdatasets(file, max_depth=6))
+            paths = [path.replace("/...", "").replace("/data/", "") for path in paths]
+            d = file["data"]
+            has_data = [True if "pinned" in d[path] else False for path in paths]
+            paths = np.array(paths)
+            has_data = np.array(has_data)
+            no_data = np.logical_not(has_data)
+            Paths[filepath] = [str(path) for path in paths[has_data]]
+            if np.any(no_data):
+                Corrupted[filepath] = [str(path) for path in paths[no_data]]
+
+    # check duplicates
+
+    for ifile, filepath in enumerate(tqdm.tqdm(Paths)):
+
+        for path in Paths[filepath]:
+
+            info = interpret_filename(path)
+            stress = info["stress"]
+            A = info["A"]
+            s = info["id"]
+            e = info["element"]
+            i = info["incc"]
+
+            if i in Visited[stress][s][A][e]:
+                other = filepaths[Visited[stress][s][A][e][i]]
+                Duplicate[filepath][path] = other
+                Duplicate[other][path] = filepath
+            else:
+                Unique[filepath].append(path)
+
+            Visited[stress][s][A][e][i] = ifile
+
+    Summary = dict(
+        unique=0,
+        corrupted=0,
+        duplicate=0,
+    )
+
+    for filepath in Unique:
+        Summary["unique"] += len(Unique[filepath])
+
+    for filepath in Corrupted:
+        Summary["corrupted"] += len(Corrupted[filepath])
+
+    for filepath in Duplicate:
+        Summary["duplicate"] += len(Duplicate[filepath])
+    Summary["duplicate"] = int(Summary["duplicate"] / 2)
+
+    return dict(
+        duplicate=dict(Duplicate),
+        corrupted=dict(Corrupted),
+        unique=dict(Unique),
+        summary=Summary,
+    )
+
+
+def cli_getdynamics_sync_A_check(cli_args=None):
+    """
+    Check output from :py:func:`cli_getdynamics_sync_A`
+    """
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    docstring = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    progname = entry_points[funcname]
+
+    if cli_args is None:
+        cli_args = sys.argv[1:]
+    else:
+        cli_args = [str(arg) for arg in cli_args]
+
+    class MyFormatter(
+        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
+    ):
+        pass
+
+    parser = argparse.ArgumentParser(
+        formatter_class=MyFormatter, description=replace_entry_point(docstring)
+    )
+
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        default=f"{progname}.yaml",
+        help="Output file (overwritten)",
+    )
+
+    parser.add_argument("-f", "--force", action="store_true", help="Overwrite output")
+    parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("files", nargs="*", type=str, help="Input files")
+
+    args = parser.parse_args(cli_args)
+
+    assert np.all([os.path.isfile(os.path.realpath(path)) for path in args.files])
+
+    if not args.force:
+        if os.path.isfile(args.output):
+            if not click.confirm(f'Overwrite "{args.output}"?'):
+                raise OSError("Cancelled")
+
+    output = getdynamics_sync_A_check(args.files)
+    shelephant.yaml.dump(args.output, output, force=True)
+
+
+def getdynamics_sync_A_average(paths: dict):
     """
     Get the averages on fixed A.
 
-    :param filepaths: Files with the raw data.
+    :param paths:
+        A dictionary with which "path" to read from which file.
+        Use e.g. `getdynamics_sync_A_check(filepaths)["unique"]`
+
     :return: dict, per stress, A, and variable.
     """
 
     ret = {}
 
-    for filepath in filepaths:
+    for filepath in paths:
 
         with h5py.File(filepath, "r") as file:
 
-            paths = list(g5.getdatasets(file, max_depth=6))
-            paths = [path.replace("/...", "").replace("/data/", "") for path in paths]
+            for path in tqdm.tqdm(paths[filepath]):
 
-            for path in tqdm.tqdm(paths):
+                info = interpret_filename(path)
+                stress = info["stress"]
+                A = info["A"]
 
-                # todo remove
-                try:
+                pinned = file["data"][path]["pinned"][...]
+                sig_xx = file["data"][path]["sig_xx"][...]
+                sig_xy = file["data"][path]["sig_xy"][...]
+                sig_yy = file["data"][path]["sig_yy"][...]
+                idx = file["data"][path]["idx"][...].astype(np.int64)
+                t = file["data"][path]["t"][...]
+                Sig_xx = file["data"][path]["Sig_xx"][...]
+                Sig_xy = file["data"][path]["Sig_xy"][...]
+                Sig_yy = file["data"][path]["Sig_yy"][...]
 
-                    pinned = file["data"][path]["pinned"][...]
-                    sig_xx = file["data"][path]["sig_xx"][...]
-                    sig_xy = file["data"][path]["sig_xy"][...]
-                    sig_yy = file["data"][path]["sig_yy"][...]
-                    t = file["data"][path]["t"][...]
+                i = np.sum(idx, axis=1)
+                mask = np.logical_or(i[1:] == i[:-1], i[1:] == 0)
+                mask = np.insert(mask, 0, False)
 
-                    renum = center_pinned(pinned)
-                    pinned = pinned[renum]
-                    sig_xx = sig_xx[:, renum]
-                    sig_xy = sig_xy[:, renum]
-                    sig_yy = sig_yy[:, renum]
+                S = np.zeros(sig_xx.shape, dtype=np.int64)
+                S[:, np.logical_not(pinned)] = idx
+                S[1:, :] -= S[0, :].reshape(1, -1)
+                S[0, :] = 0
 
-                    info = interpret_filename(path)
-                    stress = info["stress"]
-                    A = info["A"]
+                # weight: 1 if S > 0, 0 otherwise (rows of zeros are replaced by rows of ones)
+                w = np.where((np.sum(S, axis=1) > 0)[:, np.newaxis], S > 0, True)
+                crack_sig_xx = np.average(sig_xx, weights=w, axis=1)
+                crack_sig_xy = np.average(sig_xy, weights=w, axis=1)
+                crack_sig_yy = np.average(sig_yy, weights=w, axis=1)
 
-                    if stress not in ret:
-                        ret[stress] = {}
-                    if A not in ret[stress]:
-                        ret[stress][A] = dict(
-                            pinned=pinned,
-                            sig_xx=enstat.mean.StaticNd(),
-                            sig_xy=enstat.mean.StaticNd(),
-                            sig_yy=enstat.mean.StaticNd(),
-                            t=enstat.mean.StaticNd(),
-                        )
+                shift = tools.center_avalanche_per_row(S)
+                sig_xx = tools.indep_roll(sig_xx, shift, axis=1)
+                sig_xy = tools.indep_roll(sig_xy, shift, axis=1)
+                sig_yy = tools.indep_roll(sig_yy, shift, axis=1)
+                S = tools.indep_roll(S, shift, axis=1)
 
-                    assert np.all(pinned == ret[stress][A]["pinned"])
+                if stress not in ret:
+                    ret[stress] = {}
 
-                    ret[stress][A]["sig_xx"].add_sample(sig_xx)
-                    ret[stress][A]["sig_xy"].add_sample(sig_xy)
-                    ret[stress][A]["sig_yy"].add_sample(sig_yy)
-                    ret[stress][A]["t"].add_sample(t)
+                if A not in ret[stress]:
+                    ret[stress][A] = dict(
+                        sig_xx=enstat.mean.StaticNd(),
+                        sig_xy=enstat.mean.StaticNd(),
+                        sig_yy=enstat.mean.StaticNd(),
+                        S=enstat.mean.StaticNd(),
+                        t=enstat.mean.StaticNd(),
+                        Sig_xx=enstat.mean.StaticNd(),
+                        Sig_xy=enstat.mean.StaticNd(),
+                        Sig_yy=enstat.mean.StaticNd(),
+                        crack_sig_xx=enstat.mean.StaticNd(),
+                        crack_sig_xy=enstat.mean.StaticNd(),
+                        crack_sig_yy=enstat.mean.StaticNd(),
+                    )
 
-                except:
-
-                    pass
+                ret[stress][A]["sig_xx"].add_sample(sig_xx, mask=mask)
+                ret[stress][A]["sig_xy"].add_sample(sig_xy, mask=mask)
+                ret[stress][A]["sig_yy"].add_sample(sig_yy, mask=mask)
+                ret[stress][A]["S"].add_sample(S, mask=mask)
+                ret[stress][A]["t"].add_sample(t, mask=mask)
+                ret[stress][A]["Sig_xx"].add_sample(Sig_xx, mask=mask)
+                ret[stress][A]["Sig_xy"].add_sample(Sig_xy, mask=mask)
+                ret[stress][A]["Sig_yy"].add_sample(Sig_yy, mask=mask)
+                ret[stress][A]["crack_sig_xx"].add_sample(crack_sig_xx, mask=mask)
+                ret[stress][A]["crack_sig_xy"].add_sample(crack_sig_xy, mask=mask)
+                ret[stress][A]["crack_sig_yy"].add_sample(crack_sig_yy, mask=mask)
 
     return ret
 
 
 def cli_getdynamics_sync_A_average(cli_args=None):
     """
-    Average output from :py:func:`cli_getdynamics_sync_A`
+    Average output from :py:func:`cli_getdynamics_sync_A`.
+    Note that the input may be the YAML configuration files which served to run
+    :py:func:`cli_getdynamics_sync_A`.
+    See also :py:func:`cli_getdynamics_sync_A_job`.
     """
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
@@ -1127,6 +1256,15 @@ def cli_getdynamics_sync_A_average(cli_args=None):
         default=f"{progname}.h5",
         help="Output file (overwritten)",
     )
+
+    parser.add_argument(
+        "-s",
+        "--summary",
+        type=str,
+        help="Read summary",
+        default=f"{progname}.yaml",
+    )
+
     parser.add_argument("-f", "--force", action="store_true", help="Overwrite output")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("files", nargs="*", type=str, help="Input files")
@@ -1136,11 +1274,15 @@ def cli_getdynamics_sync_A_average(cli_args=None):
     assert np.all([os.path.isfile(os.path.realpath(path)) for path in args.files])
 
     if not args.force:
-        if os.path.isfile(args.output):
-            if not click.confirm(f'Overwrite "{args.output}"?'):
-                raise OSError("Cancelled")
+        for filepath in [args.output, args.summary]:
+            if os.path.isfile(os.path.realpath(filepath)):
+                if not click.confirm(f'Overwrite "{filepath}"?'):
+                    raise OSError("Cancelled")
 
-    data = getdynamics_sync_A_average(args.files)
+    info = getdynamics_sync_A_check(args.files)
+    data = getdynamics_sync_A_average(info["unique"])
+
+    shelephant.yaml.dump(args.summary, info, force=True)
 
     with h5py.File(args.output, "w") as output:
 
@@ -1149,8 +1291,8 @@ def cli_getdynamics_sync_A_average(cli_args=None):
                 for key in data[stress][A]:
                     d = data[stress][A][key]
                     k = f"/stress={stress}/A={A:d}/{key}"
-                    if key in ["pinned"]:
-                        output[k] = d
-                    else:
-                        output[g5.join(k, "mean", root=True)] = d.mean()
-                        output[g5.join(k, "variance", root=True)] = d.variance()
+                    output[g5.join(k, "mean", root=True)] = d.mean()
+                    output[g5.join(k, "variance", root=True)] = d.variance()
+                    output[g5.join(k, "norm", root=True)] = d.norm()
+                    output[g5.join(k, "first", root=True)] = d.first()
+                    output[g5.join(k, "second", root=True)] = d.second()

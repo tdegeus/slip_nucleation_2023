@@ -15,6 +15,7 @@ dependencies:
 - h5py
 - highfive
 - make
+- nested_dict
 - ninja
 - parallel
 - pre-commit
