@@ -67,3 +67,15 @@ def greater_equal(a: str, b: str) -> bool:
     """
 
     return packaging.version.parse(a) >= packaging.version.parse(b)
+
+
+def equal(a: str, b: str) -> bool:
+    """
+    Check if version ``a`` is equal to ``b``.
+
+    :param a: Version string.
+    :param b: Version string.
+    :return: ``True`` if ``a == b``
+    """
+
+    return packaging.version.parse(a) == packaging.version.parse(b)
