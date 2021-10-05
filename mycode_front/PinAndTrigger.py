@@ -23,6 +23,7 @@ from nested_dict import nested_dict
 
 from . import slurm
 from . import System
+from . import tag
 from . import tools
 from ._version import version
 
@@ -32,6 +33,7 @@ entry_points = dict(
     cli_job="PinAndTrigger_job",
     cli_collect="PinAndTrigger_collect",
     cli_collect_combine="PinAndTrigger_collect_combine",
+    cli_collect_update="PinAndTrigger_collect_update",
     cli_output_scalar="PinAndTrigger_output_scalar",
     cli_getdynamics_sync_A="PinAndTrigger_getdynamics_sync_A",
     cli_getdynamics_sync_A_job="PinAndTrigger_getdynamics_sync_A_job",
@@ -317,12 +319,12 @@ def cli_collect(cli_args=None):
 
     with h5py.File(args.output, "a") as output:
 
-        if "/meta" not in output:
-            meta = output.create_group("/meta")
+        if "meta" not in output:
+            meta = output.create_group("meta")
             meta.attrs["version"] = version
             meta.attrs["dependencies"] = System.dependencies(model)
         else:
-            meta = output["/meta"]
+            meta = output["meta"]
             assert meta.attrs["version"] == version
             assert list(meta.attrs["dependencies"]) == System.dependencies(model)
 
@@ -376,6 +378,106 @@ def cli_collect(cli_args=None):
         shelephant.yaml.dump(
             args.error, dict(corrupted=corrupted, existing=existing), force=True
         )
+
+
+def cli_collect_update(cli_args=None):
+    """
+    Update older files collected with :py:func:`cli_collect` to latest file layout.
+    """
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    docstring = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    progname = entry_points["cli_main"]
+
+    if cli_args is None:
+        cli_args = sys.argv[1:]
+    else:
+        cli_args = [str(arg) for arg in cli_args]
+
+    class MyFormatter(
+        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
+    ):
+        pass
+
+    parser = argparse.ArgumentParser(
+        formatter_class=MyFormatter, description=replace_entry_point(docstring)
+    )
+
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        help="Output file (overwritten)",
+        required=True,
+    )
+
+    parser.add_argument("-f", "--force", action="store_true", help="Overwrite output")
+    parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("file", type=str, help="Files to convert")
+
+    args = parser.parse_args(cli_args)
+
+    assert os.path.isfile(os.path.realpath(args.file))
+
+    if not args.force:
+        if os.path.isfile(args.output):
+            if not click.confirm(f'Overwrite "{args.output}"?'):
+                raise OSError("Cancelled")
+
+    with h5py.File(args.file, "r") as file:
+
+        vers = "None"
+
+        if "/meta/version" in file:
+            vers = str(file["/meta/version"].asstr()[...])
+
+        if tag.equal(vers, "2.4"):
+
+            with h5py.File(args.output, "w") as output:
+
+                meta = output.create_group("meta")
+                meta.attrs["version"] = version
+                meta.attrs["dependencies"] = System.dependencies(model)
+
+                vers = str(file["/meta/version"].asstr()[...])
+                deps = sorted(
+                    str(d) for d in file["/meta/version_dependencies"].asstr()[...]
+                )
+
+                paths = list(g5.getdatasets(file, root="data", max_depth=5))
+                paths = np.array(
+                    [path.split("data/")[1].split("/...")[0] for path in paths]
+                )
+
+                for path in tqdm.tqdm(paths):
+                    info = interpret_filename(path)
+                    root = file[g5.join("data", path, root=True)]
+
+                    meta = output.create_group(
+                        g5.join("data", path, "meta", progname, root=True)
+                    )
+                    meta.attrs["file"] = str(root["file"].asstr()[...])
+                    meta.attrs["version"] = vers
+                    meta.attrs["dependencies"] = deps
+                    meta.attrs["target_stress"] = root["target_stress"][...]
+                    meta.attrs["target_inc_system"] = info["incc"]
+                    meta.attrs["target_A"] = info["A"]
+                    meta.attrs["target_element"] = info["element"]
+                    meta.attrs["S"] = root["S"][...]
+                    meta.attrs["A"] = root["A"][...]
+
+                    if "disp" not in root:
+                        continue
+
+                    p = [
+                        g5.join("data", path, "disp", str(i), root=True)
+                        for i in range(2)
+                    ]
+                    g5.copy(file, output, p)
+
+                return 0
+
+    raise OSError("Don't know how to interpret the data")
 
 
 def cli_collect_combine(cli_args=None):
