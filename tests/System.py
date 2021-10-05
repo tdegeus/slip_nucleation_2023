@@ -132,6 +132,14 @@ class MyTests(unittest.TestCase):
             ]
         )
 
+        # PinAndTrigger : interpret data (try running only, not really test)
+
+        interpret = os.path.join(dirname, "myinterpret.h5")
+
+        my.PinAndTrigger.cli_output_scalar(
+            ["-f", "-i", infoname, "-o", interpret, collectname]
+        )
+
         # PinAndTrigger : extract dynamics (try running only, not really test)
 
         paths = my.PinAndTrigger.cli_getdynamics_sync_A_job(
