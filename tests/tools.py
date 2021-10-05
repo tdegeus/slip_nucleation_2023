@@ -5,7 +5,9 @@ import unittest
 import numpy as np
 
 root = os.path.join(os.path.dirname(__file__), "..")
-sys.path.insert(0, os.path.abspath(root))
+if os.path.exists(os.path.join(root, "mycode_front", "_version.py")):
+    sys.path.insert(0, os.path.abspath(root))
+
 import mycode_front as my  # noqa: E402
 
 
