@@ -1026,7 +1026,8 @@ def getdynamics_sync_A_check(filepaths: list[str]):
 
         if os.path.splitext(filepath)[1] in [".yml", ".yaml"]:
             info = shelephant.yaml.read(filepath)
-            Paths[info["output"]] = info["paths"]
+            root = os.path.join(os.path.dirname(filepath), info["output"])
+            Paths[root] = info["paths"]
             continue
 
         with h5py.File(filepath, "r") as file:
