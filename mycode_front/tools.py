@@ -1,7 +1,6 @@
 import numpy as np
 
-# todo: vectorise implementation
-# todo: implementation without allocation of coordinates
+
 def _center_of_mass(x, L):
     """
     Compute the center of mass of a periodic system.
@@ -11,6 +10,9 @@ def _center_of_mass(x, L):
     :param L: Length of the system.
     :return: Coordinate of the center of mass.
     """
+
+    # todo: vectorise implementation
+    # todo: implementation without allocation of coordinates
 
     if np.allclose(x, 0):
         return 0
@@ -22,6 +24,7 @@ def _center_of_mass(x, L):
     zeta_bar = np.mean(zeta)
     theta_bar = np.arctan2(-zeta_bar, -xi_bar) + np.pi
     return L * theta_bar / (2.0 * np.pi)
+
 
 def _center_of_mass_per_row(arr):
     """
@@ -37,7 +40,7 @@ def _center_of_mass_per_row(arr):
     assert arr.ndim == 2
     m, n = arr.shape
 
-    ret = np.empty((m))
+    ret = np.empty(m)
 
     for i in range(m):
         ret[i] = _center_of_mass(np.argwhere(arr[i, :] > 0).ravel(), n)
@@ -55,15 +58,15 @@ def indep_roll(arr, shifts, axis=1):
     :param axis: Axis along which elements are shifted.
     :return: Rolled array.
     """
-    arr = np.swapaxes(arr,axis,-1)
-    all_idcs = np.ogrid[[slice(0,n) for n in arr.shape]]
+    arr = np.swapaxes(arr, axis, -1)
+    all_idcs = np.ogrid[[slice(0, n) for n in arr.shape]]
 
     # Convert to a positive shift
     shifts[shifts < 0] += arr.shape[-1]
     all_idcs[-1] = all_idcs[-1] - shifts[:, np.newaxis]
 
     result = arr[tuple(all_idcs)]
-    arr = np.swapaxes(result,-1,axis)
+    arr = np.swapaxes(result, -1, axis)
     return arr
 
 
@@ -116,15 +119,22 @@ def fill_avalanche(broken):
     ret = np.ones_like(broken)
     zero = np.zeros_like(broken)[0]
 
-    i = np.argwhere(broken).ravel()
-    di = np.diff(i)
-    mi = np.max(di)
-    j = np.argwhere(di == mi).ravel()
-    ret[i[j[0]]: i[j[0] + 1]] = zero
-    ret[i[j[1]] + 1: i[j[1] + 1]] = zero
+    x = np.argwhere(broken).ravel()
+    dx = np.diff(x)
+    maxdx = np.max(dx)
+    j = np.argwhere(dx == maxdx).ravel()
 
-    return ret[N: 2 * N]
+    x0 = x[j[0]]
+    x1 = x[j[0] + 1]
+    ret[x0:x1] = zero
 
+    x0 = x[j[1]] + 1
+    x1 = x[j[1] + 1]
+    ret[x0:x1] = zero
+
+    i = N
+    j = 2 * N
+    return ret[i:j]
 
 
 if __name__ == "__main__":

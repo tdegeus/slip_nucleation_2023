@@ -6,9 +6,7 @@ import re
 import shutil
 import sys
 import textwrap
-
 from collections import defaultdict
-from nested_dict import nested_dict
 
 import click
 import enstat
@@ -21,10 +19,11 @@ import QPot  # noqa: F401
 import shelephant
 import tqdm
 import yaml
+from nested_dict import nested_dict
 
 from . import slurm
-from . import tools
 from . import System
+from . import tools
 from ._version import version
 
 
@@ -1015,11 +1014,11 @@ def getdynamics_sync_A_check(filepaths: list[str]):
         - "summary" : a basic summary of the above
     """
 
-    Paths = {} # non-corrupted paths per file
-    Unique = defaultdict(list) # unique subset of "Paths"
-    Corrupted = {} # corrupted paths per file
-    Duplicate = defaultdict(dict) # duplicate paths per file (with pointer to duplicate)
-    Visited = nested_dict() # internal check for duplicates
+    Paths = {}  # non-corrupted paths per file
+    Unique = defaultdict(list)  # unique subset of "Paths"
+    Corrupted = {}  # corrupted paths per file
+    Duplicate = defaultdict(dict)  # duplicate paths per file
+    Visited = nested_dict()  # internal check for duplicates
 
     # get paths, filter corrupted data
 
@@ -1033,7 +1032,8 @@ def getdynamics_sync_A_check(filepaths: list[str]):
         with h5py.File(filepath, "r") as file:
             paths = list(g5.getdatasets(file, max_depth=6))
             paths = [path.replace("/...", "").replace("/data/", "") for path in paths]
-            has_data = [True if "pinned" in file["data"][path] else False for path in paths]
+            d = file["data"]
+            has_data = [True if "pinned" in d[path] else False for path in paths]
             paths = np.array(paths)
             has_data = np.array(has_data)
             no_data = np.logical_not(has_data)
@@ -1064,9 +1064,9 @@ def getdynamics_sync_A_check(filepaths: list[str]):
             Visited[stress][s][A][e][i] = ifile
 
     Summary = dict(
-        unique = 0,
-        corrupted = 0,
-        duplicate = 0,
+        unique=0,
+        corrupted=0,
+        duplicate=0,
     )
 
     for filepath in Unique:
@@ -1079,7 +1079,12 @@ def getdynamics_sync_A_check(filepaths: list[str]):
         Summary["duplicate"] += len(Duplicate[filepath])
     Summary["duplicate"] = int(Summary["duplicate"] / 2)
 
-    return dict(duplicate=dict(Duplicate), corrupted=dict(Corrupted), unique=dict(Unique), summary=Summary)
+    return dict(
+        duplicate=dict(Duplicate),
+        corrupted=dict(Corrupted),
+        unique=dict(Unique),
+        summary=Summary,
+    )
 
 
 def cli_getdynamics_sync_A_check(cli_args=None):
@@ -1149,10 +1154,6 @@ def getdynamics_sync_A_average(paths: dict):
 
             for path in tqdm.tqdm(paths[filepath]):
 
-                if "pinned" not in file["data"][path]:
-                    corrupted[filepath] += [path]
-                    continue
-
                 info = interpret_filename(path)
                 stress = info["stress"]
                 A = info["A"]
@@ -1176,12 +1177,11 @@ def getdynamics_sync_A_average(paths: dict):
                 S[1:, :] -= S[0, :].reshape(1, -1)
                 S[0, :] = 0
 
-                y = S > 0
-                x = np.array(y, copy=True)
-                y = np.where((np.sum(S, axis=1) > 0)[:, np.newaxis], y, True)
-                crack_sig_xx = np.average(sig_xx, weights=y, axis=1)
-                crack_sig_xy = np.average(sig_xy, weights=y, axis=1)
-                crack_sig_yy = np.average(sig_yy, weights=y, axis=1)
+                # weight: 1 if S > 0, 0 otherwise (rows of zeros are replaced by rows of ones)
+                w = np.where((np.sum(S, axis=1) > 0)[:, np.newaxis], S > 0, True)
+                crack_sig_xx = np.average(sig_xx, weights=w, axis=1)
+                crack_sig_xy = np.average(sig_xy, weights=w, axis=1)
+                crack_sig_yy = np.average(sig_yy, weights=w, axis=1)
 
                 shift = tools.center_avalanche_per_row(S)
                 sig_xx = tools.indep_roll(sig_xx, shift, axis=1)
