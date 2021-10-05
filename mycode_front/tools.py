@@ -5,6 +5,7 @@ import numpy as np
 def _center_of_mass(x, L):
     """
     Compute the center of mass of a periodic system.
+    Assume: all equal masses.
 
     :param x: List of coordinates.
     :param L: Length of the system.
@@ -22,8 +23,16 @@ def _center_of_mass(x, L):
     theta_bar = np.arctan2(-zeta_bar, -xi_bar) + np.pi
     return L * theta_bar / (2.0 * np.pi)
 
+def _center_of_mass_per_row(arr):
+    """
+    Compute the center of mass per row.
+    The function assumes that masses can be either 0 or 1:
+    -   1: any positive value
+    -   0: any zero or negative value
 
-def center_of_mass_per_row(arr):
+    :param: Input array [M, N].
+    :return: x-position of the center of mass per row [M].
+    """
 
     assert arr.ndim == 2
     m, n = arr.shape
@@ -61,16 +70,21 @@ def indep_roll(arr, shifts, axis=1):
 def center_avalanche_per_row(arr):
     """
     Shift to center avalanche, per row. Example usage::
+
         R = center_avalanche_per_row(S)
         C = indep_roll(S, R, axis=1)
 
-    :param arr: Per row: if the block yielded (or the number of times it yielded).
+    Note that the input array is interpreted as follows:
+    -   any positive value == 1
+    -   any zero or negative value == 0
+
+    :param arr: Per row: if the block yielded.
     :return: Shift per row.
     """
 
     assert arr.ndim == 2
     m, n = arr.shape
-    shift = np.floor(n / 2 - center_of_mass_per_row(arr)).astype(int)
+    shift = np.floor(n / 2 - _center_of_mass_per_row(arr)).astype(int)
     return np.where(shift < 0, n + shift, shift)
 
 
@@ -89,7 +103,7 @@ def center_avalanche(arr):
 
 def fill_avalanche(broken):
     """
-    Fill avalanche.
+    Fill avalanche such that the largest spatial extension can be selected.
 
     :param broken: Per block if it is broken.
     :return: ``broken`` for filled avalanche.
