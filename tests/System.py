@@ -137,9 +137,14 @@ class MyTests(unittest.TestCase):
         # PinAndTrigger : interpret data (try running only, not really test)
 
         interpret = os.path.join(dirname, "myinterpret.h5")
+        spatial = os.path.join(dirname, "myspatial.h5")
 
         my.PinAndTrigger.cli_output_scalar(
             ["-f", "-i", infoname, "-o", interpret, collectname]
+        )
+
+        my.PinAndTrigger.cli_output_spatial(
+            ["-f", "-i", infoname, "-o", spatial, collectname]
         )
 
         # PinAndTrigger : extract dynamics (try running only, not really test)
