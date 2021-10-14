@@ -47,9 +47,7 @@ for stress_name, stress_value in zip(Stress_names, Stress_values):
         list(
             filter(
                 None,
-                subprocess.check_output(
-                    f"find {fol:s} -maxdepth 1 -iname 'id*.hdf5'", shell=True
-                )
+                subprocess.check_output(f"find {fol:s} -maxdepth 1 -iname 'id*.hdf5'", shell=True)
                 .decode("utf-8")
                 .split("\n"),
             )

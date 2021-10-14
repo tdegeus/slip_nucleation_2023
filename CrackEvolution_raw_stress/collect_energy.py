@@ -44,9 +44,7 @@ def LoadSystem(filename, uuid):
         system.setMassMatrix(data["/rho"][...])
         system.setDampingMatrix(data["/damping/alpha"][...])
         system.setElastic(data["/elastic/K"][...], data["/elastic/G"][...])
-        system.setPlastic(
-            data["/cusp/K"][...], data["/cusp/G"][...], data["/cusp/epsy"][...]
-        )
+        system.setPlastic(data["/cusp/K"][...], data["/cusp/G"][...], data["/cusp/epsy"][...])
         system.setDt(data["/run/dt"][...])
 
         return system
@@ -145,22 +143,14 @@ def main():
 
                     A_val["E_all"][i].add_sample(e)
 
-                    A_val["E_elastic"][i].add_sample(
-                        np.sum(E[elastic, :] * dV[elastic, :])
-                    )
+                    A_val["E_elastic"][i].add_sample(np.sum(E[elastic, :] * dV[elastic, :]))
 
-                    A_val["E_plastic"][i].add_sample(
-                        np.sum(E[plastic, :] * dV[plastic, :])
-                    )
+                    A_val["E_plastic"][i].add_sample(np.sum(E[plastic, :] * dV[plastic, :]))
 
                     if unmoved.size > 0:
-                        A_val["E_unmoved"][i].add_sample(
-                            np.sum(E[unmoved, :] * dV[unmoved, :])
-                        )
+                        A_val["E_unmoved"][i].add_sample(np.sum(E[unmoved, :] * dV[unmoved, :]))
                     if moved.size > 0:
-                        A_val["E_moved"][i].add_sample(
-                            np.sum(E[moved, :] * dV[moved, :])
-                        )
+                        A_val["E_moved"][i].add_sample(np.sum(E[moved, :] * dV[moved, :]))
 
                 # ensemble average for different "t"
 
@@ -202,13 +192,9 @@ def main():
 
                     t_val["E_all"][i].add_sample(e)
 
-                    t_val["E_elastic"][i].add_sample(
-                        np.sum(E[elastic, :] * dV[elastic, :])
-                    )
+                    t_val["E_elastic"][i].add_sample(np.sum(E[elastic, :] * dV[elastic, :]))
 
-                    t_val["E_plastic"][i].add_sample(
-                        np.sum(E[plastic, :] * dV[plastic, :])
-                    )
+                    t_val["E_plastic"][i].add_sample(np.sum(E[plastic, :] * dV[plastic, :]))
         # store
 
         out["/A/A"] = A_A

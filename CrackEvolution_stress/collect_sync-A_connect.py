@@ -124,33 +124,23 @@ if True:
 
     c = np.array([1, 1, 0, 0, 0, 1])
     a = np.array([0, 0, 1, 1, 1, 0])
-    assert np.all(
-        compute_distance(c, a, eye.Clusters(c, periodic=True)) == np.array([1, 2, 1])
-    )
+    assert np.all(compute_distance(c, a, eye.Clusters(c, periodic=True)) == np.array([1, 2, 1]))
 
     c = np.array([1, 1, 0, 0, 0, 1, 1])
     a = np.array([0, 0, 1, 1, 1, 0, 0])
-    assert np.all(
-        compute_distance(c, a, eye.Clusters(c, periodic=True)) == np.array([1, 2, 1])
-    )
+    assert np.all(compute_distance(c, a, eye.Clusters(c, periodic=True)) == np.array([1, 2, 1]))
 
     c = np.array([1, 1, 0, 0, 0, 1, 1])
     a = np.array([0, 0, 1, 1, 1, 0, 0])
-    assert np.all(
-        compute_distance(c, a, eye.Clusters(c, periodic=True)) == np.array([1, 2, 1])
-    )
+    assert np.all(compute_distance(c, a, eye.Clusters(c, periodic=True)) == np.array([1, 2, 1]))
 
     c = np.array([1, 1, 0, 0, 0, 1, 1])
     a = np.array([0, 0, 1, 1, 1, 0, 0])
-    assert np.all(
-        compute_distance(c, a, eye.Clusters(c, periodic=True)) == np.array([1, 2, 1])
-    )
+    assert np.all(compute_distance(c, a, eye.Clusters(c, periodic=True)) == np.array([1, 2, 1]))
 
     c = np.array([0, 0, 1, 1, 1, 1, 0])
     a = np.array([1, 1, 0, 0, 0, 0, 1])
-    assert np.all(
-        compute_distance(c, a, eye.Clusters(c, periodic=True)) == np.array([2, 1, 1])
-    )
+    assert np.all(compute_distance(c, a, eye.Clusters(c, periodic=True)) == np.array([2, 1, 1]))
 
 # ==================================================================================================
 # build histogram
@@ -186,9 +176,7 @@ for ifile, file in enumerate(files):
 
                 clusters = eye.Clusters(cracked, periodic=True)
                 sizes = clusters.sizes()
-                n, _ = np.histogram(
-                    sizes[1:], bins=(nx + 1), range=(0, nx + 1), density=False
-                )
+                n, _ = np.histogram(sizes[1:], bins=(nx + 1), range=(0, nx + 1), density=False)
 
                 count_clusters[a] += sizes.size - 1
                 count_size[a, :] += n
@@ -212,21 +200,17 @@ with h5py.File(output, "w") as data:
 
     data["/A"] = np.arange(nx + 1)
     data["/clusters"] = count_clusters / np.where(norm_clusters > 0, norm_clusters, 1)
-    data["/distance"] = count_distance / np.where(
-        norm_distance > 0, norm_distance, 1
-    ).reshape(-1, 1)
-    data["/size"] = count_size / np.where(norm_clusters > 0, norm_clusters, 1).reshape(
+    data["/distance"] = count_distance / np.where(norm_distance > 0, norm_distance, 1).reshape(
         -1, 1
     )
+    data["/size"] = count_size / np.where(norm_clusters > 0, norm_clusters, 1).reshape(-1, 1)
     data["/maxsize"] = count_maxsize / np.where(norm_clusters > 0, norm_clusters, 1)
     data["/norm_clusters"] = norm_clusters
     data["/norm_distance"] = norm_distance
 
     data["/A"].attrs["desc"] = 'Avalanche areas "A" at which the output is written.'
 
-    data["/clusters"].attrs["desc"] = (
-        "Number of clusters [A]. " + 'Normalised by "/norm_clusters".'
-    )
+    data["/clusters"].attrs["desc"] = "Number of clusters [A]. " + 'Normalised by "/norm_clusters".'
 
     data["/distance"].attrs["desc"] = (
         "Distance between the yielding block(s) and the biggest cluster [A, N]. "

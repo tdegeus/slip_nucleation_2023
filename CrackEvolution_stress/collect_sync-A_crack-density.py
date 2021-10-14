@@ -122,9 +122,7 @@ with h5py.File(output, "w") as data:
     data["/P"] = count / np.where(norm > 0, norm, 1).reshape(-1, 1)
     data["/norm"] = norm
 
-    data["/A"].attrs[
-        "desc"
-    ] = "Avalanche extension A at which /P is stored == np.arange(N + 1)"
+    data["/A"].attrs["desc"] = "Avalanche extension A at which /P is stored == np.arange(N + 1)"
     data["/P"].attrs[
         "desc"
     ] = "Probability that a block yielded: realisations are centered before averaging"

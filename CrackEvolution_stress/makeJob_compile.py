@@ -44,9 +44,7 @@ commands = []
 
 for stress_name, stress in zip(stress_names, stresses):
 
-    data = h5py.File(
-        os.path.join(dbase, nx, "AvalancheAfterPush_%s.hdf5" % stress_name), "r"
-    )
+    data = h5py.File(os.path.join(dbase, nx, "AvalancheAfterPush_%s.hdf5" % stress_name), "r")
 
     p_files = data["files"][...]
     p_file = data["file"][...]

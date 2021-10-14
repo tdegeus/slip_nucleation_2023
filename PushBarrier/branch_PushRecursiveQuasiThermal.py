@@ -66,9 +66,7 @@ for file in files:
 
     for i in itrigger:
 
-        outfilename = "{:s}_itrigger={:d}.hdf5".format(
-            os.path.split(file.split(".hdf5")[0])[1], i
-        )
+        outfilename = "{:s}_itrigger={:d}.hdf5".format(os.path.split(file.split(".hdf5")[0])[1], i)
 
         print(outfilename)
 
@@ -83,17 +81,11 @@ for file in files:
                 output["/disp/0"] = data["disp"][str(inc)][...]
                 output["/trigger/i"] = i
 
-                dset = output.create_dataset(
-                    "/stored", (1,), maxshape=(None,), dtype=np.int
-                )
+                dset = output.create_dataset("/stored", (1,), maxshape=(None,), dtype=np.int)
                 dset[0] = 0
 
-                dset = output.create_dataset(
-                    "/sigd", (1,), maxshape=(None,), dtype=np.float
-                )
+                dset = output.create_dataset("/sigd", (1,), maxshape=(None,), dtype=np.float)
                 dset[0] = float(data["/sigd"][inc])
 
-                dset = output.create_dataset(
-                    "/t", (1,), maxshape=(None,), dtype=np.float
-                )
+                dset = output.create_dataset("/t", (1,), maxshape=(None,), dtype=np.float)
                 dset[0] = float(data["/t"][inc])

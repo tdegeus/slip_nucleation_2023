@@ -70,9 +70,7 @@ def LoadSystem(filename, uuid):
         system.setMassMatrix(data["/rho"][...])
         system.setDampingMatrix(data["/damping/alpha"][...])
         system.setElastic(data["/elastic/K"][...], data["/elastic/G"][...])
-        system.setPlastic(
-            data["/cusp/K"][...], data["/cusp/G"][...], data["/cusp/epsy"][...]
-        )
+        system.setPlastic(data["/cusp/K"][...], data["/cusp/G"][...], data["/cusp/epsy"][...])
         system.setDt(data["/run/dt"][...])
 
         return system
@@ -196,15 +194,9 @@ def main():
                     sig_xy = mapping.mapToRegular(Sig[:, 0, 1])[get] / sig0
                     sig_yy = mapping.mapToRegular(Sig[:, 1, 1])[get] / sig0
 
-                    m_c_sig_xx[i].add_sample(
-                        refine.meanToCoarse(sig_xx).reshape(coarse.nely(), -1)
-                    )
-                    m_c_sig_xy[i].add_sample(
-                        refine.meanToCoarse(sig_xy).reshape(coarse.nely(), -1)
-                    )
-                    m_c_sig_yy[i].add_sample(
-                        refine.meanToCoarse(sig_yy).reshape(coarse.nely(), -1)
-                    )
+                    m_c_sig_xx[i].add_sample(refine.meanToCoarse(sig_xx).reshape(coarse.nely(), -1))
+                    m_c_sig_xy[i].add_sample(refine.meanToCoarse(sig_xy).reshape(coarse.nely(), -1))
+                    m_c_sig_yy[i].add_sample(refine.meanToCoarse(sig_yy).reshape(coarse.nely(), -1))
 
                     m_i_sig_xx[i].add_sample(sig_xx[select])
                     m_i_sig_xy[i].add_sample(sig_xy[select])

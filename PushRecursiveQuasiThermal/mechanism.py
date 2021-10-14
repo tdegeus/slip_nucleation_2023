@@ -72,12 +72,8 @@ for ifile, file in enumerate(files):
         axes[1].set_xlabel(r"$\sigma$")
         axes[1].set_ylabel(r"$t$")
 
-        axes[0].plot(
-            r[n], t[n], c="b", marker=".", ls="none", markersize=1, rasterized=True
-        )
-        axes[0].plot(
-            r[p], t[p], c="k", marker=".", ls="none", markersize=1, rasterized=True
-        )
+        axes[0].plot(r[n], t[n], c="b", marker=".", ls="none", markersize=1, rasterized=True)
+        axes[0].plot(r[p], t[p], c="k", marker=".", ls="none", markersize=1, rasterized=True)
 
         t = data["/overview/global/iiter"][...] * dt * cs / (l0 * N)
 

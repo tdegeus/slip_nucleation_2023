@@ -149,8 +149,7 @@ for ifile, file in enumerate(tqdm.tqdm(files)):
 
                 if f"/sync-A/plastic/{a:d}/epsp" in data:
                     assert (
-                        np.allclose(epsp_n, data[f"/sync-A/plastic/{a_n:d}/epsp"][...])
-                        or a_n == 0
+                        np.allclose(epsp_n, data[f"/sync-A/plastic/{a_n:d}/epsp"][...]) or a_n == 0
                     )
 
             # read epsp

@@ -55,6 +55,4 @@ for file in files:
         "mem": "8G",
     }
 
-    open(basename + ".slurm", "w").write(
-        gs.scripts.plain(command=slurm.format(command), **sbatch)
-    )
+    open(basename + ".slurm", "w").write(gs.scripts.plain(command=slurm.format(command), **sbatch))

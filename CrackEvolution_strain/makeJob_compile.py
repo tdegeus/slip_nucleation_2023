@@ -60,9 +60,7 @@ for n, i in enumerate(idx):
     ]
 
 lines = [
-    "./Run --file {file:s} --element {element:d} --incc {incc:d} --output {output:s}".format(
-        **c
-    )
+    "./Run --file {file:s} --element {element:d} --incc {incc:d} --output {output:s}".format(**c)
     for c in commands
 ]
 

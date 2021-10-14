@@ -136,25 +136,15 @@ m_iiter = out["1st"]["iiter"] / norm
 
 # compute variance
 v_sig_xx = (
-    (out["2nd"]["sig_xx"] / norm - (out["1st"]["sig_xx"] / norm) ** 2.0)
-    * norm
-    / (norm - 1.0)
+    (out["2nd"]["sig_xx"] / norm - (out["1st"]["sig_xx"] / norm) ** 2.0) * norm / (norm - 1.0)
 )
 v_sig_xy = (
-    (out["2nd"]["sig_xy"] / norm - (out["1st"]["sig_xy"] / norm) ** 2.0)
-    * norm
-    / (norm - 1.0)
+    (out["2nd"]["sig_xy"] / norm - (out["1st"]["sig_xy"] / norm) ** 2.0) * norm / (norm - 1.0)
 )
 v_sig_yy = (
-    (out["2nd"]["sig_yy"] / norm - (out["1st"]["sig_yy"] / norm) ** 2.0)
-    * norm
-    / (norm - 1.0)
+    (out["2nd"]["sig_yy"] / norm - (out["1st"]["sig_yy"] / norm) ** 2.0) * norm / (norm - 1.0)
 )
-v_iiter = (
-    (out["2nd"]["iiter"] / norm - (out["1st"]["iiter"] / norm) ** 2.0)
-    * norm
-    / (norm - 1.0)
-)
+v_iiter = (out["2nd"]["iiter"] / norm - (out["1st"]["iiter"] / norm) ** 2.0) * norm / (norm - 1.0)
 
 # hydrostatic stress
 m_sig_m = (m_sig_xx + m_sig_yy) / 2.0

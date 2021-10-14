@@ -86,7 +86,9 @@ plas_epspdot = np.zeros(plas_shape, dtype="float")
 pbar = tqdm.tqdm(files)
 nfiles = 0
 
-dstep = 10  # with storage every 500 increments this corresponds roughly to dA = 50 during nucleation
+dstep = (
+    10  # with storage every 500 increments this corresponds roughly to dA = 50 during nucleation
+)
 astep = 50
 imax = 0
 

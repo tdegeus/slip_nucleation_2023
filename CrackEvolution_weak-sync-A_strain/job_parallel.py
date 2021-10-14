@@ -15,9 +15,7 @@ def get_runs():
 
     commands = []
 
-    with h5py.File(
-        os.path.join(dbase, "AvalancheAfterPush_strain=00d10.hdf5"), "r"
-    ) as data:
+    with h5py.File(os.path.join(dbase, "AvalancheAfterPush_strain=00d10.hdf5"), "r") as data:
 
         p_files = data["files"][...]
         p_file = data["file"][...]
@@ -113,6 +111,4 @@ sbatch = {
     "account": "pcsl",
 }
 
-open(os.path.join(dirname, "job.slurm"), "w").write(
-    gs.scripts.plain(command=slurm, **sbatch)
-)
+open(os.path.join(dirname, "job.slurm"), "w").write(gs.scripts.plain(command=slurm, **sbatch))

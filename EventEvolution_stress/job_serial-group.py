@@ -45,9 +45,7 @@ for name, stress in zip(stress_names, stresses):
     if not os.path.isdir(name):
         os.makedirs(name)
 
-    with h5py.File(
-        os.path.join(dbase, "AvalancheAfterPush", f"{name:s}.hdf5"), "r"
-    ) as data:
+    with h5py.File(os.path.join(dbase, "AvalancheAfterPush", f"{name:s}.hdf5"), "r") as data:
 
         p_files = data["files"].asstr()[...]
         p_file = data["file"][...]
@@ -166,6 +164,4 @@ for group in range(ngroup):
         "partition": "serial",
     }
 
-    open(jobname + ".slurm", "w").write(
-        GooseSLURM.scripts.plain(command=command, **sbatch)
-    )
+    open(jobname + ".slurm", "w").write(GooseSLURM.scripts.plain(command=command, **sbatch))

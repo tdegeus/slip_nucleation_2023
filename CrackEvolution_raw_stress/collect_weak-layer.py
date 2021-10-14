@@ -50,9 +50,7 @@ def LoadSystem(filename, uuid):
         system.setMassMatrix(data["/rho"][...])
         system.setDampingMatrix(data["/damping/alpha"][...])
         system.setElastic(data["/elastic/K"][...], data["/elastic/G"][...])
-        system.setPlastic(
-            data["/cusp/K"][...], data["/cusp/G"][...], data["/cusp/epsy"][...]
-        )
+        system.setPlastic(data["/cusp/K"][...], data["/cusp/G"][...], data["/cusp/epsy"][...])
         system.setDt(data["/run/dt"][...])
 
         return system
@@ -74,9 +72,7 @@ if __name__ == "__main__":
     shelephant.OverWrite(destinations, force=args["--force"])
     shelephant.MakeDirs(shelephant.DirNames(destinations), force=args["--force"])
 
-    for ifile, (source, destination) in enumerate(
-        zip(tqdm.tqdm(sources), destinations)
-    ):
+    for ifile, (source, destination) in enumerate(zip(tqdm.tqdm(sources), destinations)):
 
         with h5py.File(destination, "w") as out:
 

@@ -40,6 +40,4 @@ for i, c in enumerate(cmd):
         "mem": "8G",
     }
 
-    open(f + ".slurm", "w").write(
-        gs.scripts.plain(command=slurm.format(command=c), **sbatch)
-    )
+    open(f + ".slurm", "w").write(gs.scripts.plain(command=slurm.format(command=c), **sbatch))
