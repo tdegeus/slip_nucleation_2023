@@ -60,9 +60,7 @@ def snippet_load_conda(condabase: str = default_condabase):
     """
 
     ret = ["# Activate hardware optimised environment (or fallback environment)"]
-    ret += [
-        f'conda_activate_first_existing "{condabase}$(get_simd_envname)" "{condabase}"'
-    ]
+    ret += [f'conda_activate_first_existing "{condabase}$(get_simd_envname)" "{condabase}"']
     ret += []
 
     return "\n".join(ret)
@@ -247,9 +245,7 @@ def cli_serial_group(cli_args=None):
     else:
         cli_args = [str(arg) for arg in cli_args]
 
-    class MyFormatter(
-        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
-    ):
+    class MyFormatter(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
         pass
 
     parser = argparse.ArgumentParser(
@@ -265,7 +261,7 @@ def cli_serial_group(cli_args=None):
 
     args = parser.parse_args(cli_args)
 
-    assert np.all([os.path.isfile(os.path.realpath(file)) for file in args.files])
+    assert np.all([os.path.isfile(file) for file in args.files])
 
     files = [os.path.relpath(file, args.outdir) for file in args.files]
     commands = [f"{args.command} {file}" for file in files]
@@ -291,9 +287,7 @@ def cli_serial(cli_args=None):
     else:
         cli_args = [str(arg) for arg in cli_args]
 
-    class MyFormatter(
-        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
-    ):
+    class MyFormatter(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
         pass
 
     parser = argparse.ArgumentParser(
@@ -301,9 +295,7 @@ def cli_serial(cli_args=None):
     )
 
     parser.add_argument("-o", "--outdir", type=str, default=".", help="Output dir")
-    parser.add_argument(
-        "-n", "--name", type=str, help="Job name (default: from command)"
-    )
+    parser.add_argument("-n", "--name", type=str, help="Job name (default: from command)")
     parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("command", type=str, help="The command")

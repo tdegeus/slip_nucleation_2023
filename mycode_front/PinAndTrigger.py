@@ -175,9 +175,7 @@ def cli_main(cli_args=None):
     else:
         cli_args = [str(arg) for arg in cli_args]
 
-    class MyFormatter(
-        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
-    ):
+    class MyFormatter(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
         pass
 
     parser = argparse.ArgumentParser(
@@ -194,7 +192,7 @@ def cli_main(cli_args=None):
 
     args = parser.parse_args(cli_args)
 
-    assert os.path.isfile(os.path.realpath(args.file))
+    assert os.path.isfile(args.file)
     assert os.path.realpath(args.file) != os.path.realpath(args.output)
 
     print("starting:", args.output)
@@ -216,9 +214,7 @@ def cli_main(cli_args=None):
         # (*) Reload specific increment based on target stress and system-spanning increment
 
         assert target_inc_system in inc_system
-        i = np.argmax(
-            (target_inc_system == inc_system) * (target_inc_system <= inc_push)
-        )
+        i = np.argmax((target_inc_system == inc_system) * (target_inc_system <= inc_push))
         inc = inc_push[i]
         assert target_inc_system == inc_system[i]
 
@@ -274,9 +270,7 @@ def cli_collect(cli_args=None):
     else:
         cli_args = [str(arg) for arg in cli_args]
 
-    class MyFormatter(
-        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
-    ):
+    class MyFormatter(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
         pass
 
     parser = argparse.ArgumentParser(
@@ -312,7 +306,7 @@ def cli_collect(cli_args=None):
 
     args = parser.parse_args(cli_args)
 
-    assert np.all([os.path.isfile(os.path.realpath(file)) for file in args.files])
+    assert np.all([os.path.isfile(file) for file in args.files])
     assert len(args.files) > 0
 
     corrupted = []
@@ -376,9 +370,7 @@ def cli_collect(cli_args=None):
                 g5.copy(file, output, datasets, root=root)
 
     if len(corrupted) > 0 or len(existing) > 0:
-        shelephant.yaml.dump(
-            args.error, dict(corrupted=corrupted, existing=existing), force=True
-        )
+        shelephant.yaml.dump(args.error, dict(corrupted=corrupted, existing=existing), force=True)
 
 
 def cli_collect_update(cli_args=None):
@@ -395,9 +387,7 @@ def cli_collect_update(cli_args=None):
     else:
         cli_args = [str(arg) for arg in cli_args]
 
-    class MyFormatter(
-        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
-    ):
+    class MyFormatter(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
         pass
 
     parser = argparse.ArgumentParser(
@@ -418,7 +408,7 @@ def cli_collect_update(cli_args=None):
 
     args = parser.parse_args(cli_args)
 
-    assert os.path.isfile(os.path.realpath(args.file))
+    assert os.path.isfile(args.file)
 
     if not args.force:
         if os.path.isfile(args.output):
@@ -441,22 +431,16 @@ def cli_collect_update(cli_args=None):
                 meta.attrs["dependencies"] = System.dependencies(model)
 
                 vers = str(file["/meta/version"].asstr()[...])
-                deps = sorted(
-                    str(d) for d in file["/meta/version_dependencies"].asstr()[...]
-                )
+                deps = sorted(str(d) for d in file["/meta/version_dependencies"].asstr()[...])
 
                 paths = list(g5.getdatasets(file, root="data", max_depth=5))
-                paths = np.array(
-                    [path.split("data/")[1].split("/...")[0] for path in paths]
-                )
+                paths = np.array([path.split("data/")[1].split("/...")[0] for path in paths])
 
                 for path in tqdm.tqdm(paths):
                     info = interpret_filename(path)
                     root = file[g5.join("data", path, root=True)]
 
-                    meta = output.create_group(
-                        g5.join("data", path, "meta", progname, root=True)
-                    )
+                    meta = output.create_group(g5.join("data", path, "meta", progname, root=True))
                     meta.attrs["file"] = str(root["file"].asstr()[...])
                     meta.attrs["version"] = vers
                     meta.attrs["dependencies"] = deps
@@ -470,10 +454,7 @@ def cli_collect_update(cli_args=None):
                     if "disp" not in root:
                         continue
 
-                    p = [
-                        g5.join("data", path, "disp", str(i), root=True)
-                        for i in range(2)
-                    ]
+                    p = [g5.join("data", path, "disp", str(i), root=True) for i in range(2)]
                     g5.copy(file, output, p)
 
                 return 0
@@ -496,9 +477,7 @@ def cli_collect_combine(cli_args=None):
     else:
         cli_args = [str(arg) for arg in cli_args]
 
-    class MyFormatter(
-        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
-    ):
+    class MyFormatter(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
         pass
 
     parser = argparse.ArgumentParser(
@@ -520,7 +499,7 @@ def cli_collect_combine(cli_args=None):
 
     args = parser.parse_args(cli_args)
 
-    assert np.all([os.path.isfile(os.path.realpath(file)) for file in args.files])
+    assert np.all([os.path.isfile(file) for file in args.files])
     assert len(args.files) > 0
 
     if not args.force:
@@ -569,9 +548,7 @@ def cli_job(cli_args=None):
     else:
         cli_args = [str(arg) for arg in cli_args]
 
-    class MyFormatter(
-        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
-    ):
+    class MyFormatter(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
         pass
 
     parser = argparse.ArgumentParser(
@@ -580,13 +557,9 @@ def cli_job(cli_args=None):
 
     parser.add_argument("info", type=str, help="EnsembleInfo (read-only)")
 
-    parser.add_argument(
-        "-o", "--output", type=str, default=".", help="Output directory"
-    )
+    parser.add_argument("-o", "--output", type=str, default=".", help="Output directory")
 
-    parser.add_argument(
-        "-a", "--size", type=int, default=1200, help="Size to keep unpinned"
-    )
+    parser.add_argument("-a", "--size", type=int, default=1200, help="Size to keep unpinned")
 
     parser.add_argument(
         "-c",
@@ -623,10 +596,10 @@ def cli_job(cli_args=None):
 
     args = parser.parse_args(cli_args)
 
-    assert os.path.isfile(os.path.realpath(args.info))
-    assert os.path.isdir(os.path.realpath(args.output))
+    assert os.path.isfile(args.info)
+    assert os.path.isdir(args.output)
     if args.finished:
-        assert os.path.isfile(os.path.realpath(args.finished))
+        assert os.path.isfile(args.finished)
 
     basedir = os.path.dirname(args.info)
     executable = entry_points["cli_main"]
@@ -684,9 +657,7 @@ def cli_job(cli_args=None):
             simid = os.path.basename(os.path.splitext(filename)[0])
             filepath = os.path.relpath(filename, args.output)
 
-            for element, A, incc in itertools.product(
-                [0, int(N / 2)], [args.size], trigger
-            ):
+            for element, A, incc in itertools.product([0, int(N / 2)], [args.size], trigger):
 
                 root = (
                     f"/data"
@@ -826,9 +797,7 @@ def cli_output_scalar(cli_args=None):
     else:
         cli_args = [str(arg) for arg in cli_args]
 
-    class MyFormatter(
-        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
-    ):
+    class MyFormatter(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
         pass
 
     parser = argparse.ArgumentParser(
@@ -857,8 +826,8 @@ def cli_output_scalar(cli_args=None):
 
     args = parser.parse_args(cli_args)
 
-    assert os.path.isfile(os.path.realpath(args.file))
-    assert os.path.isfile(os.path.realpath(args.info))
+    assert os.path.isfile(args.file)
+    assert os.path.isfile(args.info)
 
     with h5py.File(args.info, "r") as file:
         sig0 = file["/normalisation/sig0"][...]
@@ -957,9 +926,7 @@ def cli_output_spatial(cli_args=None):
     else:
         cli_args = [str(arg) for arg in cli_args]
 
-    class MyFormatter(
-        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
-    ):
+    class MyFormatter(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
         pass
 
     parser = argparse.ArgumentParser(
@@ -988,8 +955,8 @@ def cli_output_spatial(cli_args=None):
 
     args = parser.parse_args(cli_args)
 
-    assert os.path.isfile(os.path.realpath(args.file))
-    assert os.path.isfile(os.path.realpath(args.info))
+    assert os.path.isfile(args.file)
+    assert os.path.isfile(args.info)
 
     with h5py.File(args.info, "r") as file:
         sig0 = file["/normalisation/sig0"][...]
@@ -1129,9 +1096,7 @@ def cli_getdynamics_sync_A(cli_args=None):
     else:
         cli_args = [str(arg) for arg in cli_args]
 
-    class MyFormatter(
-        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
-    ):
+    class MyFormatter(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
         pass
 
     parser = argparse.ArgumentParser(
@@ -1143,12 +1108,12 @@ def cli_getdynamics_sync_A(cli_args=None):
 
     args = parser.parse_args(cli_args)
 
-    assert os.path.isfile(os.path.realpath(args.file))
+    assert os.path.isfile(args.file)
 
     with open(args.file) as file:
         config = yaml.load(file.read(), Loader=yaml.FullLoader)
 
-    assert os.path.isfile(os.path.realpath(config["info"]))
+    assert os.path.isfile(config["info"])
 
     with h5py.File(config["info"], "r") as file:
         sig0 = file["/normalisation/sig0"][...]
@@ -1201,9 +1166,7 @@ def cli_getdynamics_sync_A_job(cli_args=None):
     else:
         cli_args = [str(arg) for arg in cli_args]
 
-    class MyFormatter(
-        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
-    ):
+    class MyFormatter(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
         pass
 
     parser = argparse.ArgumentParser(
@@ -1246,8 +1209,8 @@ def cli_getdynamics_sync_A_job(cli_args=None):
 
     args = parser.parse_args(cli_args)
 
-    assert os.path.isfile(os.path.realpath(args.collect))
-    assert os.path.isfile(os.path.realpath(args.info))
+    assert os.path.isfile(args.collect)
+    assert os.path.isfile(args.info)
 
     config = dict(
         collected=args.collect,
@@ -1285,9 +1248,7 @@ def cli_getdynamics_sync_A_job(cli_args=None):
 
         files = []
         for a, s in itertools.product(A_target, Stress):
-            subset = paths[
-                (a_real > 0) * (a_real > a - 10) * (a_real < a + 10) * (stress == s)
-            ]
+            subset = paths[(a_real > 0) * (a_real > a - 10) * (a_real < a + 10) * (stress == s)]
             files += list(subset)
 
     if len(files) == 0:
@@ -1296,9 +1257,7 @@ def cli_getdynamics_sync_A_job(cli_args=None):
     chunks = int(np.ceil(len(files) / float(args.group)))
     devided = np.array_split(files, chunks)
     njob = len(devided)
-    fmt = (
-        args.output + "_{0:" + str(int(np.ceil(np.log10(njob)))) + "d}-of-" + str(njob)
-    )
+    fmt = args.output + "_{0:" + str(int(np.ceil(np.log10(njob)))) + "d}-of-" + str(njob)
     ret = []
 
     for i, group in enumerate(devided):
@@ -1307,8 +1266,8 @@ def cli_getdynamics_sync_A_job(cli_args=None):
         cname = os.path.join(args.outdir, bname + ".yaml")
         oname = os.path.join(args.outdir, bname + ".h5")
 
-        assert not os.path.isfile(os.path.realpath(cname))
-        assert not os.path.isfile(os.path.realpath(oname))
+        assert not os.path.isfile(cname)
+        assert not os.path.isfile(oname)
 
         config = dict(
             collected=os.path.relpath(args.collect, args.outdir),
@@ -1338,9 +1297,7 @@ def cli_getdynamics_sync_A_combine(cli_args=None):
     else:
         cli_args = [str(arg) for arg in cli_args]
 
-    class MyFormatter(
-        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
-    ):
+    class MyFormatter(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
         pass
 
     parser = argparse.ArgumentParser(
@@ -1361,7 +1318,7 @@ def cli_getdynamics_sync_A_combine(cli_args=None):
     args = parser.parse_args(cli_args)
 
     assert len(args.files) > 0
-    assert np.all([os.path.isfile(os.path.realpath(path)) for path in args.files])
+    assert np.all([os.path.isfile(path) for path in args.files])
 
     if not args.force:
         if os.path.isfile(args.output):
@@ -1489,9 +1446,7 @@ def cli_getdynamics_sync_A_check(cli_args=None):
     else:
         cli_args = [str(arg) for arg in cli_args]
 
-    class MyFormatter(
-        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
-    ):
+    class MyFormatter(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
         pass
 
     parser = argparse.ArgumentParser(
@@ -1512,7 +1467,7 @@ def cli_getdynamics_sync_A_check(cli_args=None):
 
     args = parser.parse_args(cli_args)
 
-    assert np.all([os.path.isfile(os.path.realpath(path)) for path in args.files])
+    assert np.all([os.path.isfile(path) for path in args.files])
 
     if not args.force:
         if os.path.isfile(args.output):
@@ -1609,9 +1564,7 @@ def cli_getdynamics_sync_A_average(cli_args=None):
     else:
         cli_args = [str(arg) for arg in cli_args]
 
-    class MyFormatter(
-        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
-    ):
+    class MyFormatter(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
         pass
 
     parser = argparse.ArgumentParser(
@@ -1640,11 +1593,11 @@ def cli_getdynamics_sync_A_average(cli_args=None):
 
     args = parser.parse_args(cli_args)
 
-    assert np.all([os.path.isfile(os.path.realpath(path)) for path in args.files])
+    assert np.all([os.path.isfile(path) for path in args.files])
 
     if not args.force:
         for filepath in [args.output, args.summary]:
-            if os.path.isfile(os.path.realpath(filepath)):
+            if os.path.isfile(filepath):
                 if not click.confirm(f'Overwrite "{filepath}"?'):
                     raise OSError("Cancelled")
 
