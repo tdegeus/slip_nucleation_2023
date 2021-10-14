@@ -744,7 +744,8 @@ def output_scalar(filepath: str, sig0: float):
         paths = list(g5.getdatasets(file, root="data", max_depth=5))
         paths = np.array([path.split("data/")[1].split("/...")[0] for path in paths])
 
-        for path in paths:
+        for path in tqdm.tqdm(paths):
+
             info = interpret_filename(path)
             root = g5.join("data", path, root=True)
             root = file[root]
@@ -764,13 +765,12 @@ def output_scalar(filepath: str, sig0: float):
                     system.reset_epsy(System.read_epsy(simfile))
 
             system.setU(root["disp"]["0"][...])
-            pinsystem(system, meta.attrs["target_element"], meta.attrs["target_A"])
+            pinned = pinsystem(system, meta.attrs["target_element"], meta.attrs["target_A"])
             idx_n = system.plastic_CurrentIndex()[:, 0].astype(int)
 
             system.setU(root["disp"]["1"][...])
             idx = system.plastic_CurrentIndex()[:, 0].astype(int)
 
-            w = idx != idx_n
             s = np.sum(idx - idx_n)
             a = np.sum(idx != idx_n)
             Sig = np.average(system.Sig(), weights=dV, axis=(0, 1)) / sig0
@@ -787,14 +787,27 @@ def output_scalar(filepath: str, sig0: float):
             ret[stress][A]["Sig_yy"].append(Sig[1, 1])
 
             if s > 0:
+                w = idx != idx_n
+                moving_sig = np.average(plastic_sig, weights=w, axis=0)
+                ret[stress][A]["moving_sig_xx"].append(moving_sig[0, 0])
+                ret[stress][A]["moving_sig_xy"].append(moving_sig[0, 1])
+                ret[stress][A]["moving_sig_yy"].append(moving_sig[1, 1])
+
+                w = tools.fill_avalanche(idx != idx_n)
                 crack_sig = np.average(plastic_sig, weights=w, axis=0)
                 ret[stress][A]["crack_sig_xx"].append(crack_sig[0, 0])
                 ret[stress][A]["crack_sig_xy"].append(crack_sig[0, 1])
                 ret[stress][A]["crack_sig_yy"].append(crack_sig[1, 1])
+
+                w = np.logical_not(pinned)
+                unpinned_sig = np.average(plastic_sig, weights=w, axis=0)
+                ret[stress][A]["unpinned_sig_xx"].append(unpinned_sig[0, 0])
+                ret[stress][A]["unpinned_sig_xy"].append(unpinned_sig[0, 1])
+                ret[stress][A]["unpinned_sig_yy"].append(unpinned_sig[1, 1])
             else:
-                ret[stress][A]["crack_sig_xx"].append(np.NaN)
-                ret[stress][A]["crack_sig_xy"].append(np.NaN)
-                ret[stress][A]["crack_sig_yy"].append(np.NaN)
+                for t in ["crack", "unpinned", "moving"]:
+                    for d in ["xx", "xy", "yy"]:
+                        ret[stress][A][f"{t}_sig_{d}"].append(np.NaN)
 
     return ret
 
@@ -867,7 +880,7 @@ def output_spatial(filepath: str, sig0: float):
     """
 
     system = None
-    ret = {}
+    ret = defaultdict(lambda: defaultdict(lambda: defaultdict(enstat.mean.StaticNd)))
     dirname = os.path.dirname(filepath)
 
     with h5py.File(filepath, "r") as file:
@@ -876,7 +889,8 @@ def output_spatial(filepath: str, sig0: float):
         paths = list(g5.getdatasets(file, root="data", max_depth=5))
         paths = np.array([path.split("data/")[1].split("/...")[0] for path in paths])
 
-        for path in paths:
+        for path in tqdm.tqdm(paths):
+
             info = interpret_filename(path)
             root = g5.join("data", path, root=True)
             root = file[root]
@@ -919,19 +933,6 @@ def output_spatial(filepath: str, sig0: float):
 
             stress = "stress={stress:s}".format(**info)
             A = "A={A:d}".format(**info)
-
-            if stress not in ret:
-                ret[stress] = {}
-            if A not in ret[stress]:
-                ret[stress][A] = {
-                    "S": enstat.mean.StaticNd(),
-                    "A": enstat.mean.StaticNd(),
-                    "sig_xx": enstat.mean.StaticNd(),
-                    "sig_xy": enstat.mean.StaticNd(),
-                    "sig_yy": enstat.mean.StaticNd(),
-                    "isplastic": enstat.mean.StaticNd(),
-                }
-
             ret[stress][A]["S"].add_sample(s)
             ret[stress][A]["A"].add_sample(a.astype(int))
             ret[stress][A]["sig_xx"].add_sample(to_regular(Sig[:, 0, 0]))
@@ -1533,7 +1534,7 @@ def getdynamics_sync_A_average(paths: dict):
     :return: dict, per stress, A, and variable.
     """
 
-    ret = {}
+    ret = defaultdict(lambda: defaultdict(lambda: defaultdict(enstat.mean.StaticNd)))
 
     for filepath in paths:
 
@@ -1575,24 +1576,6 @@ def getdynamics_sync_A_average(paths: dict):
                 sig_xy = tools.indep_roll(sig_xy, shift, axis=1)
                 sig_yy = tools.indep_roll(sig_yy, shift, axis=1)
                 S = tools.indep_roll(S, shift, axis=1)
-
-                if stress not in ret:
-                    ret[stress] = {}
-
-                if A not in ret[stress]:
-                    ret[stress][A] = dict(
-                        sig_xx=enstat.mean.StaticNd(),
-                        sig_xy=enstat.mean.StaticNd(),
-                        sig_yy=enstat.mean.StaticNd(),
-                        S=enstat.mean.StaticNd(),
-                        t=enstat.mean.StaticNd(),
-                        Sig_xx=enstat.mean.StaticNd(),
-                        Sig_xy=enstat.mean.StaticNd(),
-                        Sig_yy=enstat.mean.StaticNd(),
-                        crack_sig_xx=enstat.mean.StaticNd(),
-                        crack_sig_xy=enstat.mean.StaticNd(),
-                        crack_sig_yy=enstat.mean.StaticNd(),
-                    )
 
                 ret[stress][A]["sig_xx"].add_sample(sig_xx, mask=mask)
                 ret[stress][A]["sig_xy"].add_sample(sig_xy, mask=mask)
