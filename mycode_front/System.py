@@ -119,9 +119,7 @@ def init(file: h5py.File) -> model.System:
     )
 
     system.setMassMatrix(file["rho"][...])
-    system.setDampingMatrix(
-        file["alpha"][...] if "alpha" in file else file["damping/alpha"][...]
-    )
+    system.setDampingMatrix(file["alpha"][...] if "alpha" in file else file["damping/alpha"][...])
     system.setElastic(file["/elastic/K"][...], file["/elastic/G"][...])
     system.setPlastic(file["/cusp/K"][...], file["/cusp/G"][...], read_epsy(file))
 
@@ -130,9 +128,7 @@ def init(file: h5py.File) -> model.System:
     return system
 
 
-def generate(
-    filename: str, N: int, seed: int = 0, classic: bool = False, test_mode: bool = False
-):
+def generate(filename: str, N: int, seed: int = 0, classic: bool = False, test_mode: bool = False):
     """
     Generate input file.
     Note that two ways of storage of yield strains are supported:
@@ -147,7 +143,7 @@ def generate(
     :param test_mode: Run in test mode (smaller chunk).
     """
 
-    assert not os.path.isfile(os.path.realpath(filename))
+    assert not os.path.isfile(filename)
     progname = entry_points["cli_generate"]
 
     # parameters
@@ -184,9 +180,7 @@ def generate(
     if classic:
         assert seed == 0  # at the moment seeding is not controlled locally
         realization = str(uuid.uuid4())
-        epsy = eps_offset + 2.0 * eps0 * np.random.weibull(k, size=nchunk * N).reshape(
-            N, -1
-        )
+        epsy = eps_offset + 2.0 * eps0 * np.random.weibull(k, size=nchunk * N).reshape(N, -1)
         epsy[:, 0] = eps_offset + 2.0 * eps0 * np.random.random(N)
         epsy = np.cumsum(epsy, axis=1)
         i = np.min(np.where(np.min(epsy, axis=0) > 0.55)[0])
@@ -430,9 +424,7 @@ def cli_generate(cli_args=None):
     else:
         cli_args = [str(arg) for arg in cli_args]
 
-    class MyFormatter(
-        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
-    ):
+    class MyFormatter(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
         pass
 
     parser = argparse.ArgumentParser(
@@ -448,7 +440,7 @@ def cli_generate(cli_args=None):
 
     args = parser.parse_args(cli_args)
 
-    assert os.path.isdir(os.path.realpath(args.outdir))
+    assert os.path.isdir(args.outdir)
 
     files = []
 
@@ -588,9 +580,7 @@ def cli_run(cli_args=None):
     else:
         cli_args = [str(arg) for arg in cli_args]
 
-    class MyFormatter(
-        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
-    ):
+    class MyFormatter(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
         pass
 
     parser = argparse.ArgumentParser(
@@ -603,7 +593,7 @@ def cli_run(cli_args=None):
 
     args = parser.parse_args(cli_args)
 
-    assert os.path.isfile(os.path.realpath(args.file))
+    assert os.path.isfile(args.file)
     run(args.file, dev=args.force)
 
 
@@ -726,9 +716,7 @@ def cli_ensembleinfo(cli_args=None):
     else:
         cli_args = [str(arg) for arg in cli_args]
 
-    class MyFormatter(
-        argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter
-    ):
+    class MyFormatter(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
         pass
 
     parser = argparse.ArgumentParser(
@@ -749,7 +737,7 @@ def cli_ensembleinfo(cli_args=None):
     args = parser.parse_args(cli_args)
 
     assert len(args.files) > 0
-    assert np.all([os.path.isfile(os.path.realpath(file)) for file in args.files])
+    assert np.all([os.path.isfile(file) for file in args.files])
     files = [os.path.relpath(file, os.path.dirname(args.output)) for file in args.files]
     seeds = []
 

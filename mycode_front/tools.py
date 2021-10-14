@@ -20,10 +20,10 @@ def filter(xn):
 
     # Apply the filter to xn. Use lfilter_zi to choose the initial condition of the filter:
     zi = signal.lfilter_zi(b, a)
-    z, _ = signal.lfilter(b, a, xn, zi=zi*xn[0])
+    z, _ = signal.lfilter(b, a, xn, zi=zi * xn[0])
 
     # Apply the filter again, to have a result filtered at an order the same as filtfilt:
-    z2, _ = signal.lfilter(b, a, z, zi=zi*z[0])
+    z2, _ = signal.lfilter(b, a, z, zi=zi * z[0])
 
     # Use filtfilt to apply the filter:
     y = signal.filtfilt(b, a, xn)

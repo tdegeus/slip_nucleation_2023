@@ -139,13 +139,9 @@ class MyTests(unittest.TestCase):
         interpret = os.path.join(dirname, "myinterpret.h5")
         spatial = os.path.join(dirname, "myspatial.h5")
 
-        my.PinAndTrigger.cli_output_scalar(
-            ["-f", "-i", infoname, "-o", interpret, collectname]
-        )
+        my.PinAndTrigger.cli_output_scalar(["-f", "-i", infoname, "-o", interpret, collectname])
 
-        my.PinAndTrigger.cli_output_spatial(
-            ["-f", "-i", infoname, "-o", spatial, collectname]
-        )
+        my.PinAndTrigger.cli_output_spatial(["-f", "-i", infoname, "-o", spatial, collectname])
 
         # PinAndTrigger : extract dynamics (try running only, not really test)
 
@@ -193,12 +189,7 @@ class MyTests(unittest.TestCase):
         pwd = os.getcwd()
         os.chdir(dirname)
         with open("PinAndTrigger_1-of-1.slurm") as file:
-            cmd = (
-                file.read()
-                .split("\n")[-3]
-                .split("stdbuf -o0 -e0 PinAndTrigger ")[1]
-                .split(" ")
-            )
+            cmd = file.read().split("\n")[-3].split("stdbuf -o0 -e0 PinAndTrigger ")[1].split(" ")
             my.PinAndTrigger.cli_main(cmd)
         os.chdir(pwd)
 
