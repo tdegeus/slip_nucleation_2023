@@ -65,10 +65,7 @@ def interpret_filename(filename):
         info[key] = value
 
     for key in info:
-        if key in ["kplate"]:
-            info[key] = float(info[key])
-        else:
-            info[key] = int(info[key])
+        info[key] = int(info[key])
 
     return info
 
@@ -427,7 +424,6 @@ def cli_generate(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     docstring = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    entry_points[funcname]
 
     if cli_args is None:
         cli_args = sys.argv[1:]

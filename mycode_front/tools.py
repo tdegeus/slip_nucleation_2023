@@ -2,6 +2,37 @@ import GMatElastoPlasticQPot.Cartesian2d as GMat
 import numpy as np
 
 
+def filter(xn):
+    """
+    Filter a signal.
+
+    :param xn: The signal.
+    :return: The filtered signal
+    """
+
+    from scipy import signal
+
+    N = xn.size
+    xn = np.tile(xn, (3))
+
+    # Create an order 3 lowpass butterworth filter:
+    b, a = signal.butter(3, 0.1)
+
+    # Apply the filter to xn. Use lfilter_zi to choose the initial condition of the filter:
+    zi = signal.lfilter_zi(b, a)
+    z, _ = signal.lfilter(b, a, xn, zi=zi*xn[0])
+
+    # Apply the filter again, to have a result filtered at an order the same as filtfilt:
+    z2, _ = signal.lfilter(b, a, z, zi=zi*z[0])
+
+    # Use filtfilt to apply the filter:
+    y = signal.filtfilt(b, a, xn)
+
+    i = N
+    j = N * 2
+    return y[i:j]
+
+
 def sigd(xx, xy, yy):
 
     Sig = np.empty(list(xx.shape) + [2, 2])

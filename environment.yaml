@@ -7,7 +7,6 @@ dependencies:
 - enstat
 - fmt
 - frictionqpotfem
-- gitpython
 - gmatelastoplasticqpot
 - goosefem
 - goosehdf5
