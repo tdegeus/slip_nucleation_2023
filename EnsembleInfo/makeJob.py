@@ -7,9 +7,7 @@ import GooseSLURM as gs
 # get all simulation files, split in ensembles
 # ==================================================================================================
 
-files = subprocess.check_output("find ../../data -iname 'id*.hdf5'", shell=True).decode(
-    "utf-8"
-)
+files = subprocess.check_output("find ../../data -iname 'id*.hdf5'", shell=True).decode("utf-8")
 files = list(filter(None, files.split("\n")))
 
 enembles = {}
@@ -72,9 +70,7 @@ sbatch = {
 }
 
 # write SLURM file
-open(fbase + ".slurm", "w").write(
-    gs.scripts.plain(command=slurm.format(fbase=fbase), **sbatch)
-)
+open(fbase + ".slurm", "w").write(gs.scripts.plain(command=slurm.format(fbase=fbase), **sbatch))
 
 # ==================================================================================================
 # write copy commands
@@ -88,9 +84,7 @@ for ensemble in sorted(enembles):
 
     dest = os.path.join(ensemble, outname)
 
-    src = os.path.normpath(
-        os.path.join("~/data/22_depinning-inertia/EnsembleInfo/build/", dest)
-    )
+    src = os.path.normpath(os.path.join("~/data/22_depinning-inertia/EnsembleInfo/build/", dest))
 
     command = "echo {src:s};\nscp fidis:{src:s} {dest:s}".format(src=src, dest=dest)
 

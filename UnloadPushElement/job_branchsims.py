@@ -50,9 +50,7 @@ def check_stress(filename, inc):
             Sig = material.Stress()
 
             dV = quad.AsTensor(2, quad.dV())
-            sig += [
-                float(mat.Cartesian2d.Sigd(np.average(Sig, weights=dV, axis=(0, 1))))
-            ]
+            sig += [float(mat.Cartesian2d.Sigd(np.average(Sig, weights=dV, axis=(0, 1))))]
 
         assert sig[0] >= sig[1]
         assert sig[1] <= sig[2]
@@ -104,9 +102,7 @@ for stress, inc, file in zip(stresses, incs, files):
 
     for element in [146, 511, 730, 949, 1241, 1387]:
 
-        outfilename = "{:s}_element={:d}_inc={:d}.hdf5".format(
-            file.split(".hdf5")[0], element, inc
-        )
+        outfilename = "{:s}_element={:d}_inc={:d}.hdf5".format(file.split(".hdf5")[0], element, inc)
 
         with h5py.File(os.path.join(dbase, file), "r") as data:
 
@@ -120,17 +116,11 @@ for stress, inc, file in zip(stresses, incs, files):
                 output["/push/stresses"] = push_stresses
                 output["/disp/0"] = data["disp"][str(inc)][...]
 
-                dset = output.create_dataset(
-                    "/stored", (1,), maxshape=(None,), dtype=np.int
-                )
+                dset = output.create_dataset("/stored", (1,), maxshape=(None,), dtype=np.int)
                 dset[0] = 0
 
-                dset = output.create_dataset(
-                    "/sigd", (1,), maxshape=(None,), dtype=np.float
-                )
+                dset = output.create_dataset("/sigd", (1,), maxshape=(None,), dtype=np.float)
                 dset[0] = stress
 
-                dset = output.create_dataset(
-                    "/t", (1,), maxshape=(None,), dtype=np.float
-                )
+                dset = output.create_dataset("/t", (1,), maxshape=(None,), dtype=np.float)
                 dset[0] = float(data["/t"][inc])

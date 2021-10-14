@@ -15,9 +15,7 @@ def get_runs():
 
     commands = []
 
-    with h5py.File(
-        os.path.join(dbase, "AvalancheAfterPush_strain=00d10.hdf5"), "r"
-    ) as data:
+    with h5py.File(os.path.join(dbase, "AvalancheAfterPush_strain=00d10.hdf5"), "r") as data:
 
         p_files = data["files"].asstr()[...]
         p_file = data["file"][...]

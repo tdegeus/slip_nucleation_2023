@@ -47,9 +47,7 @@ for stress, inc, file in zip(stresses, incs, files):
 
     for i in itrigger:
 
-        outfilename = "{:s}_inc={:d}_itrigger={:d}.hdf5".format(
-            file.split(".hdf5")[0], inc, i
-        )
+        outfilename = "{:s}_inc={:d}_itrigger={:d}.hdf5".format(file.split(".hdf5")[0], inc, i)
 
         print(outfilename)
 
@@ -64,9 +62,7 @@ for stress, inc, file in zip(stresses, incs, files):
                 N = epsy0.shape[0]
                 M = epsy0.shape[1] * 4
                 k = 2.0
-                epsy = 1.0e-5 + 1.0e-3 * np.random.weibull(k, size=(N * M)).reshape(
-                    N, M
-                )
+                epsy = 1.0e-5 + 1.0e-3 * np.random.weibull(k, size=(N * M)).reshape(N, M)
                 epsy[:, 0] += epsy0[:, -1]
                 epsy = np.cumsum(epsy, axis=1)
                 epsy_extendend = np.hstack((epsy0, epsy))
@@ -76,17 +72,11 @@ for stress, inc, file in zip(stresses, incs, files):
                 output["/disp/0"] = data["disp"][str(inc)][...]
                 output["/trigger/i"] = i
 
-                dset = output.create_dataset(
-                    "/stored", (1,), maxshape=(None,), dtype=np.int
-                )
+                dset = output.create_dataset("/stored", (1,), maxshape=(None,), dtype=np.int)
                 dset[0] = 0
 
-                dset = output.create_dataset(
-                    "/sigd", (1,), maxshape=(None,), dtype=np.float
-                )
+                dset = output.create_dataset("/sigd", (1,), maxshape=(None,), dtype=np.float)
                 dset[0] = stress
 
-                dset = output.create_dataset(
-                    "/t", (1,), maxshape=(None,), dtype=np.float
-                )
+                dset = output.create_dataset("/t", (1,), maxshape=(None,), dtype=np.float)
                 dset[0] = float(data["/t"][inc])

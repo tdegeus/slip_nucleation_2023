@@ -57,6 +57,4 @@ for group in range(ngroup):
         "partition": "serial",
     }
 
-    open(jobname + ".slurm", "w").write(
-        GooseSLURM.scripts.plain(command=command, **sbatch)
-    )
+    open(jobname + ".slurm", "w").write(GooseSLURM.scripts.plain(command=command, **sbatch))

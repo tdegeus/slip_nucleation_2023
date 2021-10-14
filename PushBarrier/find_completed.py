@@ -36,9 +36,7 @@ sims = [file for file in files if len(file.split("push")) == 1]
 pushes = [file for file in files if len(file.split("push")) > 1]
 
 sims = [os.path.relpath(file) for file in tqdm.tqdm(sims) if is_completed(file)]
-pushes = [
-    os.path.relpath(file) for file in tqdm.tqdm(pushes) if is_completed_push(file)
-]
+pushes = [os.path.relpath(file) for file in tqdm.tqdm(pushes) if is_completed_push(file)]
 
 ret = {
     "sims": sims,

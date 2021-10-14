@@ -32,6 +32,4 @@ sbatch = {
     "mem": "8G",
 }
 
-open(fbase + ".slurm", "w").write(
-    gs.scripts.plain(command=slurm.format(command=cmd), **sbatch)
-)
+open(fbase + ".slurm", "w").write(gs.scripts.plain(command=slurm.format(command=cmd), **sbatch))

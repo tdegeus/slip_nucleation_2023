@@ -216,9 +216,7 @@ def store(
     m_sigd_yy = m_sig_yy - m_sig_m
 
     # equivalent stress
-    m_sig_eq = np.sqrt(
-        2.0 * (m_sigd_xx ** 2.0 + m_sigd_yy ** 2.0 + 2.0 * m_sigd_xy ** 2.0)
-    )
+    m_sig_eq = np.sqrt(2.0 * (m_sigd_xx ** 2.0 + m_sigd_yy ** 2.0 + 2.0 * m_sigd_xy ** 2.0))
 
     # correct for division
     sig_eq = np.where(m_sig_eq != 0.0, m_sig_eq, 1.0)
@@ -271,30 +269,16 @@ with h5py.File("data_sync-A_plastic.hdf5", "w") as data:
 
     # compute variance
     v_sig_xx = (
-        (out["2nd"]["sig_xx"] / norm - (out["1st"]["sig_xx"] / norm) ** 2.0)
-        * norm
-        / (norm - 1)
+        (out["2nd"]["sig_xx"] / norm - (out["1st"]["sig_xx"] / norm) ** 2.0) * norm / (norm - 1)
     )
     v_sig_xy = (
-        (out["2nd"]["sig_xy"] / norm - (out["1st"]["sig_xy"] / norm) ** 2.0)
-        * norm
-        / (norm - 1)
+        (out["2nd"]["sig_xy"] / norm - (out["1st"]["sig_xy"] / norm) ** 2.0) * norm / (norm - 1)
     )
     v_sig_yy = (
-        (out["2nd"]["sig_yy"] / norm - (out["1st"]["sig_yy"] / norm) ** 2.0)
-        * norm
-        / (norm - 1)
+        (out["2nd"]["sig_yy"] / norm - (out["1st"]["sig_yy"] / norm) ** 2.0) * norm / (norm - 1)
     )
-    v_epsp = (
-        (out["2nd"]["epsp"] / norm - (out["1st"]["epsp"] / norm) ** 2.0)
-        * norm
-        / (norm - 1)
-    )
-    v_depsp = (
-        (out["2nd"]["depsp"] / norm - (out["1st"]["depsp"] / norm) ** 2.0)
-        * norm
-        / (norm - 1)
-    )
+    v_epsp = (out["2nd"]["epsp"] / norm - (out["1st"]["epsp"] / norm) ** 2.0) * norm / (norm - 1)
+    v_depsp = (out["2nd"]["depsp"] / norm - (out["1st"]["depsp"] / norm) ** 2.0) * norm / (norm - 1)
     v_x = (out["2nd"]["x"] / norm - (out["1st"]["x"] / norm) ** 2.0) * norm / (norm - 1)
     v_S = (out["2nd"]["S"] / norm - (out["1st"]["S"] / norm) ** 2.0) * norm / (norm - 1)
 

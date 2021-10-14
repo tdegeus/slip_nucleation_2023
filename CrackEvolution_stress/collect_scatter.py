@@ -163,17 +163,14 @@ for ifile, file in enumerate(pbar):
                 if f"/sync-A/plastic/{A:d}/epsp" in data:
                     assert np.allclose(epsp, data[f"/sync-A/plastic/{A:d}/epsp"][...])
                     assert (
-                        np.allclose(epsp_n, data[f"/sync-A/plastic/{A_n:d}/epsp"][...])
-                        or A_n == 0
+                        np.allclose(epsp_n, data[f"/sync-A/plastic/{A_n:d}/epsp"][...]) or A_n == 0
                     )
 
                 t = data["/sync-A/global/iiter"][A]
                 t_n = data["/sync-A/global/iiter"][A_n]
 
                 system_ret["plastic"]["epsp"][ifile] = np.mean(epsp - epsp_0)
-                system_ret["plastic"]["epspdot"][ifile] = np.mean(epsp - epsp_n) / (
-                    t - t_n
-                )
+                system_ret["plastic"]["epspdot"][ifile] = np.mean(epsp - epsp_n) / (t - t_n)
 
                 system_stored_epsp[ifile] = 1
 

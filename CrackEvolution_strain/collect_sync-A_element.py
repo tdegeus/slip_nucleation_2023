@@ -189,9 +189,7 @@ with h5py.File("data_sync-A_element.hdf5", "w") as out:
         # add to metadata
         # - initialise Increment
         xdmf_inc = pv.Increment(
-            pv.Connectivity(
-                out.filename, "/conn", pv.ElementType.Quadrilateral, conn.shape
-            ),
+            pv.Connectivity(out.filename, "/conn", pv.ElementType.Quadrilateral, conn.shape),
             pv.Coordinates(out.filename, "/coor", coor.shape),
         )
         # - add attributes to Increment

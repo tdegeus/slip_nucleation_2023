@@ -76,9 +76,7 @@ def LoadSystem(filename, uuid):
         system.setMassMatrix(data["/rho"][...])
         system.setDampingMatrix(data["/damping/alpha"][...])
         system.setElastic(data["/elastic/K"][...], data["/elastic/G"][...])
-        system.setPlastic(
-            data["/cusp/K"][...], data["/cusp/G"][...], data["/cusp/epsy"][...]
-        )
+        system.setPlastic(data["/cusp/K"][...], data["/cusp/G"][...], data["/cusp/epsy"][...])
         system.setDt(data["/run/dt"][...])
 
         return system
@@ -226,9 +224,7 @@ def main():
                     # extrapolate on regular mesh
                     def take_interp(myvector):
                         return mapping.mapToRegular(
-                            mid_quad.Interp_N_vector(
-                                vector.AsElement(myvector)
-                            ).reshape(-1, 2)
+                            mid_quad.Interp_N_vector(vector.AsElement(myvector)).reshape(-1, 2)
                         )
 
                     fmaterial = take_interp(fmaterial)
@@ -253,9 +249,7 @@ def main():
 
                     # coarsen by taking element average, take vector norm, reshape to grid
                     def take_norm(myvector):
-                        return np.linalg.norm(myvector, axis=1).reshape(
-                            coarse.nely(), -1
-                        )
+                        return np.linalg.norm(myvector, axis=1).reshape(coarse.nely(), -1)
 
                     fmaterial = take_norm(refine.meanToCoarse(fmaterial))
                     fdamp = take_norm(refine.meanToCoarse(fdamp))

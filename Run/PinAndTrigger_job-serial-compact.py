@@ -16,9 +16,7 @@ parser.add_argument(
     type=str,
     help="Result of PinAndTrigger_collect.py for earlier ran simulations",
 )
-parser.add_argument(
-    "-A", "--size", type=int, default=600, help="Size of the events to simulate"
-)
+parser.add_argument("-A", "--size", type=int, default=600, help="Size of the events to simulate")
 parser.add_argument("-n", "--group", type=int, default=50)
 parser.add_argument("-e", "--executable", type=str, default="python PinAndTrigger.py")
 
@@ -95,9 +93,7 @@ for group in range(ngroup):
     command = "\n".join(c)
     command = slurm.format(command)
 
-    jobname = ("{0:s}-{1:0" + fmt + "d}").format(
-        args.executable.replace(" ", "_"), group
-    )
+    jobname = ("{0:s}-{1:0" + fmt + "d}").format(args.executable.replace(" ", "_"), group)
 
     sbatch = {
         "job-name": "velocity_" + jobname,
@@ -110,6 +106,4 @@ for group in range(ngroup):
         "partition": "serial",
     }
 
-    open(jobname + ".slurm", "w").write(
-        GooseSLURM.scripts.plain(command=command, **sbatch)
-    )
+    open(jobname + ".slurm", "w").write(GooseSLURM.scripts.plain(command=command, **sbatch))

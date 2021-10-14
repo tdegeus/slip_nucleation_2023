@@ -222,8 +222,7 @@ for ifile, file in enumerate(tqdm.tqdm(files)):
 
                 if f"/sync-A/plastic/{a:d}/epsp" in data:
                     assert (
-                        np.allclose(epsp_n, data[f"/sync-A/plastic/{a_n:d}/epsp"][...])
-                        or a_n == 0
+                        np.allclose(epsp_n, data[f"/sync-A/plastic/{a_n:d}/epsp"][...]) or a_n == 0
                     )
 
             moved = idx0 != idx
@@ -328,9 +327,7 @@ def store(
     m_sigd_yy = m_sig_yy - m_sig_m
 
     # equivalent stress
-    m_sig_eq = np.sqrt(
-        2.0 * (m_sigd_xx ** 2.0 + m_sigd_yy ** 2.0 + 2.0 * m_sigd_xy ** 2.0)
-    )
+    m_sig_eq = np.sqrt(2.0 * (m_sigd_xx ** 2.0 + m_sigd_yy ** 2.0 + 2.0 * m_sigd_xy ** 2.0))
 
     # correct for division
     sig_eq = np.where(m_sig_eq != 0.0, m_sig_eq, 1.0)
@@ -396,9 +393,7 @@ with h5py.File(output, "w") as data:
 
     data["/A"] = A
     data["/dA"] = dA
-    data["/dA"].attrs[
-        "description"
-    ] = "epspdot == (epsp[A] - epsp[A - dA]) / (t[A] - t[A - dA])"
+    data["/dA"].attrs["description"] = "epspdot == (epsp[A] - epsp[A - dA]) / (t[A] - t[A - dA])"
     data["/dA"].attrs["usage"] = "measured = epspdot[dA:, ...]"
 
     # ---------
@@ -518,23 +513,13 @@ with h5py.File(output, "w") as data:
     # ---------
 
     # compute mean
-    m_sig_xx = compute_mean(
-        moving_average["1st"]["sig_xx"], moving_average["1st"]["moved"]
-    )
-    m_sig_xy = compute_mean(
-        moving_average["1st"]["sig_xy"], moving_average["1st"]["moved"]
-    )
-    m_sig_yy = compute_mean(
-        moving_average["1st"]["sig_yy"], moving_average["1st"]["moved"]
-    )
+    m_sig_xx = compute_mean(moving_average["1st"]["sig_xx"], moving_average["1st"]["moved"])
+    m_sig_xy = compute_mean(moving_average["1st"]["sig_xy"], moving_average["1st"]["moved"])
+    m_sig_yy = compute_mean(moving_average["1st"]["sig_yy"], moving_average["1st"]["moved"])
     m_S = compute_mean(moving_average["1st"]["S"], moving_average["1st"]["moved"])
     m_epsp = compute_mean(moving_average["1st"]["epsp"], moving_average["1st"]["moved"])
-    m_epspdot = compute_mean(
-        moving_average["1st"]["epspdot"], moving_average["1st"]["moved"]
-    )
-    m_moved = compute_mean(
-        moving_average["1st"]["moved"], moving_average["1st"]["moved"]
-    )
+    m_epspdot = compute_mean(moving_average["1st"]["epspdot"], moving_average["1st"]["moved"])
+    m_moved = compute_mean(moving_average["1st"]["moved"], moving_average["1st"]["moved"])
 
     # compute variance
     v_sig_xx = compute_variance(
