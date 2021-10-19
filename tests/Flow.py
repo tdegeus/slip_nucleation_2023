@@ -2,8 +2,6 @@ import os
 import shutil
 import sys
 import unittest
-import numpy as np
-import h5py
 
 root = os.path.join(os.path.dirname(__file__), "..")
 if os.path.exists(os.path.join(root, "mycode_front", "_version.py")):
@@ -28,13 +26,9 @@ class MyTests(unittest.TestCase):
 
         N = 9
         files = my.Flow.cli_generate(["-N", N, "--dev", dirname])
-
         my.Flow.run(files[-1], dev=True, maxinc=int(1e7))
 
         shutil.rmtree(dirname)
-
-
-
 
 
 if __name__ == "__main__":

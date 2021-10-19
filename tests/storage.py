@@ -2,8 +2,9 @@ import os
 import shutil
 import sys
 import unittest
-import numpy as np
+
 import h5py
+import numpy as np
 
 root = os.path.join(os.path.dirname(__file__), "..")
 if os.path.exists(os.path.join(root, "mycode_front", "_version.py")):
@@ -59,6 +60,7 @@ class MyTests(unittest.TestCase):
                 self.assertTrue(np.allclose(data, file[key][...]))
 
         shutil.rmtree(dirname)
+
 
 if __name__ == "__main__":
 

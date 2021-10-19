@@ -7,25 +7,16 @@
 import argparse
 import inspect
 import os
-import re
 import sys
 import textwrap
-import uuid
 
-import click
-import FrictionQPotFEM.UniformSingleLayer2d as model
 import GMatElastoPlasticQPot.Cartesian2d as GMat
-import matplotlib.pyplot as plt
-import GooseFEM
 import h5py
+import matplotlib.pyplot as plt
 import numpy as np
-import prrng
-import tqdm
-from numpy.typing import ArrayLike
 
 from . import slurm
 from . import storage
-from . import tag
 from . import System
 from ._version import version
 
@@ -76,28 +67,28 @@ def generate(*args, **kwargs):
 
         storage.dump_with_atttrs(
             file,
-            '/gammadot',
+            "/gammadot",
             gammadot,
             desc="Applied shear-rate",
         )
 
         storage.dump_with_atttrs(
             file,
-            '/restart/interval',
+            "/restart/interval",
             restart,
             desc="Restart storage interval",
         )
 
         storage.dump_with_atttrs(
             file,
-            '/output/interval',
+            "/output/interval",
             output,
             desc="Output storage interval",
         )
 
         storage.dump_with_atttrs(
             file,
-            '/snapshot/interval',
+            "/snapshot/interval",
             snapshot,
             desc="Snapshot storage interval",
         )
@@ -141,7 +132,7 @@ def cli_generate(cli_args=None):
             files += [f"id={i:03d}_gammadot={gammadot:.2e}.h5"]
             generate(
                 filepath=os.path.join(args.outdir, files[-1]),
-                gammadot = gammadot,
+                gammadot=gammadot,
                 N=args.size,
                 seed=i * args.size,
                 test_mode=args.develop,
@@ -183,9 +174,9 @@ def run(filepath: str, dev: bool, maxinc: int = None):
             return 1
 
         flatindex = dict(
-            xx = 0,
-            xy = 1,
-            yy = 2,
+            xx=0,
+            xy=1,
+            yy=2,
         )
 
         storage.create_extendible(file, "/output/epsp", np.float64)
@@ -219,11 +210,13 @@ def run(filepath: str, dev: bool, maxinc: int = None):
 
             idx_n = system.plastic_CurrentIndex()
 
-            n = min([
-                output - inc % output,
-                restart - inc % restart,
-                snapshot - inc % snapshot,
-            ])
+            n = min(
+                [
+                    output - inc % output,
+                    restart - inc % restart,
+                    snapshot - inc % snapshot,
+                ]
+            )
 
             if not system.flowSteps_boundcheck(n, v):
                 break
@@ -274,6 +267,7 @@ def run(filepath: str, dev: bool, maxinc: int = None):
                 storage.dump_overwrite(file, "/restart/a", system.a())
                 storage.dump_overwrite(file, "/restart/inc", inc)
 
+
 def cli_run(cli_args=None):
     """
     Run flow simulation.
@@ -297,8 +291,6 @@ def cli_run(cli_args=None):
 
     assert os.path.isfile(args.file)
     run(args.file, dev=args.develop)
-
-
 
 
 def cli_plot(cli_args=None):
@@ -351,11 +343,10 @@ def cli_plot(cli_args=None):
     lim = ax.get_ylim()
     ax.set_ylim([0, lim[-1]])
 
-    x = np.zeros((2, snap.size,))
+    x = np.zeros((2, snap.size), dtype=float)
+    y = np.zeros((2, snap.size), dtype=float)
     x[0, :] = snap
     x[1, :] = snap
-
-    y = np.zeros((2, snap.size,))
     y[1, :] = lim[-1]
 
     ax.plot(x, y, c="r", lw=1)
