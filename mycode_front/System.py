@@ -128,7 +128,7 @@ def init(file: h5py.File) -> model.System:
     return system
 
 
-def generate(filename: str, N: int, seed: int = 0, classic: bool = False, test_mode: bool = False):
+def generate(filepath: str, N: int, seed: int = 0, classic: bool = False, test_mode: bool = False):
     """
     Generate input file.
     Note that two ways of storage of yield strains are supported:
@@ -136,14 +136,14 @@ def generate(filename: str, N: int, seed: int = 0, classic: bool = False, test_m
     -   "prrng": only the seeds per block are stored, that can then be uniquely restored.
         Note that in this case a larger strain history is used.
 
-    :param filename: The filename of the input file.
+    :param filepath: The filepath of the input file.
     :param N: The number of blocks.
     :param seed: Base seed to use to generate the disorder.
     :param classic: The yield strain are hard-coded in the file, otherwise prrng is used.
     :param test_mode: Run in test mode (smaller chunk).
     """
 
-    assert not os.path.isfile(filename)
+    assert not os.path.isfile(filepath)
     progname = entry_points["cli_generate"]
 
     # parameters
@@ -203,7 +203,7 @@ def generate(filename: str, N: int, seed: int = 0, classic: bool = False, test_m
     alpha = np.sqrt(2.0) * qL * c * rho
     dt = (1.0 / (c * qh)) / 10.0
 
-    with h5py.File(filename, "w") as file:
+    with h5py.File(filepath, "w") as file:
 
         storage.dump_with_atttrs(
             file,
@@ -442,7 +442,7 @@ def cli_generate(cli_args=None):
     for i in range(args.start, args.start + args.nsim):
         files += [f"id={i:03d}.h5"]
         generate(
-            filename=os.path.join(args.outdir, f"id={i:03d}.h5"),
+            filepath=os.path.join(args.outdir, f"id={i:03d}.h5"),
             N=args.size,
             seed=i * args.size,
         )
@@ -458,38 +458,53 @@ def cli_generate(cli_args=None):
     )
 
 
-def run(filename: str, dev: bool):
+def create_check_meta(file: h5py.File, path: str, ver: str = version, deps: str = dependencies(model), dev: bool = False) -> h5py.Group:
+    """
+    Create or read and check meta data. This function asserts that:
+    -   There are no uncommitted changes.
+    -   There are no version changes.
+
+    :param file: HDF5 archive.
+    :param path: Path in ``file``.
+    :param ver: Version string.
+    :param deps: List of dependencies.
+    :param dev: Allow uncommitted changes.
+    :return: Group to meta-data.
+    """
+
+    assert dev or not tag.has_uncommited(ver)
+    assert dev or not tag.any_has_uncommited(deps)
+
+    if path not in file:
+        meta = file.create_group(path)
+        meta.attrs["version"] = ver
+        meta.attrs["dependencies"] = deps
+        return meta
+
+    meta = file[path]
+    assert tag.equal(ver, meta.attrs["version"])
+    assert tag.all_equal(deps, meta.attrs["dependencies"])
+
+
+def run(filepath: str, dev: bool = False):
     """
     Run the simulation.
 
-    :param filename: Name of the input/output file (appended).
+    :param filepath: Name of the input/output file (appended).
     :param dev: Allow uncommitted changes.
     """
 
-    basename = os.path.basename(filename)
+    basename = os.path.basename(filepath)
     progname = entry_points["cli_run"]
 
-    with h5py.File(filename, "a") as file:
+    with h5py.File(filepath, "a") as file:
 
         system = init(file)
-
-        # check version compatibility
-
-        assert dev or not tag.has_uncommited(version)
-        assert dev or not tag.any_has_uncommited(dependencies(model))
-
-        if f"/meta/{progname}" not in file:
-            meta = file.create_group(f"/meta/{progname}")
-            meta.attrs["version"] = version
-            meta.attrs["dependencies"] = dependencies(model)
-        else:
-            meta = file[f"/meta/{progname}"]
+        meta = create_check_meta(file, f"/meta/{progname}")
 
         if "completed" in meta:
-            print("Marked completed, skipping")
+            print(f'"{basename}": marked completed, skipping')
             return 1
-
-        # restore or initialise the system / output
 
         if "/stored" in file:
 
@@ -497,7 +512,7 @@ def run(filename: str, dev: bool):
             kick = file["/kick"][inc]
             system.setT(file["/t"][inc])
             system.setU(file[f"/disp/{inc:d}"][...])
-            print(f'"{basename}": Loading, inc = {inc:d}')
+            print(f'"{basename}": loading, inc = {inc:d}')
 
         else:
 
@@ -534,8 +549,6 @@ def run(filename: str, dev: bool):
                 data=system.u(),
                 desc="Displacement (end of increment).",
             )
-
-        # run
 
         inc += 1
         kick = not kick

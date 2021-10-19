@@ -23,8 +23,9 @@ def read_entry_points(module):
 
 
 entry_points = []
-entry_points += read_entry_points("slurm")
+entry_points += read_entry_points("Flow")
 entry_points += read_entry_points("PinAndTrigger")
+entry_points += read_entry_points("slurm")
 entry_points += read_entry_points("System")
 
 setup(
