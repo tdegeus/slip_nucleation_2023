@@ -10,6 +10,7 @@ dependencies:
 - gmatelastoplasticqpot
 - goosefem
 - goosehdf5
+- goosempl
 - gooseslurm
 - h5py
 - highfive
@@ -19,6 +20,7 @@ dependencies:
 - parallel
 - pre-commit
 - python
+- python-cppcolormap
 - python-frictionqpotfem
 - python-gmatelastoplasticqpot
 - python-goosefem
@@ -28,6 +30,7 @@ dependencies:
 - setuptools_scm
 - shelephant
 - tqdm
+- XDMFWrite_h5py
 - xsimd <8
 - xtensor
 - xtensor-blas
