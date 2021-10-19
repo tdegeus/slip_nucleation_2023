@@ -28,7 +28,7 @@ dependencies:
 - setuptools_scm
 - shelephant
 - tqdm
-- xsimd
+- xsimd <8
 - xtensor
-# - xtensor-blas
+- xtensor-blas
 - xtensor-python
