@@ -30,5 +30,5 @@ dependencies:
 - tqdm
 - xsimd
 - xtensor
-- xtensor-blas
+# - xtensor-blas
 - xtensor-python
