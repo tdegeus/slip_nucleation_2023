@@ -1,3 +1,4 @@
+from . import Flow
 from . import PinAndTrigger
 from . import slurm
 from . import System
