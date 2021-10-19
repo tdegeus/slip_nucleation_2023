@@ -39,8 +39,11 @@ jobs:
       run: python -m pip install . -vv
 
     - name: Run tests
+      working-directory: tests
       run: |
-        python tests/slurm.py
-        python tests/System.py
-        python tests/tag.py
-        python tests/tools.py
+        python Flow.py
+        python slurm.py
+        python storage.py
+        python System.py
+        python tag.py
+        python tools.py
