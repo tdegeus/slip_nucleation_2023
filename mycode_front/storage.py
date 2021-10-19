@@ -5,6 +5,7 @@ from typing import TypeVar
 
 import h5py
 
+
 def create_extendible(file: h5py.File, key: str, dtype, ndim: int = 1, **kwargs) -> h5py.Dataset:
     """
     Create extendible dataset.
@@ -19,8 +20,8 @@ def create_extendible(file: h5py.File, key: str, dtype, ndim: int = 1, **kwargs)
     if key in file:
         return file[key]
 
-    shape = tuple([0 for i in range(ndim)])
-    maxshape = tuple([None for i in range(ndim)])
+    shape = tuple(0 for i in range(ndim))
+    maxshape = tuple(None for i in range(ndim))
     dset = file.create_dataset(key, shape, maxshape=maxshape, dtype=dtype)
 
     for attr in kwargs:
@@ -28,7 +29,10 @@ def create_extendible(file: h5py.File, key: str, dtype, ndim: int = 1, **kwargs)
 
     return dset
 
-def dset_extendible1d(file: h5py.File, key: str, dtype, value: TypeVar("T"), **kwargs) -> h5py.Dataset:
+
+def dset_extendible1d(
+    file: h5py.File, key: str, dtype, value: TypeVar("T"), **kwargs
+) -> h5py.Dataset:
     """
     Create extendible 1d dataset and store the first value.
 
@@ -93,5 +97,3 @@ def dump_overwrite(file: h5py.File, key: str, data: TypeVar("T")):
         return
 
     file[key] = data
-
-

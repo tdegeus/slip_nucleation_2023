@@ -458,7 +458,13 @@ def cli_generate(cli_args=None):
     )
 
 
-def create_check_meta(file: h5py.File, path: str, ver: str = version, deps: str = dependencies(model), dev: bool = False) -> h5py.Group:
+def create_check_meta(
+    file: h5py.File,
+    path: str,
+    ver: str = version,
+    deps: str = dependencies(model),
+    dev: bool = False,
+) -> h5py.Group:
     """
     Create or read and check meta data. This function asserts that:
     -   There are no uncommitted changes.
