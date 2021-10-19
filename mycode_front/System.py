@@ -478,8 +478,8 @@ def create_check_meta(
     :return: Group to meta-data.
     """
 
-    assert dev or not tag.has_uncommited(ver)
-    assert dev or not tag.any_has_uncommited(deps)
+    assert dev or not tag.has_uncommitted(ver)
+    assert dev or not tag.any_has_uncommitted(deps)
 
     if path not in file:
         meta = file.create_group(path)
