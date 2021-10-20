@@ -506,7 +506,7 @@ def run(filepath: str, dev: bool = False):
     with h5py.File(filepath, "a") as file:
 
         system = init(file)
-        meta = create_check_meta(file, f"/meta/{progname}")
+        meta = create_check_meta(file, f"/meta/{progname}", dev=dev)
 
         if "completed" in meta:
             print(f'"{basename}": marked completed, skipping')
@@ -593,7 +593,7 @@ def cli_run(cli_args=None):
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
 
-    parser.add_argument("-f", "--force", action="store_true", help="Allow uncommitted")
+    parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("file", type=str, help="Simulation file")
 
@@ -603,7 +603,7 @@ def cli_run(cli_args=None):
         args = parser.parse_args([str(arg) for arg in cli_args])
 
     assert os.path.isfile(args.file)
-    run(args.file, dev=args.force)
+    run(args.file, dev=args.develop)
 
 
 def steadystate(epsd: ArrayLike, sigd: ArrayLike, kick: ArrayLike, **kwargs):

@@ -3,6 +3,8 @@ import shutil
 import sys
 import unittest
 
+import h5py
+
 root = os.path.join(os.path.dirname(__file__), "..")
 if os.path.exists(os.path.join(root, "mycode_front", "_version.py")):
     sys.path.insert(0, os.path.abspath(root))
@@ -26,7 +28,11 @@ class MyTests(unittest.TestCase):
 
         N = 9
         files = my.Flow.cli_generate(["-N", N, "--dev", dirname])
-        my.Flow.run(files[-1], dev=True, maxinc=int(1e7))
+
+        with h5py.File(files[-1], "a") as file:
+            file["/boundcheck"][...] = 170
+
+        my.Flow.cli_run(["--develop", "--quiet", files[-1]])
 
         shutil.rmtree(dirname)
 

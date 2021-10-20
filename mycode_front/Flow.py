@@ -14,6 +14,7 @@ import GMatElastoPlasticQPot.Cartesian2d as GMat
 import h5py
 import matplotlib.pyplot as plt
 import numpy as np
+import tqdm
 
 from . import slurm
 from . import storage
@@ -50,13 +51,11 @@ def generate(*args, **kwargs):
     :param snapshot: Snapshot storage interval.
     """
 
-    classic = kwargs.pop("classic", False)
     gammadot = kwargs.pop("gammadot")
     output = kwargs.pop("output", int(500))
     restart = kwargs.pop("restart", int(5000))
     snapshot = kwargs.pop("snapshot", int(500 * 500))
 
-    assert not classic
     progname = entry_points["cli_generate"]
     System.generate(*args, **kwargs)
 
@@ -70,6 +69,13 @@ def generate(*args, **kwargs):
             "/gammadot",
             gammadot,
             desc="Applied shear-rate",
+        )
+
+        storage.dump_with_atttrs(
+            file,
+            "/boundcheck",
+            10,
+            desc="Stop at n potentials before running out of bounds",
         )
 
         storage.dump_with_atttrs(
@@ -114,9 +120,11 @@ def cli_generate(cli_args=None):
     parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
     parser.add_argument("outdir", type=str, help="Output directory")
 
+    eps0_new = 1.0e-3 / 2.0 / 10.0
+    eps0_old = 5e-4 / 8.0
     Gammadot = np.linspace(1e-9, 20e-9, 20) / 8.0
     Gammadot = Gammadot[4:]
-    Gammadot *= (1.0e-3 / 2.0 / 10.0) / (5e-4 / 8.0)
+    Gammadot *= eps0_new / eps0_old
 
     if cli_args is None:
         args = parser.parse_args(sys.argv[1:])
@@ -125,21 +133,33 @@ def cli_generate(cli_args=None):
 
     assert os.path.isdir(args.outdir)
 
-    files = []
+    filenames = []
+    filepaths = []
 
     for i in range(args.start, args.start + args.nsim):
+
         for gammadot in Gammadot:
-            files += [f"id={i:03d}_gammadot={gammadot:.2e}.h5"]
+
+            filename = f"id={i:03d}_gammadot={gammadot:.2e}.h5"
+            filepath = os.path.join(args.outdir, filename)
+            filenames.append(filename)
+            filepaths.append(filepath)
+
             generate(
-                filepath=os.path.join(args.outdir, files[-1]),
+                filepath=filepath,
                 gammadot=gammadot,
                 N=args.size,
                 seed=i * args.size,
                 test_mode=args.develop,
             )
 
+            # warning: Gammadot hard-coded here, check that yield strains did not change
+            with h5py.File(filepath, "r") as file:
+                assert not isinstance(file["/cusp/epsy"], h5py.Dataset)
+                assert np.isclose(file["/cusp/epsy/eps0"][...], eps0_new)
+
     executable = entry_points["cli_run"]
-    commands = [f"{executable} {file}" for file in files]
+    commands = [f"{executable} {file}" for file in filenames]
     slurm.serial_group(
         commands,
         basename=executable,
@@ -149,16 +169,16 @@ def cli_generate(cli_args=None):
     )
 
     if cli_args is not None:
-        return [os.path.join(args.outdir, f) for f in files]
+        return filepaths
 
 
-def run(filepath: str, dev: bool, maxinc: int = None):
+def run(filepath: str, dev: bool = False, progress: bool = True):
     """
     Run flow simulation.
 
     :param filepath: Name of the input/output file (appended).
     :param dev: Allow uncommitted changes.
-    :param maxinc: Run a maximum number of increments.
+    :param progress: Show progress bar.
     """
 
     basename = os.path.basename(filepath)
@@ -206,9 +226,11 @@ def run(filepath: str, dev: bool, maxinc: int = None):
         else:
             print(f"{basename}: starting")
 
-        while True:
+        boundcheck = file["/boundcheck"][...]
+        nchunk = file["/cusp/epsy/nchunk"][...] - boundcheck
+        pbar = tqdm.tqdm(total=nchunk, disable=not progress)
 
-            idx_n = system.plastic_CurrentIndex()
+        while True:
 
             n = min(
                 [
@@ -218,16 +240,14 @@ def run(filepath: str, dev: bool, maxinc: int = None):
                 ]
             )
 
-            if not system.flowSteps_boundcheck(n, v):
+            if not system.flowSteps_boundcheck(n, v, boundcheck):
                 break
+
+            if progress:
+                pbar.n = np.max(system.plastic_CurrentIndex())
+                pbar.refresh()
 
             inc += n
-
-            if np.all(system.plastic_CurrentIndex() == idx_n):
-                continue
-
-            if maxinc and inc >= maxinc:
-                break
 
             if inc % snapshot == 0:
 
@@ -281,6 +301,7 @@ def cli_run(cli_args=None):
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
+    parser.add_argument("-q", "--quiet", action="store_true", help="Suppress progress bar")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("file", type=str, help="Simulation file")
 
@@ -290,7 +311,7 @@ def cli_run(cli_args=None):
         args = parser.parse_args([str(arg) for arg in cli_args])
 
     assert os.path.isfile(args.file)
-    run(args.file, dev=args.develop)
+    run(args.file, dev=args.develop, progress=not args.quiet)
 
 
 def cli_plot(cli_args=None):
