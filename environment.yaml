@@ -31,7 +31,6 @@ dependencies:
 - shelephant
 - tqdm
 - XDMFWrite_h5py
-- xsimd <8
+- xsimd
 - xtensor
-- xtensor-blas
 - xtensor-python

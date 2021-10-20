@@ -32,6 +32,9 @@ jobs:
         environment-file: environment.yaml
         environment-name: myenv
 
+    - name: Install plot style
+      run: python -c "import GooseMPL; GooseMPL.copy_style()"
+
     - name: Set dummy version
       run: echo "SETUPTOOLS_SCM_PRETEND_VERSION=0.0" >> $GITHUB_ENV
 
