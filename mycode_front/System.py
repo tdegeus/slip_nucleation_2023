@@ -17,6 +17,7 @@ import FrictionQPotFEM.UniformSingleLayer2d as model
 import GMatElastoPlasticQPot.Cartesian2d as GMat
 import GooseFEM
 import h5py
+import matplotlib.pyplot as plt
 import numpy as np
 import prrng
 import tqdm
@@ -27,11 +28,14 @@ from . import storage
 from . import tag
 from ._version import version
 
+plt.style.use(["goose", "goose-latex"])
+
 
 entry_points = dict(
     cli_ensembleinfo="EnsembleInfo",
     cli_generate="Run_generate",
     cli_run="Run",
+    cli_plot="Run_plot",
 )
 
 
@@ -878,3 +882,42 @@ def pushincrements(
     inc_system_ret = np.array(inc_system_ret)
 
     return inc_system_ret, inc_push
+
+def cli_plot(cli_args=None):
+    """
+    Plot overview of flow simulation.
+    """
+
+    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+
+    parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("file", type=str, help="Simulation file")
+
+    if cli_args is None:
+        args = parser.parse_args(sys.argv[1:])
+    else:
+        args = parser.parse_args([str(arg) for arg in cli_args])
+
+    assert os.path.isfile(args.file)
+
+    with h5py.File(args.file, "r") as file:
+        system = init(file)
+        data = basic_output(system, file)
+
+    fig, ax = plt.subplots()
+
+    ax.plot(data["epsd"], data["sigd"])
+
+    lim = ax.get_ylim()
+    lim = [0, lim[-1]]
+    ax.set_ylim(lim)
+
+    e = data["epsd"][data["steadystate"]]
+    ax.plot([e, e], lim, c="r", lw=1)
+
+    plt.show()
