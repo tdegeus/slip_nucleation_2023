@@ -64,8 +64,8 @@ class MyTests(unittest.TestCase):
             A = file[f"/full/{idname}/A"][...]
             sig0 = file["/normalisation/sig0"][...]
 
-        self.assertTrue(np.allclose(epsd, historic["epsd"]))
-        self.assertTrue(np.allclose(sigd, historic["sigd"]))
+        self.assertTrue(np.allclose(epsd[1:], historic["epsd"][3:]))
+        self.assertTrue(np.allclose(sigd[1:], historic["sigd"][3:]))
 
         # PinAndTrigger : full run + collection (try running only, not really test)
 
