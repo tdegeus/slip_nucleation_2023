@@ -156,6 +156,8 @@ def generate(filepath: str, N: int, seed: int = 0, classic: bool = False, test_m
 
     # define mesh and element sets
     mesh = GooseFEM.Mesh.Quad4.FineLayer(N, N, h)
+    coor = mesh.coor()
+    conn = mesh.conn()
     nelem = mesh.nelem()
     plastic = mesh.elementsMiddleLayer()
     elastic = np.setdiff1d(np.arange(nelem), plastic)
@@ -212,14 +214,14 @@ def generate(filepath: str, N: int, seed: int = 0, classic: bool = False, test_m
         storage.dump_with_atttrs(
             file,
             "/coor",
-            mesh.coor(),
+            coor,
             desc="Nodal coordinates [nnode, ndim]",
         )
 
         storage.dump_with_atttrs(
             file,
             "/conn",
-            mesh.conn(),
+            conn,
             desc="Connectivity (Quad4: nne = 4) [nelem, nne]",
         )
 
@@ -414,6 +416,20 @@ def generate(filepath: str, N: int, seed: int = 0, classic: bool = False, test_m
         meta = file.create_group(f"/meta/{progname}")
         meta.attrs["version"] = version
 
+        desc = '(end of increment). One entry per item in "/stored".'
+        storage.create_extendible(file, "/stored", np.uint64, desc="List of stored increments")
+        storage.create_extendible(file, "/t", np.float64, desc=f"Time {desc}")
+        storage.create_extendible(file, "/kick", bool, desc=f"Kick {desc}")
+
+        storage.dset_extend1d(file, "/stored", 0, 0)
+        storage.dset_extend1d(file, "/t", 0, 0.0)
+        storage.dset_extend1d(file, "/kick", 0, False)
+
+        file["/disp/0"] = np.zeros_like(coor)
+        file["/disp"].attrs["desc"] = f"Displacement {desc}"
+
+        assert np.min(np.diff(read_epsy(file), axis=1)) > file["/run/epsd/kick"][...]
+
 
 def cli_generate(cli_args=None):
     """
@@ -496,12 +512,13 @@ def create_check_meta(
     assert tag.all_equal(deps, meta.attrs["dependencies"])
 
 
-def run(filepath: str, dev: bool = False):
+def run(filepath: str, dev: bool = False, progress: bool = True):
     """
     Run the simulation.
 
     :param filepath: Name of the input/output file (appended).
     :param dev: Allow uncommitted changes.
+    :param progress: Show progress bar.
     """
 
     basename = os.path.basename(filepath)
@@ -516,70 +533,43 @@ def run(filepath: str, dev: bool = False):
             print(f'"{basename}": marked completed, skipping')
             return 1
 
-        if "/stored" in file:
+        deps = file["/run/epsd/kick"][...]
+        inc = int(file["/stored"][-1])
+        kick = file["/kick"][inc]
+        system.setT(file["/t"][inc])
+        system.setU(file[f"/disp/{inc:d}"][...])
+        print(f'"{basename}": loading, inc = {inc:d}')
 
-            inc = int(file["/stored"][-1])
-            kick = file["/kick"][inc]
-            system.setT(file["/t"][inc])
-            system.setU(file[f"/disp/{inc:d}"][...])
-            print(f'"{basename}": loading, inc = {inc:d}')
+        system.initEventDrivenSimpleShear()
 
-        else:
+        nchunk = file["/cusp/epsy/nchunk"][...] - 5
+        pbar = tqdm.tqdm(total=nchunk, disable=not progress)
 
-            inc = int(0)
-            kick = False
+        for inc in range(inc + 1, sys.maxsize):
 
-            storage.dset_extendible1d(
-                file=file,
-                key="/stored",
-                dtype=np.uint64,
-                value=inc,
-                desc="List of stored increments",
-            )
-
-            storage.dset_extendible1d(
-                file=file,
-                key="/t",
-                dtype=np.float64,
-                value=system.t(),
-                desc="Per increment: time at the end of the increment",
-            )
-
-            storage.dset_extendible1d(
-                file=file,
-                key="/kick",
-                dtype=np.dtype(bool),
-                value=kick,
-                desc="Per increment: True is a kick was applied",
-            )
-
-            storage.dump_with_atttrs(
-                file=file,
-                key=f"/disp/{inc}",
-                data=system.u(),
-                desc="Displacement (end of increment).",
-            )
-
-        inc += 1
-        kick = not kick
-        deps_kick = file["/run/epsd/kick"][...]
-
-        for inc in range(inc, sys.maxsize):
-
-            system.addSimpleShearEventDriven(deps_kick, kick)
+            kick = not kick
+            system.eventDrivenStep(deps, kick)
 
             if kick:
-                niter = system.minimise_boundcheck()
+
+                niter = system.minimise_boundcheck(5)
+
                 if niter == 0:
                     break
-                print(f'"{basename}": inc = {inc:8d}, niter = {niter:8d}')
+
+                if progress:
+                    pbar.n = np.max(system.plastic_CurrentIndex())
+                    pbar.set_description(f"inc = {inc:8d}, niter = {niter:8d}")
+                    pbar.refresh()
+
+            if not kick:
+                if not system.boundcheck_right(5):
+                    break
 
             storage.dset_extend1d(file, "/stored", inc, inc)
             storage.dset_extend1d(file, "/t", inc, system.t())
             storage.dset_extend1d(file, "/kick", inc, kick)
             file[f"/disp/{inc:d}"] = system.u()
-
-            kick = not kick
 
         print(f'"{basename}": completed')
         meta.attrs["completed"] = 1
@@ -882,6 +872,7 @@ def pushincrements(
     inc_system_ret = np.array(inc_system_ret)
 
     return inc_system_ret, inc_push
+
 
 def cli_plot(cli_args=None):
     """
