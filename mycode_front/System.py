@@ -147,6 +147,8 @@ def generate(filepath: str, N: int, seed: int = 0, classic: bool = False, test_m
     :param test_mode: Run in test mode (smaller chunk).
     """
 
+    assert test_mode or not tag.has_uncommitted(version)
+
     assert not os.path.isfile(filepath)
     progname = entry_points["cli_generate"]
 
