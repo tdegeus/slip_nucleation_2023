@@ -12,10 +12,10 @@ import mycode_front as my  # noqa: E402
 class MyTests(unittest.TestCase):
     def test_has_uncomitted(self):
 
-        self.assertTrue(my.tag.has_uncommited("4.4.dev1+hash.bash"))
-        self.assertFalse(my.tag.has_uncommited("4.4.dev1+hash"))
-        self.assertFalse(my.tag.has_uncommited("4.4.dev1"))
-        self.assertFalse(my.tag.has_uncommited("4.4"))
+        self.assertTrue(my.tag.has_uncommitted("4.4.dev1+hash.bash"))
+        self.assertFalse(my.tag.has_uncommitted("4.4.dev1+hash"))
+        self.assertFalse(my.tag.has_uncommitted("4.4.dev1"))
+        self.assertFalse(my.tag.has_uncommitted("4.4"))
 
     def test_any_has_uncommitted(self):
 
