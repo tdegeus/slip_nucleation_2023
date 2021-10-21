@@ -20,9 +20,9 @@ import numpy as np
 import tqdm
 
 from . import slurm
-from . import tag
 from . import storage
 from . import System
+from . import tag
 from ._version import version
 
 plt.style.use(["goose", "goose-latex"])
@@ -610,4 +610,3 @@ def cli_plot(cli_args=None):
     ax.set_ylabel(r"$\sigma$")
 
     plt.show()
-
