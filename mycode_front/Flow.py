@@ -6,11 +6,10 @@
 """
 import argparse
 import inspect
-import re
 import os
+import re
 import sys
 import textwrap
-
 from collections import defaultdict
 
 import GMatElastoPlasticQPot.Cartesian2d as GMat
@@ -139,7 +138,7 @@ def default_gammadot():
     Gammadot = Gammadot[4:]
     Gammadot *= eps0_new / eps0_old
 
-    return Gammadot, 1e-9
+    return Gammadot, eps0_new
 
 
 def cli_generate(cli_args=None):
@@ -193,7 +192,7 @@ def cli_generate(cli_args=None):
             # warning: Gammadot hard-coded here, check that yield strains did not change
             with h5py.File(filepath, "r") as file:
                 assert not isinstance(file["/cusp/epsy"], h5py.Dataset)
-                assert np.isclose(file["/cusp/epsy/eps0"][...], eps0_new)
+                assert np.isclose(file["/cusp/epsy/eps0"][...], default_gammadot()[1])
 
     executable = entry_points["cli_run"]
     commands = [f"{executable} {file}" for file in filenames]
@@ -207,6 +206,7 @@ def cli_generate(cli_args=None):
 
     if cli_args is not None:
         return filepaths
+
 
 def run_create_extendible(file: h5py.File):
     """
@@ -226,7 +226,6 @@ def run_create_extendible(file: h5py.File):
     storage.create_extendible(file, "/output/weak/sig", np.float64, ndim=2, **flatindex)
     storage.create_extendible(file, "/restart/inc", np.uint32)
     storage.create_extendible(file, "/snapshot/inc", np.uint32)
-
 
 
 def run(filepath: str, dev: bool = False, progress: bool = True):
@@ -411,8 +410,9 @@ def basic_output(file: h5py.File) -> dict:
     s = np.zeros(int(iout.size / d))
 
     for i in range(0, iout.size, d):
-        m[int(i / d - 1)] = np.mean(sig[i: i + d])
-        s[int(i / d - 1)] = np.std(sig[i: i + d])
+        u = i + d
+        m[int(i / d - 1)] = np.mean(sig[i:u])
+        s[int(i / d - 1)] = np.std(sig[i:u])
 
     ss = np.argmax(np.isclose(m, m[-1], 1e-2, 1e-2 * s[-1]))
 
@@ -463,8 +463,8 @@ def cli_branch_velocityjump(cli_args=None):
 
         for gammadot in Gammadot[diff]:
 
-            i = info['id']
-            g = info['gammadot']
+            i = info["id"]
+            g = info["gammadot"]
             name = f"id={i:03d}_gammadot={g:.2e}_jump={gammadot:.2e}.h5"
             outputname.append(name)
             outputpath.append(os.path.join(args.output, name))
@@ -484,7 +484,7 @@ def cli_branch_velocityjump(cli_args=None):
                 output = basic_output(source)
                 inc = output["snapshot"]["inc"][output["snapshot"]["steadystate"] + 2]
 
-                m = "/meta/{0:s}".format(entry_points["cli_run"])
+                m = "/meta/{:s}".format(entry_points["cli_run"])
                 paths = g5.getdatapaths(source)
                 paths = [p for p in paths if not re.match(r"(/snapshot/)(.*)", p)]
                 paths = [p for p in paths if not re.match(r"(/output/)(.*)", p)]
@@ -498,8 +498,8 @@ def cli_branch_velocityjump(cli_args=None):
                 g5.copy(
                     source,
                     dest,
-                    ["/meta/{0:s}".format(entry_points["cli_run"])],
-                    np.array(["/meta/{0:s}_source".format(entry_points["cli_run"])]),
+                    ["/meta/{:s}".format(entry_points["cli_run"])],
+                    np.array(["/meta/{:s}_source".format(entry_points["cli_run"])]),
                 )
                 # todo: remove last np.array conversion for >= GooseHDF5-0.14.0
 
