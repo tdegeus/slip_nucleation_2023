@@ -20,6 +20,7 @@ import numpy as np
 import tqdm
 
 from . import slurm
+from . import tag
 from . import storage
 from . import System
 from ._version import version
@@ -50,6 +51,7 @@ def interpret_filename(filename: str) -> dict:
     """
 
     part = re.split("_|/", os.path.splitext(filename)[0])
+
     info = {}
 
     for i in part:
@@ -83,6 +85,9 @@ def generate(*args, **kwargs):
 
     progname = entry_points["cli_generate"]
     System.generate(*args, **kwargs)
+
+    test_mode = kwargs.pop("test_mode", False)
+    assert test_mode or not tag.has_uncommitted(version)
 
     with h5py.File(kwargs["filepath"], "a") as file:
 
@@ -172,7 +177,7 @@ def cli_generate(cli_args=None):
     filenames = []
     filepaths = []
 
-    for i in range(args.start, args.start + args.nsim):
+    for i in tqdm.tqdm(range(args.start, args.start + args.nsim)):
 
         for gammadot in Gammadot:
 
@@ -438,7 +443,7 @@ def cli_branch_velocityjump(cli_args=None):
     progname = entry_points[funcname]
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
-    parser.add_argument("-o", "--output", type=str, required=True, help="Output directory")
+    parser.add_argument("-o", "--outdir", type=str, required=True, help="Output directory")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
     parser.add_argument("files", nargs="*", type=str, help="Simulations to branch")
@@ -449,6 +454,7 @@ def cli_branch_velocityjump(cli_args=None):
         args = parser.parse_args([str(arg) for arg in cli_args])
 
     assert np.all([os.path.exists(f) for f in args.files])
+    assert args.develop or not tag.has_uncommitted(version)
 
     Gammadot, scale = default_gammadot()
     outputname = []
@@ -458,7 +464,7 @@ def cli_branch_velocityjump(cli_args=None):
 
     for filepath in args.files:
 
-        info = interpret_filename(filepath)
+        info = interpret_filename(os.path.basename(filepath))
         diff = np.logical_not(np.isclose(info["gammadot"] / scale, Gammadot / scale))
 
         for gammadot in Gammadot[diff]:
@@ -467,14 +473,14 @@ def cli_branch_velocityjump(cli_args=None):
             g = info["gammadot"]
             name = f"id={i:03d}_gammadot={g:.2e}_jump={gammadot:.2e}.h5"
             outputname.append(name)
-            outputpath.append(os.path.join(args.output, name))
+            outputpath.append(os.path.join(args.outdir, name))
             inputpath.append(filepath)
             applygammadot.append(gammadot)
 
     assert not np.any([os.path.exists(f) for f in outputpath])
 
-    if not os.path.isdir(args.output):
-        os.makedirs(args.output)
+    if not os.path.isdir(args.outdir):
+        os.makedirs(args.outdir)
 
     for gammadot, outpath, read in zip(tqdm.tqdm(applygammadot), outputpath, inputpath):
 
@@ -482,7 +488,11 @@ def cli_branch_velocityjump(cli_args=None):
             with h5py.File(outpath, "w") as dest:
 
                 output = basic_output(source)
-                inc = output["snapshot"]["inc"][output["snapshot"]["steadystate"] + 2]
+                if args.develop:
+                    inc = output["snapshot"]["inc"]
+                    inc = inc[int(inc.size / 2)]
+                else:
+                    inc = output["snapshot"]["inc"][output["snapshot"]["steadystate"] + 2]
 
                 m = "/meta/{:s}".format(entry_points["cli_run"])
                 paths = g5.getdatapaths(source)
@@ -527,6 +537,19 @@ def cli_branch_velocityjump(cli_args=None):
                 for key in ["/output/global/sig", "/output/weak/sig"]:
                     dest[key].resize((3, 1))
                     dest[key][:, 0] = source[key][:, i]
+
+    executable = entry_points["cli_run"]
+    commands = [f"{executable} {file}" for file in outputname]
+    slurm.serial_group(
+        commands,
+        basename=executable,
+        group=1,
+        outdir=args.outdir,
+        sbatch={"time": args.time},
+    )
+
+    if cli_args is not None:
+        return outputpath
 
 
 def cli_plot(cli_args=None):
@@ -587,3 +610,4 @@ def cli_plot(cli_args=None):
     ax.set_ylabel(r"$\sigma$")
 
     plt.show()
+

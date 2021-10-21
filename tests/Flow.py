@@ -32,7 +32,9 @@ class MyTests(unittest.TestCase):
         with h5py.File(files[-1], "a") as file:
             file["/boundcheck"][...] = 170
 
-        my.Flow.cli_run(["--develop", "--quiet", files[-1]])
+        my.Flow.cli_run(["--develop", files[-1]])
+        files = my.Flow.cli_branch_velocityjump(["--develop", "-o", dirname, files[-1]])
+        my.Flow.cli_run(["--develop", files[-1]])
 
         shutil.rmtree(dirname)
 
