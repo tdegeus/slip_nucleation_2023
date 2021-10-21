@@ -6,11 +6,15 @@
 """
 import argparse
 import inspect
+import re
 import os
 import sys
 import textwrap
 
+from collections import defaultdict
+
 import GMatElastoPlasticQPot.Cartesian2d as GMat
+import GooseHDF5 as g5
 import h5py
 import matplotlib.pyplot as plt
 import numpy as np
@@ -28,6 +32,7 @@ entry_points = dict(
     cli_generate="Flow_generate",
     cli_plot="Flow_plot",
     cli_run="Flow_run",
+    cli_branch_velocityjump="Flow_branch_velocityjump",
 )
 
 
@@ -38,6 +43,27 @@ def replace_ep(doc):
     for ep in entry_points:
         doc = doc.replace(fr":py:func:`{ep:s}`", entry_points[ep])
     return doc
+
+
+def interpret_filename(filename: str) -> dict:
+    """
+    Split filename in useful information.
+    """
+
+    part = re.split("_|/", os.path.splitext(filename)[0])
+    info = {}
+
+    for i in part:
+        key, value = i.split("=")
+        info[key] = value
+
+    for key in info:
+        if key in ["gammadot"]:
+            info[key] = float(info[key])
+        else:
+            info[key] = int(info[key])
+
+    return info
 
 
 def generate(*args, **kwargs):
@@ -100,6 +126,22 @@ def generate(*args, **kwargs):
         )
 
 
+def default_gammadot():
+    """
+    Shear rates to simulate.
+
+    :return: List of shear rates, and a typical shear rate.
+    """
+
+    eps0_new = 1.0e-3 / 2.0 / 10.0
+    eps0_old = 5e-4 / 8.0
+    Gammadot = np.linspace(1e-9, 20e-9, 20) / 8.0
+    Gammadot = Gammadot[4:]
+    Gammadot *= eps0_new / eps0_old
+
+    return Gammadot, 1e-9
+
+
 def cli_generate(cli_args=None):
     """
     Generate IO files, including job-scripts to run simulations.
@@ -120,12 +162,6 @@ def cli_generate(cli_args=None):
     parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
     parser.add_argument("outdir", type=str, help="Output directory")
 
-    eps0_new = 1.0e-3 / 2.0 / 10.0
-    eps0_old = 5e-4 / 8.0
-    Gammadot = np.linspace(1e-9, 20e-9, 20) / 8.0
-    Gammadot = Gammadot[4:]
-    Gammadot *= eps0_new / eps0_old
-
     if cli_args is None:
         args = parser.parse_args(sys.argv[1:])
     else:
@@ -133,6 +169,7 @@ def cli_generate(cli_args=None):
 
     assert os.path.isdir(args.outdir)
 
+    Gammadot, _ = default_gammadot()
     filenames = []
     filepaths = []
 
@@ -171,6 +208,26 @@ def cli_generate(cli_args=None):
     if cli_args is not None:
         return filepaths
 
+def run_create_extendible(file: h5py.File):
+    """
+    Create extendible datasets used in :py:func:`run`.
+    """
+
+    flatindex = dict(
+        xx=0,
+        xy=1,
+        yy=2,
+    )
+
+    storage.create_extendible(file, "/output/epsp", np.float64)
+    storage.create_extendible(file, "/output/global/sig", np.float64, ndim=2, **flatindex)
+    storage.create_extendible(file, "/output/inc", np.uint32)
+    storage.create_extendible(file, "/output/S", np.int64)
+    storage.create_extendible(file, "/output/weak/sig", np.float64, ndim=2, **flatindex)
+    storage.create_extendible(file, "/restart/inc", np.uint32)
+    storage.create_extendible(file, "/snapshot/inc", np.uint32)
+
+
 
 def run(filepath: str, dev: bool = False, progress: bool = True):
     """
@@ -193,19 +250,7 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
             print(f'"{basename}": marked completed, skipping')
             return 1
 
-        flatindex = dict(
-            xx=0,
-            xy=1,
-            yy=2,
-        )
-
-        storage.create_extendible(file, "/output/epsp", np.float64)
-        storage.create_extendible(file, "/output/global/sig", np.float64, ndim=2, **flatindex)
-        storage.create_extendible(file, "/output/inc", np.uint32)
-        storage.create_extendible(file, "/output/S", np.int64)
-        storage.create_extendible(file, "/output/weak/sig", np.float64, ndim=2, **flatindex)
-        storage.create_extendible(file, "/restart/inc", np.uint32)
-        storage.create_extendible(file, "/snapshot/inc", np.uint32)
+        run_create_extendible(file)
 
         inc = 0
         output = file["/output/interval"][...]
@@ -314,6 +359,176 @@ def cli_run(cli_args=None):
     run(args.file, dev=args.develop, progress=not args.quiet)
 
 
+def basic_output(file: h5py.File) -> dict:
+    """
+    Extract basic output.
+
+    :param file: HDF5-archive.
+    :return: Basic output.
+    """
+
+    ret = defaultdict(lambda: defaultdict(dict))
+
+    gammadot = file["/gammadot"][...]
+    dt = file["/run/dt"][...]
+    sig0 = file["/meta/normalisation/sig"][...] if "/meta/normalisation/sig" in file else 1.0
+    eps0 = file["/meta/normalisation/eps"][...] if "/meta/normalisation/eps" in file else 1.0
+
+    n = file["/output/weak/sig"].shape[1]
+    xx = file["/output/weak/sig"].attrs["xx"]
+    xy = file["/output/weak/sig"].attrs["xy"]
+    yy = file["/output/weak/sig"].attrs["yy"]
+
+    sig = np.empty((n, 2, 2), dtype=float)
+    sig[:, 0, 0] = file["/output/weak/sig"][xx, :]
+    sig[:, 0, 1] = file["/output/weak/sig"][xy, :]
+    sig[:, 1, 0] = sig[:, 0, 1]
+    sig[:, 1, 1] = file["/output/weak/sig"][yy, :]
+    ret["weak"]["sig"] = GMat.Sigd(sig) / sig0
+
+    iout = file["/output/inc"][...]
+    isnap = file["/snapshot/inc"][...]
+
+    ret["weak"]["inc"] = iout
+    ret["snapshot"]["inc"] = isnap
+
+    ret["weak"]["eps"] = gammadot * dt * iout / eps0
+    ret["snapshot"]["eps"] = gammadot * dt * isnap / eps0
+
+    dout = np.diff(iout)
+    dsnap = np.diff(isnap)
+
+    assert np.all(dout == dout[0])
+    assert np.all(dsnap == dsnap[0])
+
+    dout = dout[0]
+    dsnap = dsnap[0]
+
+    assert dsnap % dout == 0
+
+    d = int(dsnap / dout)
+    m = np.zeros(int(iout.size / d))
+    s = np.zeros(int(iout.size / d))
+
+    for i in range(0, iout.size, d):
+        m[int(i / d - 1)] = np.mean(sig[i: i + d])
+        s[int(i / d - 1)] = np.std(sig[i: i + d])
+
+    ss = np.argmax(np.isclose(m, m[-1], 1e-2, 1e-2 * s[-1]))
+
+    ret["snapshot"]["steadystate"] = ss
+    ret["weak"]["steadystate"] = int(ss * d)
+
+    return ret
+
+
+def cli_branch_velocityjump(cli_args=None):
+    """
+    Branch simulation to a velocity jump experiment:
+    Copies a snapshot as restart.
+    To run simply use :py:func:`cli_run`.
+    """
+
+    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    progname = entry_points[funcname]
+
+    parser.add_argument("--develop", action="store_true", help="Development mode")
+    parser.add_argument("-o", "--output", type=str, required=True, help="Output directory")
+    parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
+    parser.add_argument("files", nargs="*", type=str, help="Simulations to branch")
+
+    if cli_args is None:
+        args = parser.parse_args(sys.argv[1:])
+    else:
+        args = parser.parse_args([str(arg) for arg in cli_args])
+
+    assert np.all([os.path.exists(f) for f in args.files])
+
+    Gammadot, scale = default_gammadot()
+    outputname = []
+    outputpath = []
+    inputpath = []
+    applygammadot = []
+
+    for filepath in args.files:
+
+        info = interpret_filename(filepath)
+        diff = np.logical_not(np.isclose(info["gammadot"] / scale, Gammadot / scale))
+
+        for gammadot in Gammadot[diff]:
+
+            i = info['id']
+            g = info['gammadot']
+            name = f"id={i:03d}_gammadot={g:.2e}_jump={gammadot:.2e}.h5"
+            outputname.append(name)
+            outputpath.append(os.path.join(args.output, name))
+            inputpath.append(filepath)
+            applygammadot.append(gammadot)
+
+    assert not np.any([os.path.exists(f) for f in outputpath])
+
+    if not os.path.isdir(args.output):
+        os.makedirs(args.output)
+
+    for gammadot, outpath, read in zip(tqdm.tqdm(applygammadot), outputpath, inputpath):
+
+        with h5py.File(read, "r") as source:
+            with h5py.File(outpath, "w") as dest:
+
+                output = basic_output(source)
+                inc = output["snapshot"]["inc"][output["snapshot"]["steadystate"] + 2]
+
+                m = "/meta/{0:s}".format(entry_points["cli_run"])
+                paths = g5.getdatapaths(source)
+                paths = [p for p in paths if not re.match(r"(/snapshot/)(.*)", p)]
+                paths = [p for p in paths if not re.match(r"(/output/)(.*)", p)]
+                paths = [p for p in paths if not re.match(r"(/restart/)(.*)", p)]
+                paths = [p for p in paths if not re.match(f"({m})(.*)", p)]
+                g5.copy(source, dest, paths)
+
+                for t in ["restart", "output", "snapshot"]:
+                    g5.copy(source, dest, [f"/{t}/interval"])
+
+                g5.copy(
+                    source,
+                    dest,
+                    ["/meta/{0:s}".format(entry_points["cli_run"])],
+                    np.array(["/meta/{0:s}_source".format(entry_points["cli_run"])]),
+                )
+                # todo: remove last np.array conversion for >= GooseHDF5-0.14.0
+
+                meta = dest.create_group(f"/meta/{progname}")
+                meta.attrs["version"] = version
+                meta.attrs["inc"] = inc
+
+                dest["/gammadot"][...] = gammadot
+                dest["/restart/inc"] = 0
+                dest["/restart/u"] = source[f"/snapshot/u/{inc:d}"][...]
+                dest["/restart/v"] = source[f"/snapshot/v/{inc:d}"][...]
+                dest["/restart/a"] = source[f"/snapshot/a/{inc:d}"][...]
+                dest["/snapshot/u/0"] = source[f"/snapshot/u/{inc:d}"][...]
+                dest["/snapshot/v/0"] = source[f"/snapshot/v/{inc:d}"][...]
+                dest["/snapshot/a/0"] = source[f"/snapshot/a/{inc:d}"][...]
+
+                run_create_extendible(dest)
+
+                i = int(inc / source["/output/interval"][...])
+
+                for key in ["/output/inc", "/output/S", "/output/epsp"]:
+                    dest[key].resize((1,))
+                    dest[key][0] = source[key][i]
+
+                for key in ["/output/global/sig", "/output/weak/sig"]:
+                    dest[key].resize((3, 1))
+                    dest[key][:, 0] = source[key][:, i]
+
+
 def cli_plot(cli_args=None):
     """
     Plot overview of flow simulation.
@@ -337,39 +552,38 @@ def cli_plot(cli_args=None):
     assert os.path.isfile(args.file)
 
     with h5py.File(args.file, "r") as file:
-
-        gammadot = file["/gammadot"][...]
-        dt = file["/run/dt"][...]
-        sig0 = file["/meta/normalisation/sig"][...] if "/meta/normalisation/sig" in file else 1.0
-        eps0 = file["/meta/normalisation/eps"][...] if "/meta/normalisation/eps" in file else 1.0
-
-        n = file["/output/weak/sig"].shape[1]
-        xx = file["/output/weak/sig"].attrs["xx"]
-        xy = file["/output/weak/sig"].attrs["xy"]
-        yy = file["/output/weak/sig"].attrs["yy"]
-        sig = np.empty((n, 2, 2), dtype=float)
-        sig[:, 0, 0] = file["/output/weak/sig"][xx, :]
-        sig[:, 0, 1] = file["/output/weak/sig"][xy, :]
-        sig[:, 1, 0] = sig[:, 0, 1]
-        sig[:, 1, 1] = file["/output/weak/sig"][yy, :]
-        sig = GMat.Sigd(sig) / sig0
-
-        eps = gammadot * dt * file["/output/inc"][...] / eps0
-        snap = gammadot * dt * file["/snapshot/inc"][...] / eps0
+        data = basic_output(file)
 
     fig, ax = plt.subplots()
 
-    ax.plot(eps, sig)
+    s = data["weak"]["steadystate"]
+    ax.plot(data["weak"]["eps"][:s], data["weak"]["sig"][:s], c=0.5 * np.ones(3))
+    ax.plot(data["weak"]["eps"][s:], data["weak"]["sig"][s:], c="k")
 
     lim = ax.get_ylim()
     ax.set_ylim([0, lim[-1]])
 
-    x = np.zeros((2, snap.size), dtype=float)
-    y = np.zeros((2, snap.size), dtype=float)
-    x[0, :] = snap
-    x[1, :] = snap
+    s = data["snapshot"]["steadystate"]
+
+    eps = data["snapshot"]["eps"][:s]
+    x = np.zeros((2, eps.size), dtype=float)
+    y = np.zeros((2, eps.size), dtype=float)
+    x[0, :] = eps
+    x[1, :] = eps
     y[1, :] = lim[-1]
 
     ax.plot(x, y, c="r", lw=1)
+
+    eps = data["snapshot"]["eps"][s:]
+    x = np.zeros((2, eps.size), dtype=float)
+    y = np.zeros((2, eps.size), dtype=float)
+    x[0, :] = eps
+    x[1, :] = eps
+    y[1, :] = lim[-1]
+
+    ax.plot(x, y, c="b", lw=1)
+
+    ax.set_xlabel(r"$\varepsilon$")
+    ax.set_ylabel(r"$\sigma$")
 
     plt.show()
