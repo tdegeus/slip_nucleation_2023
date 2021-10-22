@@ -132,7 +132,14 @@ def init(file: h5py.File) -> model.System:
     return system
 
 
-def generate(filepath: str, N: int, seed: int = 0, classic: bool = False, test_mode: bool = False):
+def generate(
+    filepath: str,
+    N: int,
+    seed: int = 0,
+    init_run: bool = True,
+    classic: bool = False,
+    test_mode: bool = False,
+):
     """
     Generate input file.
     Note that two ways of storage of yield strains are supported:
@@ -143,6 +150,7 @@ def generate(filepath: str, N: int, seed: int = 0, classic: bool = False, test_m
     :param filepath: The filepath of the input file.
     :param N: The number of blocks.
     :param seed: Base seed to use to generate the disorder.
+    :param init_run: Initialise for use with :py:func:`run`.
     :param classic: The yield strain are hard-coded in the file, otherwise prrng is used.
     :param test_mode: Run in test mode (smaller chunk).
     """
@@ -239,13 +247,6 @@ def generate(filepath: str, N: int, seed: int = 0, classic: bool = False, test_m
             "/iip",
             iip,
             desc="Prescribed DOFs [nnp]",
-        )
-
-        storage.dump_with_atttrs(
-            file,
-            "/run/epsd/kick",
-            eps0 * 2e-4,
-            desc="Strain kick to apply",
         )
 
         storage.dump_with_atttrs(
@@ -418,19 +419,28 @@ def generate(filepath: str, N: int, seed: int = 0, classic: bool = False, test_m
         meta = file.create_group(f"/meta/{progname}")
         meta.attrs["version"] = version
 
-        desc = '(end of increment). One entry per item in "/stored".'
-        storage.create_extendible(file, "/stored", np.uint64, desc="List of stored increments")
-        storage.create_extendible(file, "/t", np.float64, desc=f"Time {desc}")
-        storage.create_extendible(file, "/kick", bool, desc=f"Kick {desc}")
+        if init_run:
 
-        storage.dset_extend1d(file, "/stored", 0, 0)
-        storage.dset_extend1d(file, "/t", 0, 0.0)
-        storage.dset_extend1d(file, "/kick", 0, False)
+            storage.dump_with_atttrs(
+                file,
+                "/run/epsd/kick",
+                eps0 * 2e-4,
+                desc="Strain kick to apply",
+            )
 
-        file["/disp/0"] = np.zeros_like(coor)
-        file["/disp"].attrs["desc"] = f"Displacement {desc}"
+            desc = '(end of increment). One entry per item in "/stored".'
+            storage.create_extendible(file, "/stored", np.uint64, desc="List of stored increments")
+            storage.create_extendible(file, "/t", np.float64, desc=f"Time {desc}")
+            storage.create_extendible(file, "/kick", bool, desc=f"Kick {desc}")
 
-        assert np.min(np.diff(read_epsy(file), axis=1)) > file["/run/epsd/kick"][...]
+            storage.dset_extend1d(file, "/stored", 0, 0)
+            storage.dset_extend1d(file, "/t", 0, 0.0)
+            storage.dset_extend1d(file, "/kick", 0, False)
+
+            file["/disp/0"] = np.zeros_like(coor)
+            file["/disp"].attrs["desc"] = f"Displacement {desc}"
+
+            assert np.min(np.diff(read_epsy(file), axis=1)) > file["/run/epsd/kick"][...]
 
 
 def cli_generate(cli_args=None):

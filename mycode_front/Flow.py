@@ -8,16 +8,21 @@ import argparse
 import inspect
 import os
 import re
+import shutil
 import sys
+import tempfile
 import textwrap
+import warnings
 from collections import defaultdict
 
+import click
 import GMatElastoPlasticQPot.Cartesian2d as GMat
 import GooseHDF5 as g5
 import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 import tqdm
+from numpy.typing import ArrayLike
 
 from . import slurm
 from . import storage
@@ -33,8 +38,13 @@ entry_points = dict(
     cli_plot="Flow_plot",
     cli_plot_velocityjump="Flow_plot_velocityjump",
     cli_run="Flow_run",
+    cli_ensembleinfo="Flow_ensembleinfo",
     cli_branch_velocityjump="Flow_branch_velocityjump",
     cli_update_branch_velocityjump="Flow_update_branch_velocityjump",
+)
+
+file_defaults = dict(
+    cli_ensembleinfo="EnsembleInfo.h5",
 )
 
 
@@ -61,7 +71,7 @@ def interpret_filename(filename: str) -> dict:
         info[key] = value
 
     for key in info:
-        if key in ["gammadot"]:
+        if key in ["gammadot", "jump"]:
             info[key] = float(info[key])
         else:
             info[key] = int(info[key])
@@ -80,6 +90,7 @@ def generate(*args, **kwargs):
     :param snapshot: Snapshot storage interval.
     """
 
+    kwargs.setdefault("init_run", False)
     gammadot = kwargs.pop("gammadot")
     output = kwargs.pop("output", int(500))
     restart = kwargs.pop("restart", int(5000))
@@ -379,27 +390,45 @@ def basic_output(file: h5py.File) -> dict:
     dt = file["/run/dt"][...]
     sig0 = file["/meta/normalisation/sig"][...] if "/meta/normalisation/sig" in file else 1.0
     eps0 = file["/meta/normalisation/eps"][...] if "/meta/normalisation/eps" in file else 1.0
+    iout = file["/output/inc"][...]
+    isnap = file["/snapshot/inc"][...]
+    ret["normalisation"]["inc2eps"] = gammadot * dt / eps0
+
+    ret["gammadot"] = gammadot
+    ret["dt"] = dt
+
+    if "/meta/normalisation" in file:
+        ret["normalisation"]["eps0"] = eps0
+        ret["normalisation"]["sig0"] = sig0
+        ret["normalisation"]["sig0"] = sig0
+        mu = file["/meta/normalisation/G"][...] / 2.0
+        rho = file["/meta/normalisation/rho"][...]
+        cs = np.sqrt(mu / rho)
+        l0 = file["/meta/normalisation/l"][...]
+        t0 = float(l0 / cs)
+        ret["normalisation"]["cs"] = cs
+        ret["normalisation"]["l0"] = l0
+        ret["normalisation"]["t0"] = t0
+    else:
+        t0 = 1.0
 
     n = file["/output/weak/sig"].shape[1]
     xx = file["/output/weak/sig"].attrs["xx"]
     xy = file["/output/weak/sig"].attrs["xy"]
     yy = file["/output/weak/sig"].attrs["yy"]
 
-    sig = np.empty((n, 2, 2), dtype=float)
-    sig[:, 0, 0] = file["/output/weak/sig"][xx, :]
-    sig[:, 0, 1] = file["/output/weak/sig"][xy, :]
-    sig[:, 1, 0] = sig[:, 0, 1]
-    sig[:, 1, 1] = file["/output/weak/sig"][yy, :]
-    ret["weak"]["sig"] = GMat.Sigd(sig) / sig0
-
-    iout = file["/output/inc"][...]
-    isnap = file["/snapshot/inc"][...]
-
+    Sig = np.empty((n, 2, 2), dtype=float)
+    Sig[:, 0, 0] = file["/output/weak/sig"][xx, :]
+    Sig[:, 0, 1] = file["/output/weak/sig"][xy, :]
+    Sig[:, 1, 0] = Sig[:, 0, 1]
+    Sig[:, 1, 1] = file["/output/weak/sig"][yy, :]
+    sig = GMat.Sigd(Sig) / sig0
+    ret["weak"]["sig"] = sig
+    ret["weak"]["epsp"] = file["/output/epsp"][...] / eps0
     ret["weak"]["inc"] = iout
-    ret["snapshot"]["inc"] = isnap
-
-    ret["inc2eps"] = gammadot * dt / eps0
+    ret["weak"]["t"] = iout * dt / t0
     ret["weak"]["eps"] = gammadot * dt * iout / eps0
+    ret["snapshot"]["inc"] = isnap
     ret["snapshot"]["eps"] = gammadot * dt * isnap / eps0
 
     dout = np.diff(iout)
@@ -422,12 +451,101 @@ def basic_output(file: h5py.File) -> dict:
         m[int(i / d - 1)] = np.mean(sig[i:u])
         s[int(i / d - 1)] = np.std(sig[i:u])
 
-    ss = np.argmax(np.isclose(m, m[-1], 1e-2, 1e-2 * s[-1]))
+    mtarget = np.mean(m[-3:])
+    starget = np.mean(s[-3:])
+    ss = np.argmax(np.isclose(m, mtarget, 1e-2, 1e-3 * starget)) + 2
+    assert ss < ret["snapshot"]["inc"].size
 
     ret["snapshot"]["steadystate"] = ss
     ret["weak"]["steadystate"] = int(ss * d)
 
     return ret
+
+
+def steadystate_output(files: list[str]) -> dict:
+    """
+    Extract relevant averages from the steady-state of the output read by :py:func:`basic_output`.
+
+    :param files: List of files.
+    :return: Basic output.
+    """
+
+    ret = defaultdict(lambda: defaultdict(list))
+
+    for filepath in tqdm.tqdm(files):
+
+        info = interpret_filename(os.path.basename(filepath))
+        name = "{:.2e}".format(info["gammadot"])
+
+        with h5py.File(filepath, "r") as file:
+            data = basic_output(file)
+
+        ret["sigma_weak"][name].append(np.mean(data["weak"]["sig"][-400:]))
+        ret["depsp"][name].append(data["weak"]["epsp"][-1] - data["weak"]["epsp"][-400])
+        ret["dt"][name].append(data["weak"]["t"][-1] - data["weak"]["t"][-400])
+
+    for key in ret["depsp"]:
+        ret["sigma_weak"][key] = np.array(ret["sigma_weak"][key])
+        ret["depsp"][key] = np.array(ret["depsp"][key])
+        ret["dt"][key] = np.array(ret["dt"][key])
+        ret["epspdot"][key] = ret["depsp"][key] / ret["dt"][key]
+
+    return ret
+
+
+def cli_ensembleinfo(cli_args=None):
+    """
+    Collect basic ensemble information.
+    """
+
+    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    output = file_defaults[funcname]
+
+    parser.add_argument("--develop", action="store_true", help="Development mode")
+    parser.add_argument("-f", "--force", action="store_true", help="Force overwrite")
+    parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
+    parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("files", nargs="*", type=str, help="Simulations to branch")
+
+    if cli_args is None:
+        args = parser.parse_args(sys.argv[1:])
+    else:
+        args = parser.parse_args([str(arg) for arg in cli_args])
+
+    assert len(args.files) > 0
+    assert np.all([os.path.exists(f) for f in args.files])
+
+    if not args.force:
+        if os.path.isfile(args.output):
+            if not click.confirm(f'Overwrite "{args.output}"?'):
+                raise OSError("Cancelled")
+
+    data = steadystate_output(args.files)
+    avr = defaultdict(list)
+    std = defaultdict(list)
+    gammadot = []
+
+    for key in sorted(data["depsp"], key=lambda key: float(key)):
+        gammadot.append(float(key))
+        avr["sigma_weak"].append(np.mean(data["sigma_weak"][key]))
+        std["sigma_weak"].append(np.std(data["sigma_weak"][key]))
+        avr["depsp"].append(np.mean(data["depsp"][key]))
+        std["depsp"].append(np.std(data["depsp"][key]))
+        avr["dt"].append(np.mean(data["dt"][key]))
+        std["dt"].append(np.std(data["dt"][key]))
+        avr["epspdot"].append(np.mean(data["epspdot"][key]))
+        std["epspdot"].append(np.std(data["epspdot"][key]))
+
+    with h5py.File(args.output, "w") as file:
+        file["gammadot"] = gammadot
+        for key in avr:
+            file[key] = avr[key]
+            file[key].attrs["std"] = std[key]
 
 
 def cli_branch_velocityjump(cli_args=None):
@@ -460,93 +578,93 @@ def cli_branch_velocityjump(cli_args=None):
     assert args.develop or not tag.has_uncommitted(version)
 
     Gammadot, scale = default_gammadot()
-    outputname = []
-    outputpath = []
-    inputpath = []
-    applygammadot = []
+    inp_paths = []
+    out_names = []
+    out_paths = []
+    out_gammadots = []
 
     for filepath in args.files:
 
         info = interpret_filename(os.path.basename(filepath))
-        diff = np.logical_not(np.isclose(info["gammadot"] / scale, Gammadot / scale))
+        include = np.logical_not(np.isclose(Gammadot / info["gammadot"], 1.0))
 
-        for gammadot in Gammadot[diff]:
+        for gammadot in Gammadot[include]:
 
             i = info["id"]
             g = info["gammadot"]
             name = f"id={i:03d}_gammadot={g:.2e}_jump={gammadot:.2e}.h5"
-            outputname.append(name)
-            outputpath.append(os.path.join(args.outdir, name))
-            inputpath.append(filepath)
-            applygammadot.append(gammadot)
+            inp_paths.append(filepath)
+            out_names.append(name)
+            out_paths.append(os.path.join(args.outdir, name))
+            out_gammadots.append(gammadot)
 
-    assert not np.any([os.path.exists(f) for f in outputpath])
+    assert not np.any([os.path.exists(f) for f in out_paths])
 
     if not os.path.isdir(args.outdir):
         os.makedirs(args.outdir)
 
-    for gammadot, outpath, read in zip(tqdm.tqdm(applygammadot), outputpath, inputpath):
+    for out_gammadot, out_path, inp_path in zip(tqdm.tqdm(out_gammadots), out_paths, inp_paths):
 
-        with h5py.File(read, "r") as source:
-            with h5py.File(outpath, "w") as dest:
+        with h5py.File(inp_path, "r") as source, h5py.File(out_path, "w") as dest:
 
-                output = basic_output(source)
-                if args.develop:
-                    inc = output["snapshot"]["inc"]
-                    inc = inc[int(inc.size / 2)]
-                else:
-                    inc = output["snapshot"]["inc"][output["snapshot"]["steadystate"] + 2]
+            output = basic_output(source)
+            if args.develop:
+                inc = output["snapshot"]["inc"]
+                inc = inc[int(inc.size / 2)]
+            else:
+                inc = output["snapshot"]["inc"][output["snapshot"]["steadystate"]]
 
-                m = "/meta/{:s}".format(entry_points["cli_run"])
-                paths = g5.getdatapaths(source)
-                paths = [p for p in paths if not re.match(r"(/snapshot/)(.*)", p)]
-                paths = [p for p in paths if not re.match(r"(/output/)(.*)", p)]
-                paths = [p for p in paths if not re.match(r"(/restart/)(.*)", p)]
-                paths = [p for p in paths if not re.match(f"({m})(.*)", p)]
-                g5.copy(source, dest, paths)
+            meta = "/meta/{:s}".format(entry_points["cli_run"])
+            paths = g5.getdatapaths(source)
+            paths = [p for p in paths if not re.match(r"(/snapshot/)(.*)", p)]
+            paths = [p for p in paths if not re.match(r"(/output/)(.*)", p)]
+            paths = [p for p in paths if not re.match(r"(/restart/)(.*)", p)]
+            paths = [p for p in paths if not re.match(f"({meta})(.*)", p)]
+            g5.copy(source, dest, paths)
 
-                for t in ["restart", "output", "snapshot"]:
-                    g5.copy(source, dest, [f"/{t}/interval"])
+            for t in ["restart", "output", "snapshot"]:
+                g5.copy(source, dest, [f"/{t}/interval"])
 
-                g5.copy(
-                    source,
-                    dest,
-                    ["/meta/{:s}".format(entry_points["cli_run"])],
-                    np.array(["/meta/{:s}_source".format(entry_points["cli_run"])]),
-                )
-                # todo: remove last np.array conversion for >= GooseHDF5-0.14.0
+            g5.copy(
+                source,
+                dest,
+                ["/meta/{:s}".format(entry_points["cli_run"])],
+                np.array(["/meta/{:s}_source".format(entry_points["cli_run"])]),
+            )
+            if tag.greater(g5.version, "0.14.0"):
+                warnings.warn("Remove np.array conversion in previous command", FutureWarning)
 
-                meta = dest.create_group(f"/meta/{progname}")
-                meta.attrs["version"] = version
-                meta.attrs["inc"] = inc
+            meta = dest.create_group(f"/meta/{progname}")
+            meta.attrs["version"] = version
+            meta.attrs["inc"] = inc
 
-                dest["/gammadot"][...] = gammadot
-                dest["/restart/inc"] = 0
-                dest["/restart/u"] = source[f"/snapshot/u/{inc:d}"][...]
-                dest["/restart/v"] = source[f"/snapshot/v/{inc:d}"][...]
-                dest["/restart/a"] = source[f"/snapshot/a/{inc:d}"][...]
-                dest["/snapshot/u/0"] = source[f"/snapshot/u/{inc:d}"][...]
-                dest["/snapshot/v/0"] = source[f"/snapshot/v/{inc:d}"][...]
-                dest["/snapshot/a/0"] = source[f"/snapshot/a/{inc:d}"][...]
+            dest["/gammadot"][...] = out_gammadot
+            dest["/restart/inc"] = 0
+            dest["/restart/u"] = source[f"/snapshot/u/{inc:d}"][...]
+            dest["/restart/v"] = source[f"/snapshot/v/{inc:d}"][...]
+            dest["/restart/a"] = source[f"/snapshot/a/{inc:d}"][...]
+            dest["/snapshot/u/0"] = source[f"/snapshot/u/{inc:d}"][...]
+            dest["/snapshot/v/0"] = source[f"/snapshot/v/{inc:d}"][...]
+            dest["/snapshot/a/0"] = source[f"/snapshot/a/{inc:d}"][...]
 
-                run_create_extendible(dest)
+            run_create_extendible(dest)
 
-                i = int(inc / source["/output/interval"][...])
+            i = int(inc / source["/output/interval"][...])
 
-                for key in ["/output/inc"]:
-                    dest[key].resize((1,))
-                    dest[key][0] = 0
+            for key in ["/output/inc"]:
+                dest[key].resize((1,))
+                dest[key][0] = 0
 
-                for key in ["/output/S", "/output/epsp"]:
-                    dest[key].resize((1,))
-                    dest[key][0] = source[key][i]
+            for key in ["/output/S", "/output/epsp"]:
+                dest[key].resize((1,))
+                dest[key][0] = source[key][i]
 
-                for key in ["/output/global/sig", "/output/weak/sig"]:
-                    dest[key].resize((3, 1))
-                    dest[key][:, 0] = source[key][:, i]
+            for key in ["/output/global/sig", "/output/weak/sig"]:
+                dest[key].resize((3, 1))
+                dest[key][:, 0] = source[key][:, i]
 
     executable = entry_points["cli_run"]
-    commands = [f"{executable} {file}" for file in outputname]
+    commands = [f"{executable} {file}" for file in out_names]
     slurm.serial_group(
         commands,
         basename=executable,
@@ -556,7 +674,7 @@ def cli_branch_velocityjump(cli_args=None):
     )
 
     if cli_args is not None:
-        return outputpath
+        return out_paths
 
 
 def cli_update_branch_velocityjump(cli_args=None):
@@ -584,19 +702,73 @@ def cli_update_branch_velocityjump(cli_args=None):
 
     branchname = entry_points["cli_branch_velocityjump"]
 
+    tempdir = tempfile.mkdtemp()
+    tfile = os.path.join(tempdir, "tmp.h5")
+
     for filepath in args.files:
 
-        with h5py.File(filepath, "a") as file:
+        with h5py.File(filepath, "r") as source, h5py.File(tfile, "w") as dest:
 
-            assert f"/meta/{branchname}" in file
-            meta = file[f"/meta/{branchname}"]
+            assert f"/meta/{branchname}" in source
+            meta = source[f"/meta/{branchname}"]
             ver = meta.attrs["version"]
             assert tag.greater_equal(ver, "5.1.dev1+g850c0e4")
 
             if tag.equal(ver, "5.1.dev1+g850c0e4"):
-                meta.attrs["update_0"] = meta.attrs["version"]
-                meta.attrs["version"] = version
-                file["/output/inc"][0] = 0
+
+                paths = g5.getdatapaths(source)
+                paths.pop("/run/epsd/kick")
+                paths.pop("/stored")
+                paths.pop("/t")
+                paths.pop("/kick")
+                paths.pop("/disp/0")
+                paths.pop("/disp")
+                paths.pop(f"/meta/{branchname}")
+
+                g5.copy(source, dest, paths)
+
+                dest_meta = dest.create_group(f"/meta/{branchname}")
+                dest_meta.attrs["version"] = version
+                dest_meta.attrs["inc"] = meta.attrs["inc"]
+                dest_meta.attrs["updated"] = [meta.attrs["version"]]
+
+                dest["/output/inc"][0] = 0
+
+    shutil.rmtree(tempdir)
+
+
+def moving_average(a: ArrayLike, n: int) -> ArrayLike:
+    """
+    Return the moving average.
+
+    :param a: Array.
+    :param n: Moving average over n entries.
+    :return: Averaged array.
+    """
+
+    ret = np.cumsum(a, dtype=float)
+    ret[n:] = ret[n:] - ret[:-n]
+    s = n - 1
+    return ret[s:] / n
+
+
+def moving_average_y(x: ArrayLike, y: ArrayLike, n: int) -> ArrayLike:
+    """
+    Return the moving average of y while modifying the size of x.
+
+    :param x: Array.
+    :param y: Array to average.
+    :param n: Moving average over n entries.
+    :return: x, y
+    """
+
+    if n is None:
+        return x, y
+
+    assert n > 0
+
+    s = n - 1
+    return x[s:], moving_average(y, n)
 
 
 def cli_plot(cli_args=None):
@@ -611,6 +783,8 @@ def cli_plot(cli_args=None):
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
 
+    parser.add_argument("-a", "--moving-average", type=int, help="Apply moving average")
+    parser.add_argument("-s", "--save", type=str, help="Save the image")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("file", type=str, help="Simulation file")
 
@@ -627,8 +801,14 @@ def cli_plot(cli_args=None):
     fig, ax = plt.subplots()
 
     s = data["weak"]["steadystate"]
-    ax.plot(data["weak"]["eps"][:s], data["weak"]["sig"][:s], c=0.5 * np.ones(3))
-    ax.plot(data["weak"]["eps"][s:], data["weak"]["sig"][s:], c="k")
+    ax.plot(
+        *moving_average_y(data["weak"]["eps"][:s], data["weak"]["sig"][:s], args.moving_average),
+        c=0.5 * np.ones(3),
+    )
+    ax.plot(
+        *moving_average_y(data["weak"]["eps"][s:], data["weak"]["sig"][s:], args.moving_average),
+        c="k",
+    )
 
     lim = ax.get_ylim()
     ax.set_ylim([0, lim[-1]])
@@ -656,7 +836,12 @@ def cli_plot(cli_args=None):
     ax.set_xlabel(r"$\varepsilon$")
     ax.set_ylabel(r"$\sigma$")
 
-    plt.show()
+    if args.save:
+        fig.savefig(args.save)
+    else:
+        plt.show()
+
+    plt.close(fig)
 
 
 def cli_plot_velocityjump(cli_args=None):
@@ -671,6 +856,7 @@ def cli_plot_velocityjump(cli_args=None):
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
 
+    parser.add_argument("-a", "--moving-average", type=int, help="Apply moving average")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("source", type=str, help="The initial simulation")
     parser.add_argument("jump", type=str, help="The velocity jump")
@@ -695,9 +881,21 @@ def cli_plot_velocityjump(cli_args=None):
     fig, ax = plt.subplots()
 
     s = source["weak"]["steadystate"]
-    ax.plot(source["weak"]["eps"][:s], source["weak"]["sig"][:s], c=0.5 * np.ones(3))
-    ax.plot(source["weak"]["eps"][s:], source["weak"]["sig"][s:], c="k")
-    ax.plot(eps0 + jump["weak"]["eps"], jump["weak"]["sig"], c="r")
+
+    x, y = moving_average_y(
+        source["weak"]["eps"][:s], source["weak"]["sig"][:s], args.moving_average
+    )
+    ax.plot(x, y, c=0.5 * np.ones(3))
+
+    x, y = moving_average_y(
+        source["weak"]["eps"][s:], source["weak"]["sig"][s:], args.moving_average
+    )
+    ax.plot(x, y, c="k")
+
+    x, y = moving_average_y(eps0 + jump["weak"]["eps"], jump["weak"]["sig"], args.moving_average)
+    ax.plot(x, y, c="r")
+
+    ax.plot(eps0 * np.ones(2), ax.get_ylim(), c="g")
 
     ax.set_xlabel(r"$\varepsilon$")
     ax.set_ylabel(r"$\sigma$")
