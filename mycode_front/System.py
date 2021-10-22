@@ -132,7 +132,14 @@ def init(file: h5py.File) -> model.System:
     return system
 
 
-def generate(filepath: str, N: int, seed: int = 0, init_run: bool = True, classic: bool = False, test_mode: bool = False):
+def generate(
+    filepath: str,
+    N: int,
+    seed: int = 0,
+    init_run: bool = True,
+    classic: bool = False,
+    test_mode: bool = False,
+):
     """
     Generate input file.
     Note that two ways of storage of yield strains are supported:

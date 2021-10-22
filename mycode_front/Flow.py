@@ -8,20 +8,21 @@ import argparse
 import inspect
 import os
 import re
+import shutil
 import sys
+import tempfile
 import textwrap
 import warnings
-import tempfile
-import shutil
-import click
 from collections import defaultdict
 
+import click
 import GMatElastoPlasticQPot.Cartesian2d as GMat
 import GooseHDF5 as g5
 import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 import tqdm
+from numpy.typing import ArrayLike
 
 from . import slurm
 from . import storage
@@ -45,6 +46,7 @@ entry_points = dict(
 file_defaults = dict(
     cli_ensembleinfo="EnsembleInfo.h5",
 )
+
 
 def replace_ep(doc):
     """
@@ -399,7 +401,6 @@ def basic_output(file: h5py.File) -> dict:
         ret["normalisation"]["eps0"] = eps0
         ret["normalisation"]["sig0"] = sig0
         ret["normalisation"]["sig0"] = sig0
-        kappa = file["/meta/normalisation/K"][...] / 3.0
         mu = file["/meta/normalisation/G"][...] / 2.0
         rho = file["/meta/normalisation/rho"][...]
         cs = np.sqrt(mu / rho)
@@ -480,8 +481,8 @@ def steadystate_output(files: list[str]) -> dict:
             data = basic_output(file)
 
         ret["sigma_weak"][name].append(np.mean(data["weak"]["sig"][-400:]))
-        ret["depsp"][name].append((data["weak"]["epsp"][-1] - data["weak"]["epsp"][-400]))
-        ret["dt"][name].append((data["weak"]["t"][-1] - data["weak"]["t"][-400]))
+        ret["depsp"][name].append(data["weak"]["epsp"][-1] - data["weak"]["epsp"][-400])
+        ret["dt"][name].append(data["weak"]["t"][-1] - data["weak"]["t"][-400])
 
     for key in ret["depsp"]:
         ret["sigma_weak"][key] = np.array(ret["sigma_weak"][key])
@@ -503,7 +504,6 @@ def cli_ensembleinfo(cli_args=None):
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
-    progname = entry_points[funcname]
     output = file_defaults[funcname]
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
@@ -732,24 +732,43 @@ def cli_update_branch_velocityjump(cli_args=None):
                 dest_meta.attrs["inc"] = meta.attrs["inc"]
                 dest_meta.attrs["updated"] = [meta.attrs["version"]]
 
-                file["/output/inc"][0] = 0
+                dest["/output/inc"][0] = 0
 
     shutil.rmtree(tempdir)
 
 
-def moving_average(a, n) :
+def moving_average(a: ArrayLike, n: int) -> ArrayLike:
+    """
+    Return the moving average.
+
+    :param a: Array.
+    :param n: Moving average over n entries.
+    :return: Averaged array.
+    """
+
     ret = np.cumsum(a, dtype=float)
     ret[n:] = ret[n:] - ret[:-n]
-    return ret[n - 1:] / n
+    s = n - 1
+    return ret[s:] / n
 
 
-def plot_moving_average_y(x, y, n):
+def moving_average_y(x: ArrayLike, y: ArrayLike, n: int) -> ArrayLike:
+    """
+    Return the moving average of y while modifying the size of x.
+
+    :param x: Array.
+    :param y: Array to average.
+    :param n: Moving average over n entries.
+    :return: x, y
+    """
+
     if n is None:
         return x, y
 
     assert n > 0
 
-    return x[n - 1:], moving_average(y, n)
+    s = n - 1
+    return x[s:], moving_average(y, n)
 
 
 def cli_plot(cli_args=None):
@@ -782,8 +801,14 @@ def cli_plot(cli_args=None):
     fig, ax = plt.subplots()
 
     s = data["weak"]["steadystate"]
-    ax.plot(*plot_moving_average_y(data["weak"]["eps"][:s], data["weak"]["sig"][:s], args.moving_average), c=0.5 * np.ones(3))
-    ax.plot(*plot_moving_average_y(data["weak"]["eps"][s:], data["weak"]["sig"][s:], args.moving_average), c="k")
+    ax.plot(
+        *moving_average_y(data["weak"]["eps"][:s], data["weak"]["sig"][:s], args.moving_average),
+        c=0.5 * np.ones(3),
+    )
+    ax.plot(
+        *moving_average_y(data["weak"]["eps"][s:], data["weak"]["sig"][s:], args.moving_average),
+        c="k",
+    )
 
     lim = ax.get_ylim()
     ax.set_ylim([0, lim[-1]])
@@ -858,9 +883,20 @@ def cli_plot_velocityjump(cli_args=None):
     fig, ax = plt.subplots()
 
     s = source["weak"]["steadystate"]
-    ax.plot(*plot_moving_average_y(source["weak"]["eps"][:s], source["weak"]["sig"][:s], args.moving_average), c=0.5 * np.ones(3))
-    ax.plot(*plot_moving_average_y(source["weak"]["eps"][s:], source["weak"]["sig"][s:], args.moving_average), c="k")
-    ax.plot(*plot_moving_average_y(eps0 + jump["weak"]["eps"], jump["weak"]["sig"], args.moving_average), c="r")
+
+    x, y = moving_average_y(
+        source["weak"]["eps"][:s], source["weak"]["sig"][:s], args.moving_average
+    )
+    ax.plot(x, y, c=0.5 * np.ones(3))
+
+    x, y = moving_average_y(
+        source["weak"]["eps"][s:], source["weak"]["sig"][s:], args.moving_average
+    )
+    ax.plot(x, y, c="k")
+
+    x, y = moving_average_y(eps0 + jump["weak"]["eps"], jump["weak"]["sig"], args.moving_average)
+    ax.plot(x, y, c="r")
+
     ax.plot(eps0 * np.ones(2), ax.get_ylim(), c="g")
 
     ax.set_xlabel(r"$\varepsilon$")
