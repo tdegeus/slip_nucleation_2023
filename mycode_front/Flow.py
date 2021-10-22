@@ -871,14 +871,12 @@ def cli_plot_velocityjump(cli_args=None):
 
     with h5py.File(args.source, "r") as file:
         source = basic_output(file)
-        print(source["snapshot"]["inc"][source["snapshot"]["steadystate"] + 2])
 
     with h5py.File(args.jump, "r") as file:
         jump = basic_output(file)
         prog = entry_points["cli_branch_velocityjump"]
         inc0 = file[f"/meta/{prog}"].attrs["inc"]
         eps0 = jump["inc2eps"] * inc0
-        print(inc0)
 
     fig, ax = plt.subplots()
 
