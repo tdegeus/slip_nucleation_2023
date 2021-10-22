@@ -13,6 +13,7 @@ import textwrap
 import warnings
 import tempfile
 import shutil
+import click
 from collections import defaultdict
 
 import GMatElastoPlasticQPot.Cartesian2d as GMat
@@ -68,7 +69,7 @@ def interpret_filename(filename: str) -> dict:
         info[key] = value
 
     for key in info:
-        if key in ["gammadot"]:
+        if key in ["gammadot", "jump"]:
             info[key] = float(info[key])
         else:
             info[key] = int(info[key])
@@ -387,6 +388,9 @@ def basic_output(file: h5py.File) -> dict:
     dt = file["/run/dt"][...]
     sig0 = file["/meta/normalisation/sig"][...] if "/meta/normalisation/sig" in file else 1.0
     eps0 = file["/meta/normalisation/eps"][...] if "/meta/normalisation/eps" in file else 1.0
+    iout = file["/output/inc"][...]
+    isnap = file["/snapshot/inc"][...]
+    ret["normalisation"]["inc2eps"] = gammadot * dt / eps0
 
     ret["gammadot"] = gammadot
     ret["dt"] = dt
@@ -398,34 +402,33 @@ def basic_output(file: h5py.File) -> dict:
         kappa = file["/meta/normalisation/K"][...] / 3.0
         mu = file["/meta/normalisation/G"][...] / 2.0
         rho = file["/meta/normalisation/rho"][...]
-        ret["normalisation"]["cs"] = np.sqrt(mu / rho)
-        ret["normalisation"]["l0"] = file["/meta/normalisation/l"][...]
-        ret["normalisation"]["t0"] = float(ret["normalisation"]["l0"] / ret["normalisation"]["cs"])
+        cs = np.sqrt(mu / rho)
+        l0 = file["/meta/normalisation/l"][...]
+        t0 = float(l0 / cs)
+        ret["normalisation"]["cs"] = cs
+        ret["normalisation"]["l0"] = l0
+        ret["normalisation"]["t0"] = t0
+    else:
+        t0 = 1.0
 
     n = file["/output/weak/sig"].shape[1]
     xx = file["/output/weak/sig"].attrs["xx"]
     xy = file["/output/weak/sig"].attrs["xy"]
     yy = file["/output/weak/sig"].attrs["yy"]
 
-    sig = np.empty((n, 2, 2), dtype=float)
-    sig[:, 0, 0] = file["/output/weak/sig"][xx, :]
-    sig[:, 0, 1] = file["/output/weak/sig"][xy, :]
-    sig[:, 1, 0] = sig[:, 0, 1]
-    sig[:, 1, 1] = file["/output/weak/sig"][yy, :]
-    ret["weak"]["sig"] = GMat.Sigd(sig) / sig0
-
-    iout = file["/output/inc"][...]
-    isnap = file["/snapshot/inc"][...]
-
+    Sig = np.empty((n, 2, 2), dtype=float)
+    Sig[:, 0, 0] = file["/output/weak/sig"][xx, :]
+    Sig[:, 0, 1] = file["/output/weak/sig"][xy, :]
+    Sig[:, 1, 0] = Sig[:, 0, 1]
+    Sig[:, 1, 1] = file["/output/weak/sig"][yy, :]
+    sig = GMat.Sigd(Sig) / sig0
+    ret["weak"]["sig"] = sig
+    ret["weak"]["epsp"] = file["/output/epsp"][...] / eps0
     ret["weak"]["inc"] = iout
-    ret["snapshot"]["inc"] = isnap
-
-    ret["normalisation"]["inc2eps"] = gammadot * dt / eps0
-
+    ret["weak"]["t"] = iout * dt / t0
     ret["weak"]["eps"] = gammadot * dt * iout / eps0
+    ret["snapshot"]["inc"] = isnap
     ret["snapshot"]["eps"] = gammadot * dt * isnap / eps0
-
-    ret["weak"]["eps"] = files["/output/epsp"][...]
 
     dout = np.diff(iout)
     dsnap = np.diff(isnap)
@@ -447,10 +450,44 @@ def basic_output(file: h5py.File) -> dict:
         m[int(i / d - 1)] = np.mean(sig[i:u])
         s[int(i / d - 1)] = np.std(sig[i:u])
 
-    ss = np.argmax(np.isclose(m, m[-1], 1e-2, 1e-2 * s[-1]))
+    mtarget = np.mean(m[-3:])
+    starget = np.mean(s[-3:])
+    ss = np.argmax(np.isclose(m, mtarget, 1e-2, 1e-3 * starget)) + 2
+    assert ss < ret["snapshot"]["inc"].size
 
     ret["snapshot"]["steadystate"] = ss
     ret["weak"]["steadystate"] = int(ss * d)
+
+    return ret
+
+
+def steadystate_output(files: list[str]) -> dict:
+    """
+    Extract relevant averages from the steady-state of the output read by :py:func:`basic_output`.
+
+    :param files: List of files.
+    :return: Basic output.
+    """
+
+    ret = defaultdict(lambda: defaultdict(list))
+
+    for filepath in tqdm.tqdm(files):
+
+        info = interpret_filename(os.path.basename(filepath))
+        name = "{:.2e}".format(info["gammadot"])
+
+        with h5py.File(filepath, "r") as file:
+            data = basic_output(file)
+
+        ret["sigma_weak"][name].append(np.mean(data["weak"]["sig"][-400:]))
+        ret["depsp"][name].append((data["weak"]["epsp"][-1] - data["weak"]["epsp"][-400]))
+        ret["dt"][name].append((data["weak"]["t"][-1] - data["weak"]["t"][-400]))
+
+    for key in ret["depsp"]:
+        ret["sigma_weak"][key] = np.array(ret["sigma_weak"][key])
+        ret["depsp"][key] = np.array(ret["depsp"][key])
+        ret["dt"][key] = np.array(ret["dt"][key])
+        ret["epspdot"][key] = ret["depsp"][key] / ret["dt"][key]
 
     return ret
 
@@ -488,10 +525,27 @@ def cli_ensembleinfo(cli_args=None):
             if not click.confirm(f'Overwrite "{args.output}"?'):
                 raise OSError("Cancelled")
 
-    for filepath in args.files:
+    data = steadystate_output(args.files)
+    avr = defaultdict(list)
+    std = defaultdict(list)
+    gammadot = []
 
-        info = interpret_filename(os.path.basename(filepath))
+    for key in sorted(data["depsp"], key=lambda key: float(key)):
+        gammadot.append(float(key))
+        avr["sigma_weak"].append(np.mean(data["sigma_weak"][key]))
+        std["sigma_weak"].append(np.std(data["sigma_weak"][key]))
+        avr["depsp"].append(np.mean(data["depsp"][key]))
+        std["depsp"].append(np.std(data["depsp"][key]))
+        avr["dt"].append(np.mean(data["dt"][key]))
+        std["dt"].append(np.std(data["dt"][key]))
+        avr["epspdot"].append(np.mean(data["epspdot"][key]))
+        std["epspdot"].append(np.std(data["epspdot"][key]))
 
+    with h5py.File(args.output, "w") as file:
+        file["gammadot"] = gammadot
+        for key in avr:
+            file[key] = avr[key]
+            file[key].attrs["std"] = std[key]
 
 
 def cli_branch_velocityjump(cli_args=None):
@@ -532,9 +586,9 @@ def cli_branch_velocityjump(cli_args=None):
     for filepath in args.files:
 
         info = interpret_filename(os.path.basename(filepath))
-        diff = np.logical_not(np.equal(info["gammadot"], Gammadot))
+        include = np.logical_not(np.isclose(Gammadot / info["gammadot"], 1.0))
 
-        for gammadot in Gammadot[diff]:
+        for gammadot in Gammadot[include]:
 
             i = info["id"]
             g = info["gammadot"]
@@ -558,7 +612,7 @@ def cli_branch_velocityjump(cli_args=None):
                 inc = output["snapshot"]["inc"]
                 inc = inc[int(inc.size / 2)]
             else:
-                inc = output["snapshot"]["inc"][output["snapshot"]["steadystate"] + 2]
+                inc = output["snapshot"]["inc"][output["snapshot"]["steadystate"]]
 
             meta = "/meta/{:s}".format(entry_points["cli_run"])
             paths = g5.getdatapaths(source)
@@ -711,6 +765,7 @@ def cli_plot(cli_args=None):
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
 
     parser.add_argument("-a", "--moving-average", type=int, help="Apply moving average")
+    parser.add_argument("-s", "--save", type=str, help="Save the image")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("file", type=str, help="Simulation file")
 
@@ -756,7 +811,12 @@ def cli_plot(cli_args=None):
     ax.set_xlabel(r"$\varepsilon$")
     ax.set_ylabel(r"$\sigma$")
 
-    plt.show()
+    if args.save:
+        fig.savefig(args.save)
+    else:
+        plt.show()
+
+    plt.close(fig)
 
 
 def cli_plot_velocityjump(cli_args=None):
