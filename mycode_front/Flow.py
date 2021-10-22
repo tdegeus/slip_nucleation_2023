@@ -31,8 +31,10 @@ plt.style.use(["goose", "goose-latex"])
 entry_points = dict(
     cli_generate="Flow_generate",
     cli_plot="Flow_plot",
+    cli_plot_velocityjump="Flow_plot_velocityjump",
     cli_run="Flow_run",
     cli_branch_velocityjump="Flow_branch_velocityjump",
+    cli_update_branch_velocityjump="Flow_update_branch_velocityjump",
 )
 
 
@@ -396,6 +398,7 @@ def basic_output(file: h5py.File) -> dict:
     ret["weak"]["inc"] = iout
     ret["snapshot"]["inc"] = isnap
 
+    ret["inc2eps"] = gammadot * dt / eps0
     ret["weak"]["eps"] = gammadot * dt * iout / eps0
     ret["snapshot"]["eps"] = gammadot * dt * isnap / eps0
 
@@ -530,7 +533,11 @@ def cli_branch_velocityjump(cli_args=None):
 
                 i = int(inc / source["/output/interval"][...])
 
-                for key in ["/output/inc", "/output/S", "/output/epsp"]:
+                for key in ["/output/inc"]:
+                    dest[key].resize((1,))
+                    dest[key][0] = 0
+
+                for key in ["/output/S", "/output/epsp"]:
                     dest[key].resize((1,))
                     dest[key][0] = source[key][i]
 
@@ -550,6 +557,46 @@ def cli_branch_velocityjump(cli_args=None):
 
     if cli_args is not None:
         return outputpath
+
+
+def cli_update_branch_velocityjump(cli_args=None):
+    """
+    Make corrections / updates to previously computed output.
+    """
+
+    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+
+    parser.add_argument("--develop", action="store_true", help="Development mode")
+    parser.add_argument("files", nargs="*", type=str, help="Simulations to update (modified!)")
+
+    if cli_args is None:
+        args = parser.parse_args(sys.argv[1:])
+    else:
+        args = parser.parse_args([str(arg) for arg in cli_args])
+
+    assert np.all([os.path.exists(f) for f in args.files])
+    assert args.develop or not tag.has_uncommitted(version)
+
+    branchname = entry_points["cli_branch_velocityjump"]
+
+    for filepath in args.files:
+
+        with h5py.File(filepath, "a") as file:
+
+            assert f"/meta/{branchname}" in file
+            meta = file[f"/meta/{branchname}"]
+            ver = meta.attrs["version"]
+            assert tag.greater_equal(ver, "5.1.dev1+g850c0e4")
+
+            if tag.equal(ver, "5.1.dev1+g850c0e4"):
+                meta.attrs["update_0"] = meta.attrs["version"]
+                meta.attrs["version"] = version
+                file["/output/inc"][0] = 0
 
 
 def cli_plot(cli_args=None):
@@ -605,6 +652,52 @@ def cli_plot(cli_args=None):
     y[1, :] = lim[-1]
 
     ax.plot(x, y, c="b", lw=1)
+
+    ax.set_xlabel(r"$\varepsilon$")
+    ax.set_ylabel(r"$\sigma$")
+
+    plt.show()
+
+
+def cli_plot_velocityjump(cli_args=None):
+    """
+    Plot overview of flow simulation.
+    """
+
+    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+
+    parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("source", type=str, help="The initial simulation")
+    parser.add_argument("jump", type=str, help="The velocity jump")
+
+    if cli_args is None:
+        args = parser.parse_args(sys.argv[1:])
+    else:
+        args = parser.parse_args([str(arg) for arg in cli_args])
+
+    assert os.path.isfile(args.source)
+    assert os.path.isfile(args.jump)
+
+    with h5py.File(args.source, "r") as file:
+        source = basic_output(file)
+
+    with h5py.File(args.jump, "r") as file:
+        jump = basic_output(file)
+        prog = entry_points["cli_branch_velocityjump"]
+        inc0 = file[f"/meta/{prog}"].attrs["inc"]
+        eps0 = jump["inc2eps"] * inc0
+
+    fig, ax = plt.subplots()
+
+    s = source["weak"]["steadystate"]
+    ax.plot(source["weak"]["eps"][:s], source["weak"]["sig"][:s], c=0.5 * np.ones(3))
+    ax.plot(source["weak"]["eps"][s:], source["weak"]["sig"][s:], c="k")
+    ax.plot(eps0 + jump["weak"]["eps"], jump["weak"]["sig"], c="r")
 
     ax.set_xlabel(r"$\varepsilon$")
     ax.set_ylabel(r"$\sigma$")
