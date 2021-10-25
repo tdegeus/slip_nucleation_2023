@@ -18,6 +18,10 @@ class MyTests(unittest.TestCase):
     """
 
     def test_small(self):
+        """
+        *   Run a small simulation, read output.
+        *   Branch of velocity-jump experiments and run one, and read output.
+        """
 
         dirname = "mytest"
 
@@ -33,8 +37,11 @@ class MyTests(unittest.TestCase):
             file["/boundcheck"][...] = 170
 
         my.Flow.cli_run(["--develop", files[-1]])
-        files = my.Flow.cli_branch_velocityjump(["--develop", "-o", dirname, files[-1]])
-        my.Flow.cli_run(["--develop", files[-1]])
+        my.Flow.cli_ensembleinfo(["-o", os.path.join(dirname, "einfo.h5"), files[-1]])
+
+        branch = my.Flow.cli_branch_velocityjump(["--develop", "-o", dirname, files[-1]])
+        my.Flow.cli_run(["--develop", branch[-1]])
+        my.Flow.cli_ensembleinfo_velocityjump(["-o", os.path.join(dirname, "vinfo.h5"), branch[-1]])
 
         shutil.rmtree(dirname)
 

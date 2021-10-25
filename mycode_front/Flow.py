@@ -718,13 +718,11 @@ def cli_branch_velocityjump(cli_args=None):
     for filepath in args.files:
 
         info = interpret_filename(os.path.basename(filepath))
-        include = np.logical_not(np.isclose(Gammadot / info["gammadot"], 1.0))
+        include = np.logical_not(np.isclose(Gammadot / float(info["gammadot"]), 1.0))
 
         for gammadot in Gammadot[include]:
 
-            i = info["id"]
-            g = info["gammadot"]
-            name = f"id={i:03d}_gammadot={g:.2e}_jump={gammadot:.2e}.h5"
+            name = "id={id}_gammadot={gammadot}_jump={jump:.2e}.h5".format(jump=gammadot, **info)
             inp_paths.append(filepath)
             out_names.append(name)
             out_paths.append(os.path.join(args.outdir, name))
