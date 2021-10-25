@@ -596,8 +596,8 @@ def cli_ensembleinfo(cli_args=None):
             std[field].append(np.std(data[field][key]))
 
     with h5py.File(args.output, "w") as file:
-        file["/gammadot/keys"] = gammadot
-        file["/gammadot/values"] = [float(i) for i in gammadot]
+        file["/gammadot"] = [float(i) for i in gammadot]
+        file["/gammadot"].attrs["keys"] = gammadot
         for field in avr:
             file[g5.join(field, "mean", root=True)] = avr[field]
             file[g5.join(field, "std", root=True)] = std[field]
@@ -663,8 +663,8 @@ def cli_ensembleinfo_velocityjump(cli_args=None):
                 for filepath in files[select]:
                     with h5py.File(filepath, "r") as file:
                         data = basic_output(file)
-                        sigma.add_sample(moving_average(data["weak"]["sig"], 50))
-                        tau.add_sample(moving_average(data["weak"]["t"], 50))
+                        sigma.add_sample(data["weak"]["sig"])
+                        tau.add_sample(data["weak"]["t"])
 
                 n = sigma.norm()
 
