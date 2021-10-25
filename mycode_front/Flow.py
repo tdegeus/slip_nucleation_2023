@@ -42,7 +42,7 @@ entry_points = dict(
     cli_ensembleinfo="Flow_ensembleinfo",
     cli_branch_velocityjump="Flow_branch_velocityjump",
     cli_update_branch_velocityjump="Flow_update_branch_velocityjump",
-    cli_ensembleinfo_velocityjump="Flow_ensembleinfo_velocityjump"
+    cli_ensembleinfo_velocityjump="Flow_ensembleinfo_velocityjump",
 )
 
 file_defaults = dict(
@@ -108,6 +108,7 @@ def interpret_filename(filepath: str, convert: bool = False) -> dict:
 
     part = os.path.splitext(os.path.basename(filepath))[0]
     return _interpret(re.split("_|/", part), convert=convert)
+
 
 def generate(*args, **kwargs):
     """
