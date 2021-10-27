@@ -36,6 +36,7 @@ plt.style.use(["goose", "goose-latex"])
 
 entry_points = dict(
     cli_generate="Flow_generate",
+    cli_update_generate="Flow_update_generate",
     cli_plot="Flow_plot",
     cli_plot_velocityjump="Flow_plot_velocityjump",
     cli_run="Flow_run",
@@ -255,6 +256,68 @@ def cli_generate(cli_args=None):
 
     if cli_args is not None:
         return filepaths
+
+
+def cli_update_generate(cli_args=None):
+    """
+    Apply updates and bugfixes to old files.
+    """
+
+    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    progname = entry_points["cli_generate"]
+
+    parser.add_argument("--develop", action="store_true", help="Development mode")
+    parser.add_argument("-o", "--outdir", type=str, required=True, help="Output directory")
+    parser.add_argument("files", nargs="*", type=str, help="Simulations to update")
+
+    if cli_args is None:
+        args = parser.parse_args(sys.argv[1:])
+    else:
+        args = parser.parse_args([str(arg) for arg in cli_args])
+
+    outpaths = [os.path.join(args.outdir, f) for f in args.files]
+    assert np.all([os.path.exists(f) for f in args.files])
+    assert not np.any([os.path.exists(f) for f in outpaths])
+    assert args.develop or not tag.has_uncommitted(version)
+
+    if not os.path.isdir(args.outdir):
+        os.makedirs(args.outdir)
+
+    for filepath, outpath in zip(tqdm.tqdm(args.files), outpaths):
+
+        with h5py.File(filepath, "r") as source, h5py.File(outpath, "w") as dest:
+
+            assert f"/meta/{progname}" in source
+            meta = source[f"/meta/{progname}"]
+            ver = meta.attrs["version"]
+            updated = [ver]
+            if "updated" in meta.attrs:
+                updated += list(meta.attrs["updated"])
+
+            if tag.less_equal(ver, "5.3"):
+
+                paths = g5.getdatapaths(source)
+                paths.remove("/run/epsd/kick")
+                paths.remove("/stored")
+                paths.remove("/t")
+                paths.remove("/kick")
+                paths.remove("/disp/0")
+                paths.remove("/disp")
+                paths.remove(f"/meta/{progname}")
+
+                g5.copy(source, dest, paths)
+
+                dest_meta = dest.create_group(f"/meta/{progname}")
+                dest_meta.attrs["version"] = version
+                dest_meta.attrs["updated"] = updated
+
+    if cli_args is not None:
+        return outpaths
 
 
 def run_create_extendible(file: h5py.File):
