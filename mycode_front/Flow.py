@@ -35,15 +35,16 @@ plt.style.use(["goose", "goose-latex"])
 
 
 entry_points = dict(
+    cli_branch_velocityjump="Flow_branch_velocityjump",
+    cli_ensembleinfo="Flow_ensembleinfo",
+    cli_ensembleinfo_velocityjump="Flow_ensembleinfo_velocityjump",
     cli_generate="Flow_generate",
-    cli_update_generate="Flow_update_generate",
     cli_plot="Flow_plot",
     cli_plot_velocityjump="Flow_plot_velocityjump",
     cli_run="Flow_run",
-    cli_ensembleinfo="Flow_ensembleinfo",
-    cli_branch_velocityjump="Flow_branch_velocityjump",
     cli_update_branch_velocityjump="Flow_update_branch_velocityjump",
-    cli_ensembleinfo_velocityjump="Flow_ensembleinfo_velocityjump",
+    cli_update_generate="Flow_update_generate",
+    cli_update_run="Flow_update_run",
 )
 
 file_defaults = dict(
@@ -174,7 +175,6 @@ def generate(*args, **kwargs):
             desc="Snapshot storage interval",
         )
 
-
 def default_gammadot():
     """
     Shear rates to simulate.
@@ -260,7 +260,9 @@ def cli_generate(cli_args=None):
 
 def cli_update_generate(cli_args=None):
     """
-    Apply updates and bugfixes to old files.
+    Apply updates and bugfixes to old files:
+
+    *   <= 5.3 : remove :py:func:`System.run` specific files.
     """
 
     class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
@@ -315,6 +317,10 @@ def cli_update_generate(cli_args=None):
                 dest_meta = dest.create_group(f"/meta/{progname}")
                 dest_meta.attrs["version"] = version
                 dest_meta.attrs["updated"] = updated
+
+                for key in meta.attrs:
+                    if key not in ["version", "updated"]:
+                        dest_meta.attrs[key] = meta.attrs[key]
 
     if cli_args is not None:
         return outpaths
@@ -432,7 +438,7 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
 
                 file["/output/inc"][i] = inc
                 file["/output/S"][i] = np.sum(system.plastic_CurrentIndex()[:, 0])
-                file["/output/epsp"][i] = np.sum(system.plastic_Epsp()[:, 0])
+                file["/output/epsp"][i] = np.mean(system.plastic_Epsp()[:, 0])
                 file["/output/global/sig"][:, i] = Sig_bar.ravel()[[0, 1, 3]]
                 file["/output/weak/sig"][:, i] = Sig_weak.ravel()[[0, 1, 3]]
 
@@ -470,6 +476,73 @@ def cli_run(cli_args=None):
     run(args.file, dev=args.develop, progress=not args.quiet)
 
 
+def cli_update_run(cli_args=None):
+    """
+    Apply updates and bugfixes to old files:
+
+    *   <= 5.3 : Fix "/output/epsp" which was not normalised by the number of blocs.
+    """
+
+    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    progname = entry_points["cli_run"]
+
+    parser.add_argument("--develop", action="store_true", help="Development mode")
+    parser.add_argument("-o", "--outdir", type=str, required=True, help="Output directory")
+    parser.add_argument("files", nargs="*", type=str, help="Simulations to update")
+
+    if cli_args is None:
+        args = parser.parse_args(sys.argv[1:])
+    else:
+        args = parser.parse_args([str(arg) for arg in cli_args])
+
+    outpaths = [os.path.join(args.outdir, f) for f in args.files]
+    assert np.all([os.path.exists(f) for f in args.files])
+    assert not np.any([os.path.exists(f) for f in outpaths])
+    assert args.develop or not tag.has_uncommitted(version)
+
+    if not os.path.isdir(args.outdir):
+        os.makedirs(args.outdir)
+
+    for filepath, outpath in zip(tqdm.tqdm(args.files), outpaths):
+
+        with h5py.File(filepath, "r") as source, h5py.File(outpath, "w") as dest:
+
+            assert f"/meta/{progname}" in source
+            meta = source[f"/meta/{progname}"]
+            ver = meta.attrs["version"]
+            updated = [ver]
+            if "updated" in meta.attrs:
+                updated += list(meta.attrs["updated"])
+
+            if tag.less_equal(ver, "5.3"):
+
+                paths = g5.getdatapaths(source)
+                paths.remove(f"/meta/{progname}")
+
+                g5.copy(source, dest, paths)
+
+                N = dest["/meta/normalisation/N"][...]
+                dest["/output/epsp"][...] /= float(N)
+
+                dest_meta = dest.create_group(f"/meta/{progname}")
+                dest_meta.attrs["version"] = version
+                dest_meta.attrs["updated"] = updated
+
+                for key in meta.attrs:
+                    if key not in ["version", "updated"]:
+                        dest_meta.attrs[key] = meta.attrs[key]
+
+
+    if cli_args is not None:
+        return outpaths
+
+
+
 def basic_output(file: h5py.File) -> dict:
     """
     Extract basic output.
@@ -493,7 +566,6 @@ def basic_output(file: h5py.File) -> dict:
 
     if "/meta/normalisation" in file:
         ret["normalisation"]["eps0"] = eps0
-        ret["normalisation"]["sig0"] = sig0
         ret["normalisation"]["sig0"] = sig0
         mu = file["/meta/normalisation/G"][...] / 2.0
         rho = file["/meta/normalisation/rho"][...]
@@ -872,7 +944,10 @@ def cli_branch_velocityjump(cli_args=None):
 
 def cli_update_branch_velocityjump(cli_args=None):
     """
-    Make corrections / updates to previously computed output.
+    Apply updates and bugfixes to old files:
+
+    *   No relevant bugs are known at this point, this function does nothing.
+        However, it is important to run :py:func:`cli_update_generate`.
     """
 
     class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
@@ -881,53 +956,43 @@ def cli_update_branch_velocityjump(cli_args=None):
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    progname = entry_points["cli_branch_velocityjump"]
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
-    parser.add_argument("files", nargs="*", type=str, help="Simulations to update (modified!)")
+    parser.add_argument("-o", "--outdir", type=str, required=True, help="Output directory")
+    parser.add_argument("files", nargs="*", type=str, help="Simulations to update")
 
     if cli_args is None:
         args = parser.parse_args(sys.argv[1:])
     else:
         args = parser.parse_args([str(arg) for arg in cli_args])
 
+    outpaths = [os.path.join(args.outdir, f) for f in args.files]
     assert np.all([os.path.exists(f) for f in args.files])
+    assert not np.any([os.path.exists(f) for f in outpaths])
     assert args.develop or not tag.has_uncommitted(version)
 
-    branchname = entry_points["cli_branch_velocityjump"]
+    if not os.path.isdir(args.outdir):
+        os.makedirs(args.outdir)
 
-    tempdir = tempfile.mkdtemp()
-    tfile = os.path.join(tempdir, "tmp.h5")
+    for filepath, outpath in zip(tqdm.tqdm(args.files), outpaths):
 
-    for filepath in args.files:
+        with h5py.File(filepath, "r") as source, h5py.File(outpath, "w") as dest:
 
-        with h5py.File(filepath, "r") as source, h5py.File(tfile, "w") as dest:
-
-            assert f"/meta/{branchname}" in source
-            meta = source[f"/meta/{branchname}"]
+            assert f"/meta/{progname}" in source
+            meta = source[f"/meta/{progname}"]
             ver = meta.attrs["version"]
-            assert tag.greater_equal(ver, "5.1.dev1+g850c0e4")
+            updated = [ver]
+            if "updated" in meta.attrs:
+                updated += list(meta.attrs["updated"])
 
-            if tag.equal(ver, "5.1.dev1+g850c0e4"):
+            if True:
 
                 paths = g5.getdatapaths(source)
-                paths.pop("/run/epsd/kick")
-                paths.pop("/stored")
-                paths.pop("/t")
-                paths.pop("/kick")
-                paths.pop("/disp/0")
-                paths.pop("/disp")
-                paths.pop(f"/meta/{branchname}")
-
                 g5.copy(source, dest, paths)
 
-                dest_meta = dest.create_group(f"/meta/{branchname}")
-                dest_meta.attrs["version"] = version
-                dest_meta.attrs["inc"] = meta.attrs["inc"]
-                dest_meta.attrs["updated"] = [meta.attrs["version"]]
-
-                dest["/output/inc"][0] = 0
-
-    shutil.rmtree(tempdir)
+    if cli_args is not None:
+        return outpaths
 
 
 def moving_average(a: ArrayLike, n: int) -> ArrayLike:
