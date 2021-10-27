@@ -57,6 +57,30 @@ def all_greater_equal(a: list[str], b: list[str]) -> bool:
     return True
 
 
+def less(a: str, b: str) -> bool:
+    """
+    Check if ``a`` is a version less than that in ``b``.
+
+    :param a: Version string.
+    :param b: Version string.
+    :return: ``True`` if ``a < b``
+    """
+
+    return packaging.version.parse(a) < packaging.version.parse(b)
+
+
+def less_equal(a: str, b: str) -> bool:
+    """
+    Check if ``a`` is a version less or equal than that in ``b``.
+
+    :param a: Version string.
+    :param b: Version string.
+    :return: ``True`` if ``a <= b``
+    """
+
+    return packaging.version.parse(a) <= packaging.version.parse(b)
+
+
 def greater(a: str, b: str) -> bool:
     """
     Check if ``a`` is a version greater than that in ``b``.

@@ -34,6 +34,27 @@ class MyTests(unittest.TestCase):
         self.assertFalse(my.tag.greater_equal("4.4.dev1", "4.4"))
         self.assertTrue(my.tag.greater_equal("4.4", "4.4"))
 
+    def test_greater(self):
+
+        self.assertFalse(my.tag.greater("4.4.dev1+hash.bash", "4.4"))
+        self.assertFalse(my.tag.greater("4.4.dev1+hash", "4.4"))
+        self.assertFalse(my.tag.greater("4.4.dev1", "4.4"))
+        self.assertFalse(my.tag.greater("4.4", "4.4"))
+
+    def test_less_equal(self):
+
+        self.assertTrue(my.tag.less_equal("4.4.dev1+hash.bash", "4.4"))
+        self.assertTrue(my.tag.less_equal("4.4.dev1+hash", "4.4"))
+        self.assertTrue(my.tag.less_equal("4.4.dev1", "4.4"))
+        self.assertTrue(my.tag.less_equal("4.4", "4.4"))
+
+    def test_less(self):
+
+        self.assertTrue(my.tag.less("4.4.dev1+hash.bash", "4.4"))
+        self.assertTrue(my.tag.less("4.4.dev1+hash", "4.4"))
+        self.assertTrue(my.tag.less("4.4.dev1", "4.4"))
+        self.assertFalse(my.tag.less("4.4", "4.4"))
+
     def test_all_greater_equal(self):
 
         a = ["main=3.2.1", "other=4.4"]

@@ -918,11 +918,13 @@ def getdynamics_sync_A(
 
     :return:
         Dictionary with the following fields:
-        *   Shape ``(target_A, N)``:
+        -   Shape ``(target_A, N)``:
             -   sig_xx, sig_xy, sig_yy: the average stress along the interface.
-        *   Shape ``(target_A, target_A)``:
+
+        -   Shape ``(target_A, target_A)``:
             -   idx: the current potential index along the interface.
-        *   Shape ``(target_A)``:
+
+        -   Shape ``(target_A)``:
             -   t: the duration since nucleating the event.
             -   Sig_xx, Sig_xy, Sig_yy: the macroscopic stress.
     """
