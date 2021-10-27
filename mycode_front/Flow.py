@@ -941,55 +941,10 @@ def cli_branch_velocityjump(cli_args=None):
 
 def cli_update_branch_velocityjump(cli_args=None):
     """
-    Apply updates and bugfixes to old files:
-
-    *   No relevant bugs are known at this point, this function does nothing.
-        However, it is important to run :py:func:`cli_update_generate`.
+    Not anymore relevant.
     """
 
-    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
-        pass
-
-    funcname = inspect.getframeinfo(inspect.currentframe()).function
-    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
-    progname = entry_points["cli_branch_velocityjump"]
-
-    parser.add_argument("--develop", action="store_true", help="Development mode")
-    parser.add_argument("-o", "--outdir", type=str, required=True, help="Output directory")
-    parser.add_argument("files", nargs="*", type=str, help="Simulations to update")
-
-    if cli_args is None:
-        args = parser.parse_args(sys.argv[1:])
-    else:
-        args = parser.parse_args([str(arg) for arg in cli_args])
-
-    outpaths = [os.path.join(args.outdir, f) for f in args.files]
-    assert np.all([os.path.exists(f) for f in args.files])
-    assert not np.any([os.path.exists(f) for f in outpaths])
-    assert args.develop or not tag.has_uncommitted(version)
-
-    if not os.path.isdir(args.outdir):
-        os.makedirs(args.outdir)
-
-    for filepath, outpath in zip(tqdm.tqdm(args.files), outpaths):
-
-        with h5py.File(filepath, "r") as source, h5py.File(outpath, "w") as dest:
-
-            assert f"/meta/{progname}" in source
-            meta = source[f"/meta/{progname}"]
-            ver = meta.attrs["version"]
-            updated = [ver]
-            if "updated" in meta.attrs:
-                updated += list(meta.attrs["updated"])
-
-            if True:
-
-                paths = g5.getdatapaths(source)
-                g5.copy(source, dest, paths)
-
-    if cli_args is not None:
-        return outpaths
+    raise OSError("Not any more relevant, by cli_update_generate is")
 
 
 def moving_average(a: ArrayLike, n: int) -> ArrayLike:
