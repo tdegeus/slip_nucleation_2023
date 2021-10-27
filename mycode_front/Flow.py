@@ -8,9 +8,7 @@ import argparse
 import inspect
 import os
 import re
-import shutil
 import sys
-import tempfile
 import textwrap
 import warnings
 from collections import defaultdict
@@ -174,6 +172,7 @@ def generate(*args, **kwargs):
             snapshot,
             desc="Snapshot storage interval",
         )
+
 
 def default_gammadot():
     """
@@ -537,10 +536,8 @@ def cli_update_run(cli_args=None):
                     if key not in ["version", "updated"]:
                         dest_meta.attrs[key] = meta.attrs[key]
 
-
     if cli_args is not None:
         return outpaths
-
 
 
 def basic_output(file: h5py.File) -> dict:

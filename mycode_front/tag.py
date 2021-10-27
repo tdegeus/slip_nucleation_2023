@@ -69,7 +69,7 @@ def less(a: str, b: str) -> bool:
     return packaging.version.parse(a) < packaging.version.parse(b)
 
 
-def less_equal(a: str, b: str) ->bool:
+def less_equal(a: str, b: str) -> bool:
     """
     Check if ``a`` is a version less or equal than that in ``b``.
 
