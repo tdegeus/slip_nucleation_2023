@@ -547,16 +547,10 @@ def cli_job(cli_args=None):
     parser.add_argument("-a", "--size", type=int, default=600, help="Size to keep unpinned")
     parser.add_argument("-n", "--group", type=int, default=100, help="#pushes to group")
     parser.add_argument("-o", "--output", type=str, default=".", help="Output directory")
+    parser.add_argument("-s", "--skip", type=str, help="Skip earlier results")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
     parser.add_argument("info", type=str, help="EnsembleInfo (read-only)")
-
-    parser.add_argument(
-        "-f",
-        "--finished",
-        type=str,
-        help="Result of {:s}".format(entry_points["cli_collect"]),
-    )
 
     if cli_args is None:
         args = parser.parse_args(sys.argv[1:])
@@ -565,15 +559,15 @@ def cli_job(cli_args=None):
 
     assert os.path.isfile(args.info)
     assert os.path.isdir(args.output)
-    if args.finished:
-        assert os.path.isfile(args.finished)
+    if args.skip:
+        assert os.path.isfile(args.skip)
 
     basedir = os.path.dirname(args.info)
     executable = entry_points["cli_run"]
 
     simpaths = []
-    if args.finished:
-        with h5py.File(args.finished, "r") as file:
+    if args.skip:
+        with h5py.File(args.skip, "r") as file:
             simpaths = list(g5.getpaths(file, max_depth=6))
             simpaths = [path.replace("/...", "") for path in simpaths]
 
