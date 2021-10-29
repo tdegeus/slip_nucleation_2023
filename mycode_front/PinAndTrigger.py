@@ -602,49 +602,49 @@ def cli_job(cli_args=None):
         system = None
         commands = []
 
-        for filename, (stress, stress_name) in itertools.product(
-            files, zip(stresses, stress_names)
-        ):
+        for filename in tqdm.tqdm(files):
 
-            with h5py.File(filename, "r") as file:
+            for stress, stress_name in zip(stresses, stress_names):
 
-                if system is None:
-                    system = System.init(file)
-                else:
-                    system.reset_epsy(System.read_epsy(file))
+                with h5py.File(filename, "r") as file:
 
-                trigger, _ = System.pushincrements(system, file, stress)
+                    if system is None:
+                        system = System.init(file)
+                    else:
+                        system.reset_epsy(System.read_epsy(file))
 
-            simid = os.path.basename(os.path.splitext(filename)[0])
-            filepath = os.path.relpath(filename, args.output)
+                    trigger, _ = System.pushincrements(system, file, stress)
 
-            for element, A, incc in itertools.product([0, int(N / 2)], [args.size], trigger):
+                simid = os.path.basename(os.path.splitext(filename)[0])
+                filepath = os.path.relpath(filename, args.output)
 
-                root = (
-                    f"/data"
-                    f"/{stress_name}"
-                    f"/A={A:d}"
-                    f"/{simid}"
-                    f"/incc={incc:d}"
-                    f"/element={element:d}"
-                )
+                for element, A, incc in itertools.product([0, int(N / 2)], [args.size], trigger):
 
-                if root in simpaths:
-                    continue
+                    root = (
+                        f"/data"
+                        f"/{stress_name}"
+                        f"/A={A:d}"
+                        f"/{simid}"
+                        f"/incc={incc:d}"
+                        f"/element={element:d}"
+                    )
 
-                output = f"{stress_name}_A={A:d}_{simid}_incc={incc:d}_element={element:d}.h5"
-                cmd = " ".join(
-                    [
-                        f"{executable}",
-                        f"-f {filepath}",
-                        f"-o {output}",
-                        f"-s {stress:.8e}",
-                        f"-i {incc:d}",
-                        f"-e {element:d}",
-                        f"-a {A:d}",
-                    ]
-                )
-                commands += [cmd]
+                    if root in simpaths:
+                        continue
+
+                    output = f"{stress_name}_A={A:d}_{simid}_incc={incc:d}_element={element:d}.h5"
+                    cmd = " ".join(
+                        [
+                            f"{executable}",
+                            f"-f {filepath}",
+                            f"-o {output}",
+                            f"-s {stress:.8e}",
+                            f"-i {incc:d}",
+                            f"-e {element:d}",
+                            f"-a {A:d}",
+                        ]
+                    )
+                    commands += [cmd]
 
     slurm.serial_group(
         commands,
