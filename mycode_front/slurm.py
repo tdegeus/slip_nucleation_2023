@@ -212,7 +212,7 @@ def serial_group(
     chunks = int(np.ceil(len(commands) / float(group)))
     devided = np.array_split(commands, chunks)
     njob = len(devided)
-    fmt = str(int(np.ceil(np.log10(njob))))
+    fmt = str(int(np.ceil(np.log10(njob + 1))))
 
     for g, selection in enumerate(devided):
 
