@@ -654,7 +654,8 @@ def cli_job(cli_args=None):
         sbatch={"time": args.time},
     )
 
-    return commands
+    if cli_args is not None:
+        return commands
 
 
 def output_scalar(filepath: str, sig0: float):
