@@ -718,7 +718,7 @@ def cli_ensembleinfo(cli_args=None):
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite")
     parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
     parser.add_argument("-v", "--version", action="version", version=version)
-    parser.add_argument("files", nargs="*", type=str, help="Simulations to branch")
+    parser.add_argument("files", nargs="*", type=str, help="Simulation output")
 
     if cli_args is None:
         args = parser.parse_args(sys.argv[1:])
