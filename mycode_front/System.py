@@ -866,7 +866,7 @@ def pushincrements(
     assert np.all(np.logical_not(kick[::2]))
     assert np.all(kick[1::2])
 
-    output = basic_output(system, file)
+    output = basic_output(system, file, verbose=False)
     Stress = output["sigd"] * output["sig0"]
     A = output["A"]
     A[: output["steadystate"]] = 0
