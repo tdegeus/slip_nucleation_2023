@@ -875,19 +875,21 @@ def pushincrements(
     inc_push = []
     inc_system_ret = []
 
-    for ii, jj in zip(inc_system[:-1], inc_system[1:]):
+    for istart, istop in zip(inc_system[:-1], inc_system[1:]):
 
         # state after elastic loading (before kick)
-        i = ii + 1
-        s = Stress[i:jj:2]
-        n = incs[i:jj:2]
+        i = istart + 1
+        s = Stress[i:istop:2]
+        n = incs[i:istop:2]
 
-        if not np.any(s > target_stress) or Stress[ii] > target_stress:
+        if not np.any(s > target_stress) or Stress[istart] > target_stress:
             continue
 
         ipush = n[np.argmax(s > target_stress)] - 1
 
-        assert Stress[ipush] <= target_stress
+        if Stress[ipush] > target_stress:
+            continue
+
         assert not kick[ipush + 1]
 
         inc_push += [ipush]
