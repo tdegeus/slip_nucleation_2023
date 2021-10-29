@@ -811,8 +811,8 @@ def cli_ensembleinfo_velocityjump(cli_args=None):
             for gammadot in Start:
 
                 select = np.logical_and(start == gammadot, stop == jump)
-                sigma = enstat.mean.Dynamic1d()
-                tau = enstat.mean.Dynamic1d()
+                sigma = enstat.dynamic1d()
+                tau = enstat.dynamic1d()
                 for filepath in files[select]:
                     with h5py.File(filepath, "r") as file:
                         data = basic_output(file)

@@ -802,7 +802,7 @@ def output_spatial(filepath: str, sig0: float):
     """
 
     system = None
-    ret = defaultdict(lambda: defaultdict(lambda: defaultdict(enstat.mean.StaticNd)))
+    ret = defaultdict(lambda: defaultdict(lambda: defaultdict(enstat.static)))
     dirname = os.path.dirname(filepath)
 
     with h5py.File(filepath, "r") as file:
@@ -1430,7 +1430,7 @@ def getdynamics_sync_A_average(paths: dict):
     :return: dict, per stress, A, and variable.
     """
 
-    ret = defaultdict(lambda: defaultdict(lambda: defaultdict(enstat.mean.StaticNd)))
+    ret = defaultdict(lambda: defaultdict(lambda: defaultdict(enstat.static)))
 
     for filepath in paths:
 

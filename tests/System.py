@@ -80,7 +80,7 @@ class MyTests(unittest.TestCase):
 
         for pushname, incc in zip(pushnames, pushincs):
 
-            my.PinAndTrigger.cli_main(
+            my.PinAndTrigger.cli_run(
                 [
                     "--file",
                     filename,
@@ -190,7 +190,7 @@ class MyTests(unittest.TestCase):
         os.chdir(dirname)
         with open("PinAndTrigger_1-of-1.slurm") as file:
             cmd = file.read().split("\n")[-3].split("stdbuf -o0 -e0 PinAndTrigger ")[1].split(" ")
-            my.PinAndTrigger.cli_main(cmd)
+            my.PinAndTrigger.cli_run(cmd)
         os.chdir(pwd)
 
         shutil.rmtree(dirname)
