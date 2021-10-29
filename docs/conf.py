@@ -23,6 +23,16 @@ author = "Tom de Geus"
 
 # -- General configuration ---------------------------------------------------
 
+# Make typing better readable.
+# This needs ``from __future__ import annotations`` at the beginning of the source
+autodoc_type_aliases = {
+    "Iterable": "Iterable",
+    "ArrayLike": "ArrayLike",
+    "DTypeLike": "DTypeLike",
+    "h5py.File": "h5py.File",
+    "h5py.Group": "h5py.Group",
+}
+
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
@@ -31,6 +41,7 @@ extensions = [
     "sphinx.ext.autosummary",
     "sphinx.ext.imgmath",
     "sphinx.ext.todo",
+    "autodocsumm",
 ]
 
 # Add any paths that contain templates here, relative to this directory.

@@ -4,6 +4,8 @@
 -   Run simulation.
 -   Get basic output.
 """
+from __future__ import annotations
+
 import argparse
 import inspect
 import os
@@ -42,21 +44,21 @@ entry_points = dict(
 def dependencies(system: model.System) -> list[str]:
     """
     Return list with version strings.
-    Compared to model.System.version_dependencies() this added the version of prrng.
+    Compared to model.System.version_dependencies() this adds the version of prrng.
     """
     return sorted(list(model.version_dependencies()) + ["prrng=" + prrng.version()])
 
 
-def replace_ep(doc):
+def replace_ep(doc: str) -> str:
     """
-    Replace ":py:func:`...`" with the relevant entry_point name
+    Replace ``:py:func:`...``` with the relevant entry_point name
     """
     for ep in entry_points:
         doc = doc.replace(fr":py:func:`{ep:s}`", entry_points[ep])
     return doc
 
 
-def interpret_filename(filename):
+def interpret_filename(filename: str) -> dict:
     """
     Split filename in useful information.
     """
@@ -78,7 +80,9 @@ def read_epsy(file: h5py.File) -> np.ndarray:
     """
     Regenerate yield strain sequence per plastic element.
     Note that two ways of storage are supported:
+
     -   "classical": the yield strains are stored.
+
     -   "prrng": only the seeds per block are stored, that can then be uniquely restored.
         Note that in this case a larger strain history is used.
 
@@ -141,11 +145,7 @@ def generate(
     test_mode: bool = False,
 ):
     """
-    Generate input file.
-    Note that two ways of storage of yield strains are supported:
-    -   "classical": the yield strains are stored.
-    -   "prrng": only the seeds per block are stored, that can then be uniquely restored.
-        Note that in this case a larger strain history is used.
+    Generate input file. See :py:func:`read_epsy` for different strategies to store yield strains.
 
     :param filepath: The filepath of the input file.
     :param N: The number of blocks.
@@ -445,10 +445,14 @@ def generate(
 
 def cli_generate(cli_args=None):
     """
-    Generate IO files, including job-scripts to run simulations.
+    Generate IO files (including job-scripts) to run simulations.
     """
 
-    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
         pass
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
@@ -498,7 +502,8 @@ def create_check_meta(
     dev: bool = False,
 ) -> h5py.Group:
     """
-    Create or read and check meta data. This function asserts that:
+    Create or read/check meta data. This function asserts that:
+
     -   There are no uncommitted changes.
     -   There are no version changes.
 
@@ -592,7 +597,11 @@ def cli_run(cli_args=None):
     Run simulation.
     """
 
-    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
         pass
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
@@ -614,7 +623,7 @@ def cli_run(cli_args=None):
 
 def steadystate(epsd: ArrayLike, sigd: ArrayLike, kick: ArrayLike, **kwargs):
     """
-    Estimate the first increment of the steady-state, with additional constraints:
+    Estimate the first increment of the steady-state. Additional constraints:
     -   Skip at least two increments.
     -   Start with elastic loading.
 
@@ -718,15 +727,19 @@ def basic_output(system: model.System, file: h5py.File, verbose: bool = True) ->
 
 def cli_ensembleinfo(cli_args=None):
     """
-    Read information (avalanche size, stress, strain, ...) of an ensemble, and combine into
-    a single output file.
+    Read information (avalanche size, stress, strain, ...) of an ensemble.
+    Store into a single output file.
     """
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     progname = entry_points[funcname]
 
-    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
         pass
 
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
@@ -832,7 +845,7 @@ def cli_ensembleinfo(cli_args=None):
 
 def pushincrements(
     system: model.System, file: h5py.File, target_stress: float
-) -> (np.ndarray, np.ndarray):
+) -> tuple[np.ndarray, np.ndarray]:
     r"""
     Get a list of increment from which the stress can be reached by elastic loading only.
 
@@ -888,10 +901,15 @@ def pushincrements(
 
 def cli_plot(cli_args=None):
     """
-    Plot overview of flow simulation.
+    Plot overview of simulation.
+    Plots the stress-strain response and the identified steady-state.
     """
 
-    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
         pass
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function

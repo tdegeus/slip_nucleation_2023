@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import argparse
 import inspect
 import itertools
@@ -31,14 +33,14 @@ from ._version import version
 entry_points = dict(
     cli_collect="PinAndTrigger_collect",
     cli_collect_combine="PinAndTrigger_collect_combine",
-    cli_collect_update="PinAndTrigger_collect_update",
+    cli_upgrade_collect="PinAndTrigger_upgrade_collect",
     cli_getdynamics_sync_A="PinAndTrigger_getdynamics_sync_A",
     cli_getdynamics_sync_A_average="PinAndTrigger_getdynamics_sync_A_average",
     cli_getdynamics_sync_A_check="PinAndTrigger_getdynamics_sync_A_check",
     cli_getdynamics_sync_A_combine="PinAndTrigger_getdynamics_sync_A_combine",
     cli_getdynamics_sync_A_job="PinAndTrigger_getdynamics_sync_A_job",
     cli_job="PinAndTrigger_job",
-    cli_main="PinAndTrigger",
+    cli_run="PinAndTrigger_run",
     cli_output_scalar="PinAndTrigger_output_scalar",
     cli_output_spatial="PinAndTrigger_output_spatial",
 )
@@ -46,7 +48,7 @@ entry_points = dict(
 
 def replace_ep(doc):
     """
-    Replace ":py:func:`...`" with the relevant entry_point name
+    Replace ``:py:func:`...``` with the relevant entry_point name
     """
     for ep in entry_points:
         doc = doc.replace(fr":py:func:`{ep:s}`", entry_points[ep])
@@ -118,7 +120,8 @@ def pinning(system: model.System, target_element: int, target_A: int) -> np.ndar
 
 def pinsystem(system: model.System, target_element: int, target_A: int) -> np.ndarray:
     r"""
-    Pin down part of the system by converting blocks to being elastic:
+    Pin down part of the system.
+    This converts a number of blocks to being elastic:
     having a single parabolic potential with the minimum equal to the current minimum.
 
     :param system:
@@ -159,14 +162,20 @@ def pinsystem(system: model.System, target_element: int, target_A: int) -> np.nd
     return pinned
 
 
-def cli_main(cli_args=None):
+def cli_run(cli_args=None):
     """
+    Run simulation. The protocol is as follows:
+
     1.  Restore system at a given increment.
     2.  Pin down part of the system.
     3.  Push a specific element and minimise energy.
     """
 
-    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
         pass
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
@@ -253,10 +262,14 @@ def cli_main(cli_args=None):
 def cli_collect(cli_args=None):
     """
     Collect output of several pushes in a single output-file.
-    Requires files to be named "stress=X_A=X_id=X_incc=X_element=X" (in any order).
+    Requires files to be named ``stress=X_A=X_id=X_incc=X_element=X`` (in any order).
     """
 
-    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
         pass
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
@@ -332,7 +345,7 @@ def cli_collect(cli_args=None):
             with h5py.File(filepath, "r") as file:
 
                 info = interpret_filename(os.path.basename(filepath))
-                meta = file["/meta/{:s}".format(entry_points["cli_main"])]
+                meta = file["/meta/{:s}".format(entry_points["cli_run"])]
                 assert meta.attrs["version"] == version
                 assert list(meta.attrs["dependencies"]) == System.dependencies(model)
                 assert meta.attrs["target_inc_system"] == info["incc"]
@@ -363,16 +376,24 @@ def cli_collect(cli_args=None):
         shelephant.yaml.dump(args.error, dict(corrupted=corrupted, existing=existing), force=True)
 
 
-def cli_collect_update(cli_args=None):
+def cli_upgrade_collect(cli_args=None):
     """
-    Update older files collected with :py:func:`cli_collect` to latest file layout.
+    Upgrade older files collected with :py:func:`cli_collect`.
+
+    .. todo::
+
+        Encode version history.
     """
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    progname = entry_points["cli_main"]
+    progname = entry_points["cli_run"]
 
-    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
         pass
 
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
@@ -443,11 +464,15 @@ def cli_collect_update(cli_args=None):
 
 def cli_collect_combine(cli_args=None):
     """
-    Combine two or more collections, see :py:func:`cli_collect` to obtain them from
-    individual runs.
+    Combine two or more collections.
+    See :py:func:`cli_collect` to obtain them from individual runs.
     """
 
-    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
         pass
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
@@ -494,37 +519,38 @@ def cli_collect_combine(cli_args=None):
 
 def cli_job(cli_args=None):
     """
-    Run for fixed A by pushing two different elements (0 and N / 2).
-    Fixed A implies that N - A are pinned, leaving A / 2 unpinned blocks on both sides of the
-    pushed element.
+    Generate job-scripts to run for fixed "A".
+    Jobs are generated that push either of two elements (``0`` and ``N / 2``).
+    Note that fixed "A" implies that "N - A" blocks are pinned,
+    leaving "A / 2" unpinned blocks on both sides of the pushed element.
     Note that the assumption is made that the push on the different elements of the same system
     in the same still still results in sufficiently independent measurements.
 
-    Use "?? (todo)" to run for A that are smaller than the one used here.
-    That function skips all events that are know to be too small,
-    and therefore less time is waisted on computing small events.
+    .. todo::
+
+        Use "?? (todo)" to run for "A" that are smaller than the one used here.
+        That function skips all events that are known to be too small,
+        and therefore less time is waisted on re-computing small events.
     """
 
-    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
         pass
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
 
-    parser.add_argument("-a", "--size", type=int, default=1200, help="Size to keep unpinned")
+    parser.add_argument("-a", "--size", type=int, default=600, help="Size to keep unpinned")
     parser.add_argument("-n", "--group", type=int, default=100, help="#pushes to group")
     parser.add_argument("-o", "--output", type=str, default=".", help="Output directory")
+    parser.add_argument("-s", "--skip", type=str, help="Skip earlier results")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
     parser.add_argument("info", type=str, help="EnsembleInfo (read-only)")
-
-    parser.add_argument(
-        "-f",
-        "--finished",
-        type=str,
-        help="Result of {:s}".format(entry_points["cli_collect"]),
-    )
 
     if cli_args is None:
         args = parser.parse_args(sys.argv[1:])
@@ -533,15 +559,15 @@ def cli_job(cli_args=None):
 
     assert os.path.isfile(args.info)
     assert os.path.isdir(args.output)
-    if args.finished:
-        assert os.path.isfile(args.finished)
+    if args.skip:
+        assert os.path.isfile(args.skip)
 
     basedir = os.path.dirname(args.info)
-    executable = entry_points["cli_main"]
+    executable = entry_points["cli_run"]
 
     simpaths = []
-    if args.finished:
-        with h5py.File(args.finished, "r") as file:
+    if args.skip:
+        with h5py.File(args.skip, "r") as file:
             simpaths = list(g5.getpaths(file, max_depth=6))
             simpaths = [path.replace("/...", "") for path in simpaths]
 
@@ -655,7 +681,7 @@ def output_scalar(filepath: str, sig0: float):
             info = interpret_filename(path)
             root = g5.join("data", path, root=True)
             root = file[root]
-            meta = g5.join("data", path, "meta", entry_points["cli_main"], root=True)
+            meta = g5.join("data", path, "meta", entry_points["cli_run"], root=True)
             meta = file[meta]
 
             if "disp" not in root:
@@ -723,7 +749,11 @@ def cli_output_scalar(cli_args=None):
     Interpret scalar data of an ensemble, collected by :py:func:`cli_collect`.
     """
 
-    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
         pass
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
@@ -772,7 +802,7 @@ def output_spatial(filepath: str, sig0: float):
     """
 
     system = None
-    ret = defaultdict(lambda: defaultdict(lambda: defaultdict(enstat.mean.StaticNd)))
+    ret = defaultdict(lambda: defaultdict(lambda: defaultdict(enstat.static)))
     dirname = os.path.dirname(filepath)
 
     with h5py.File(filepath, "r") as file:
@@ -786,7 +816,7 @@ def output_spatial(filepath: str, sig0: float):
             info = interpret_filename(path)
             root = g5.join("data", path, root=True)
             root = file[root]
-            meta = g5.join("data", path, "meta", entry_points["cli_main"], root=True)
+            meta = g5.join("data", path, "meta", entry_points["cli_run"], root=True)
             meta = file[meta]
 
             if "disp" not in root:
@@ -840,7 +870,11 @@ def cli_output_spatial(cli_args=None):
     Interpret spatial average an ensemble, collected by :py:func:`cli_collect`.
     """
 
-    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
         pass
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
@@ -917,16 +951,29 @@ def getdynamics_sync_A(
         Strain kick to use.
 
     :return:
-        Dictionary with the following fields:
-        -   Shape ``(target_A, N)``:
-            -   sig_xx, sig_xy, sig_yy: the average stress along the interface.
+        Dictionary with the following fields::
 
-        -   Shape ``(target_A, target_A)``:
-            -   idx: the current potential index along the interface.
+            {
+                # average stress along the interface
+                # shape: [target_A, N]
+                "sig_xx": ...,
+                "sig_xy": ...,
+                "sig_yy": ...,
 
-        -   Shape ``(target_A)``:
-            -   t: the duration since nucleating the event.
-            -   Sig_xx, Sig_xy, Sig_yy: the macroscopic stress.
+                # current potential index along the interface
+                # shape [target_A, target_A]
+                "idx": ...,
+
+                # duration since nucleating the event
+                # shape: [target_A]
+                "t": ...,
+
+                # macroscopic stress
+                # shape: [target_A]
+                "Sig_xx": ...,
+                "Sig_xy": ...,
+                "Sig_yy": ...,
+            }
     """
 
     plastic = system.plastic()
@@ -986,7 +1033,8 @@ def getdynamics_sync_A(
 
 def cli_getdynamics_sync_A(cli_args=None):
     """
-    This script use a configuration file as follows:
+    Run the dynamics of an event, saving the state at the interface at every "A".
+    This script uses a configuration file as follows:
 
     .. code-block:: yaml
 
@@ -997,10 +1045,14 @@ def cli_getdynamics_sync_A(cli_args=None):
           - stress=0d6/A=100/id=183/incc=45/element=0
           - stress=0d6/A=100/id=232/incc=41/element=729
 
-    To generate use :py:func`cli_getdynamics_sync_A_job`.
+    To generate use :py:func:`cli_getdynamics_sync_A_job`.
     """
 
-    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
         pass
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
@@ -1034,7 +1086,7 @@ def cli_getdynamics_sync_A(cli_args=None):
 
             for path in config["paths"]:
 
-                meta = file["data"][path]["meta"][entry_points["cli_main"]]
+                meta = file["data"][path]["meta"][entry_points["cli_run"]]
                 origsim = meta.attrs["file"]
 
                 with h5py.File(origsim, "r") as mysim:
@@ -1064,7 +1116,11 @@ def cli_getdynamics_sync_A_job(cli_args=None):
     Generate configuration files to rerun dynamics.
     """
 
-    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
         pass
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
@@ -1088,7 +1144,7 @@ def cli_getdynamics_sync_A_job(cli_args=None):
         "--collect",
         type=str,
         default="{:s}.h5".format(entry_points["cli_collect"]),
-        help="Existing data (see {:s}) (read-only)".format(entry_points["cli_main"]),
+        help="Existing data (see {:s}) (read-only)".format(entry_points["cli_run"]),
     )
 
     parser.add_argument(
@@ -1125,7 +1181,7 @@ def cli_getdynamics_sync_A_job(cli_args=None):
         a_real = []
         for path in paths:
             info = interpret_filename(path)
-            meta = g5.join("data", path, "meta", entry_points["cli_main"], root=True)
+            meta = g5.join("data", path, "meta", entry_points["cli_run"], root=True)
             meta = file[meta]
             stress += [info["stress"]]
             element += [info["element"]]
@@ -1180,10 +1236,14 @@ def cli_getdynamics_sync_A_job(cli_args=None):
 
 def cli_getdynamics_sync_A_combine(cli_args=None):
     """
-    Combine output from :py:func:`cli_getdynamics_sync_A`
+    Combine output from :py:func:`cli_getdynamics_sync_A`.
     """
 
-    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
         pass
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
@@ -1230,16 +1290,21 @@ def cli_getdynamics_sync_A_combine(cli_args=None):
                     g5.copy(file, output, paths)
 
 
-def getdynamics_sync_A_check(filepaths: list[str]):
+def getdynamics_sync_A_check(filepaths: list[str]) -> dict:
     """
     Check integrity of files spanning the ensemble.
 
     :param filepaths: Files with the raw data.
-    :return: dict with:
-        - "duplicate": duplicate paths per file (with pointer to duplicate)
-        - "corrupted": corrupted paths per file
-        - "unique": paths per file, such that a unique subset is taken.
-        - "summary" : a basic summary of the above
+
+    :return:
+        Dictionary::
+
+            {
+                "duplicate": [...], # duplicate paths per file (with pointer to duplicate)
+                "corrupted": [...], # corrupted paths per file
+                "unique": [...], # paths per file, such that a unique subset is taken.
+                "summary": [...], # a basic summary of the above
+            }
     """
 
     Paths = {}  # non-corrupted paths per file
@@ -1318,10 +1383,14 @@ def getdynamics_sync_A_check(filepaths: list[str]):
 
 def cli_getdynamics_sync_A_check(cli_args=None):
     """
-    Check output from :py:func:`cli_getdynamics_sync_A`
+    Check output from :py:func:`cli_getdynamics_sync_A`.
     """
 
-    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
         pass
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
@@ -1361,7 +1430,7 @@ def getdynamics_sync_A_average(paths: dict):
     :return: dict, per stress, A, and variable.
     """
 
-    ret = defaultdict(lambda: defaultdict(lambda: defaultdict(enstat.mean.StaticNd)))
+    ret = defaultdict(lambda: defaultdict(lambda: defaultdict(enstat.static)))
 
     for filepath in paths:
 
@@ -1427,7 +1496,11 @@ def cli_getdynamics_sync_A_average(cli_args=None):
     See also :py:func:`cli_getdynamics_sync_A_job`.
     """
 
-    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
         pass
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
