@@ -1,9 +1,5 @@
-"""
--   Initialise system.
--   Write IO file.
--   Run simulation.
--   Get basic output.
-"""
+from __future__ import annotations
+
 import argparse
 import inspect
 import os
@@ -195,7 +191,11 @@ def cli_generate(cli_args=None):
     Generate IO files, including job-scripts to run simulations.
     """
 
-    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
         pass
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
@@ -264,7 +264,11 @@ def cli_update_generate(cli_args=None):
     *   <= 5.3 : remove :py:func:`System.run` specific files.
     """
 
-    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
         pass
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
@@ -454,7 +458,11 @@ def cli_run(cli_args=None):
     Run flow simulation.
     """
 
-    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
         pass
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
@@ -482,7 +490,11 @@ def cli_update_run(cli_args=None):
     *   <= 5.3 : Fix "/output/epsp" which was not normalised by the number of blocs.
     """
 
-    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
         pass
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
@@ -572,6 +584,7 @@ def basic_output(file: h5py.File) -> dict:
         ret["normalisation"]["cs"] = cs
         ret["normalisation"]["l0"] = l0
         ret["normalisation"]["t0"] = t0
+        ret["normalisation"]["N"] = file["/meta/normalisation/N"][...]
     else:
         t0 = 1.0
 
@@ -689,7 +702,11 @@ def cli_ensembleinfo(cli_args=None):
     Collect basic ensemble information.
     """
 
-    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
         pass
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
@@ -743,7 +760,11 @@ def cli_ensembleinfo_velocityjump(cli_args=None):
     Collect ensemble info for velocity jumpy experiments.
     """
 
-    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
         pass
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
@@ -819,7 +840,11 @@ def cli_branch_velocityjump(cli_args=None):
     To run simply use :py:func:`cli_run`.
     """
 
-    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
         pass
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
@@ -986,7 +1011,11 @@ def cli_plot(cli_args=None):
     Plot overview of flow simulation.
     """
 
-    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
         pass
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
@@ -1059,7 +1088,11 @@ def cli_plot_velocityjump(cli_args=None):
     Plot overview of flow simulation.
     """
 
-    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
         pass
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function

@@ -1,6 +1,7 @@
 channels:
 - conda-forge
 dependencies:
+- autodocsumm
 - cmake
 - cpppath
 - docopt.cpp
@@ -29,8 +30,9 @@ dependencies:
 - qpot
 - setuptools_scm
 - shelephant
+- sphinx_rtd_theme
 - tqdm
-- XDMFWrite_h5py
+- xdmfwrite_h5py
 - xsimd
 - xtensor
 - xtensor-python
