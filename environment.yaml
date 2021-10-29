@@ -35,4 +35,5 @@ dependencies:
 - xdmfwrite_h5py
 - xsimd
 - xtensor
+- xtensor-blas
 - xtensor-python
