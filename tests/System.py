@@ -29,7 +29,7 @@ class MyTests(unittest.TestCase):
         if not os.path.isdir(dirname):
             os.makedirs(dirname)
 
-        my.System.cli_generate([dirname])
+        my.System.cli_generate(["--dev", dirname])
 
         shutil.rmtree(dirname)
 

@@ -323,8 +323,8 @@ def cli_collect(cli_args=None):
             meta.attrs["dependencies"] = System.dependencies(model)
         else:
             meta = output["meta"]
-            assert meta.attrs["version"] == version
-            assert list(meta.attrs["dependencies"]) == System.dependencies(model)
+            assert tag.greater_equal(version, meta.attrs["version"])
+            assert tag.all_greater_equal(System.dependencies(model), meta.attrs["dependencies"])
 
         for filepath in tqdm.tqdm(args.files):
 
@@ -346,8 +346,8 @@ def cli_collect(cli_args=None):
 
                 info = interpret_filename(os.path.basename(filepath))
                 meta = file["/meta/{:s}".format(entry_points["cli_run"])]
-                assert meta.attrs["version"] == version
-                assert list(meta.attrs["dependencies"]) == System.dependencies(model)
+                assert tag.greater_equal(version, meta.attrs["version"])
+                assert tag.all_greater_equal(System.dependencies(model), meta.attrs["dependencies"])
                 assert meta.attrs["target_inc_system"] == info["incc"]
                 assert meta.attrs["target_A"] == info["A"]
                 assert meta.attrs["target_element"] == info["element"]

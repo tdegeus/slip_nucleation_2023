@@ -34,29 +34,6 @@ def any_has_uncommitted(deps: list[str]) -> bool:
     return False
 
 
-def all_greater_equal(a: list[str], b: list[str]) -> bool:
-    """
-    Check if all dependencies in ``a`` have a version greater or equal than those in ``b``.
-    It is allowed to have dependencies in ``a`` or ``b`` that are not in the other list.
-
-    :param a: List of versions formatted as ["name=versionstring", ...].
-    :param b: List of versions formatted as ["name=versionstring", ...].
-    :return: ``True`` if all dependencies in ``a`` are greater or equal than those in ``b``
-    """
-
-    A = {deps.split("=")[0]: deps.split("=")[1] for deps in a}
-    B = {deps.split("=")[0]: deps.split("=")[1] for deps in b}
-
-    for lib in A:
-        if lib not in B:
-            continue
-        if packaging.version.parse(A[lib]) >= packaging.version.parse(B[lib]):
-            continue
-        return False
-
-    return True
-
-
 def less(a: str, b: str) -> bool:
     """
     Check if ``a`` is a version less than that in ``b``.
@@ -134,6 +111,29 @@ def all_equal(a: list[str], b: list[str]) -> bool:
         if lib not in B:
             continue
         if packaging.version.parse(A[lib]) == packaging.version.parse(B[lib]):
+            continue
+        return False
+
+    return True
+
+
+def all_greater_equal(a: list[str], b: list[str]) -> bool:
+    """
+    Check if all dependencies in ``a`` have a version greater or equal than those in ``b``.
+    It is allowed to have dependencies in ``a`` or ``b`` that are not in the other list.
+
+    :param a: List of versions formatted as ["name=versionstring", ...].
+    :param b: List of versions formatted as ["name=versionstring", ...].
+    :return: ``True`` if all dependencies in ``a`` are greater or equal than those in ``b``
+    """
+
+    A = {deps.split("=")[0]: deps.split("=")[1] for deps in a}
+    B = {deps.split("=")[0]: deps.split("=")[1] for deps in b}
+
+    for lib in A:
+        if lib not in B:
+            continue
+        if packaging.version.parse(A[lib]) >= packaging.version.parse(B[lib]):
             continue
         return False
 
