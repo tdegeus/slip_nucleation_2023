@@ -468,7 +468,7 @@ def cli_upgrade_collect(cli_args=None):
                 paths = np.array([path.split("data/")[1].split("/...")[0] for path in paths])
 
                 for path in tqdm.tqdm(paths):
-                    info = interpret_filename(path, convert=True)
+                    info = interpret_key(path, convert=True)
                     root = file[g5.join("data", path, root=True)]
 
                     meta = output.create_group(g5.join("data", path, "meta", progname, root=True))
@@ -798,7 +798,7 @@ def output_scalar(filepath: str, sig0: float):
 
         for path in tqdm.tqdm(paths):
 
-            info = interpret_filename(path)
+            info = interpret_key(path)
             root = g5.join("data", path, root=True)
             root = file[root]
             meta = g5.join("data", path, "meta", entry_points["cli_run"], root=True)
@@ -933,7 +933,7 @@ def output_spatial(filepath: str, sig0: float):
 
         for path in tqdm.tqdm(paths):
 
-            info = interpret_filename(path)
+            info = interpret_key(path)
             root = g5.join("data", path, root=True)
             root = file[root]
             meta = g5.join("data", path, "meta", entry_points["cli_run"], root=True)
@@ -1300,7 +1300,7 @@ def cli_getdynamics_sync_A_job(cli_args=None):
         a_target = []
         a_real = []
         for path in paths:
-            info = interpret_filename(path, convert=True)
+            info = interpret_key(path, convert=True)
             meta = g5.join("data", path, "meta", entry_points["cli_run"], root=True)
             meta = file[meta]
             stress += [info["stress"]]
@@ -1461,7 +1461,7 @@ def getdynamics_sync_A_check(filepaths: list[str]) -> dict:
 
         for path in Paths[filepath]:
 
-            info = interpret_filename(path, convert=True)
+            info = interpret_key(path, convert=True)
             stress = info["stress"]
             A = info["A"]
             s = info["id"]
@@ -1558,7 +1558,7 @@ def getdynamics_sync_A_average(paths: dict):
 
             for path in tqdm.tqdm(paths[filepath]):
 
-                info = interpret_filename(path, convert=True)
+                info = interpret_key(path, convert=True)
                 stress = info["stress"]
                 A = info["A"]
 
