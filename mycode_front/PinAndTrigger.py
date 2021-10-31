@@ -751,7 +751,19 @@ def cli_job_minimal(cli_args=None):
             info["output"] = output
             info["executable"] = executable
 
-            commands.append("{executable} -f {filepath} -o {output} -s {target_stress:.8e} -i {incc} -e {element} -a {A}".format(**info))
+            fmt = " ".join(
+                [
+                    "{executable}",
+                    "-f {filepath}",
+                    "-o {output}",
+                    "-s {target_stress:.8e}",
+                    "-i {incc}",
+                    "-e {element}",
+                    "-a {A}",
+                ]
+            )
+
+            commands.append(fmt.format(**info))
 
     slurm.serial_group(
         commands,
