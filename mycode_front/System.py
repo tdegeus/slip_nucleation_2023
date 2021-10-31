@@ -459,6 +459,7 @@ def cli_generate(cli_args=None):
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
 
+    parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-n", "--nsim", type=int, default=1, help="#simulations")
     parser.add_argument("-N", "--size", type=int, default=2 * (3 ** 6), help="#blocks")
     parser.add_argument("-s", "--start", type=int, default=0, help="Start simulation")
@@ -481,6 +482,7 @@ def cli_generate(cli_args=None):
             filepath=os.path.join(args.outdir, f"id={i:03d}.h5"),
             N=args.size,
             seed=i * args.size,
+            test_mode=args.develop,
         )
 
     executable = entry_points["cli_run"]
