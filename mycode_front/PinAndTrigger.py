@@ -33,16 +33,17 @@ from ._version import version
 entry_points = dict(
     cli_collect="PinAndTrigger_collect",
     cli_collect_combine="PinAndTrigger_collect_combine",
-    cli_upgrade_collect="PinAndTrigger_upgrade_collect",
     cli_getdynamics_sync_A="PinAndTrigger_getdynamics_sync_A",
     cli_getdynamics_sync_A_average="PinAndTrigger_getdynamics_sync_A_average",
     cli_getdynamics_sync_A_check="PinAndTrigger_getdynamics_sync_A_check",
     cli_getdynamics_sync_A_combine="PinAndTrigger_getdynamics_sync_A_combine",
     cli_getdynamics_sync_A_job="PinAndTrigger_getdynamics_sync_A_job",
     cli_job="PinAndTrigger_job",
-    cli_run="PinAndTrigger_run",
+    cli_job_minimal="PinAndTrigger_job_minimal",
     cli_output_scalar="PinAndTrigger_output_scalar",
     cli_output_spatial="PinAndTrigger_output_spatial",
+    cli_run="PinAndTrigger_run",
+    cli_upgrade_collect="PinAndTrigger_upgrade_collect",
 )
 
 
@@ -55,25 +56,55 @@ def replace_ep(doc):
     return doc
 
 
-def interpret_filename(filename):
+def _interpret(part: list[str], convert: bool = False) -> dict:
     """
-    Split filename in useful information.
+    Convert to useful information by splitting at "=".
+
+    :param: List with strings ``key=value``.
+    :param convert: Convert to numerical values depending on the variable.
+    :return: Parameters as dictionary.
     """
 
-    part = re.split("_|/", os.path.splitext(filename)[0])
     info = {}
 
     for i in part:
-        key, value = i.split("=")
-        info[key] = value
+        if len(i.split("=")) > 1:
+            key, value = i.split("=")
+            info[key] = value
 
-    for key in info:
-        if key in ["stress"]:
-            continue
-        else:
-            info[key] = int(info[key])
+    if convert:
+        for key in info:
+            if key in ["stress"]:
+                continue
+            else:
+                info[key] = int(info[key])
 
     return info
+
+
+def interpret_key(key: str, convert: bool = False) -> dict:
+    """
+    Split a key in useful information.
+
+    :param key: ``key=value`` separated by ``/`` or ``_``.
+    :param convert: Convert to numerical values.
+    :return: Parameters as dictionary.
+    """
+
+    return _interpret(re.split("_|/", key), convert=convert)
+
+
+def interpret_filename(filepath: str, convert: bool = False) -> dict:
+    """
+    Split filepath in useful information.
+
+    :param filepath: Filepath of which only the basename is considered.
+    :param convert: Convert to numerical values.
+    :return: Parameters as dictionary.
+    """
+
+    part = os.path.splitext(os.path.basename(filepath))[0]
+    return _interpret(re.split("_|/", part), convert=convert)
 
 
 def pinning(system: model.System, target_element: int, target_A: int) -> np.ndarray:
@@ -344,14 +375,14 @@ def cli_collect(cli_args=None):
 
             with h5py.File(filepath, "r") as file:
 
-                info = interpret_filename(os.path.basename(filepath))
+                info = interpret_filename(os.path.basename(filepath), convert=True)
                 meta = file["/meta/{:s}".format(entry_points["cli_run"])]
                 assert tag.greater_equal(version, meta.attrs["version"])
                 assert tag.all_greater_equal(System.dependencies(model), meta.attrs["dependencies"])
                 assert meta.attrs["target_inc_system"] == info["incc"]
                 assert meta.attrs["target_A"] == info["A"]
                 assert meta.attrs["target_element"] == info["element"]
-                assert interpret_filename(meta.attrs["file"])["id"] == info["id"]
+                assert interpret_filename(meta.attrs["file"], convert=True)["id"] == info["id"]
 
                 root = (
                     "/data"
@@ -437,7 +468,7 @@ def cli_upgrade_collect(cli_args=None):
                 paths = np.array([path.split("data/")[1].split("/...")[0] for path in paths])
 
                 for path in tqdm.tqdm(paths):
-                    info = interpret_filename(path)
+                    info = interpret_filename(path, convert=True)
                     root = file[g5.join("data", path, root=True)]
 
                     meta = output.create_group(g5.join("data", path, "meta", progname, root=True))
@@ -526,11 +557,9 @@ def cli_job(cli_args=None):
     Note that the assumption is made that the push on the different elements of the same system
     in the same still still results in sufficiently independent measurements.
 
-    .. todo::
-
-        Use "?? (todo)" to run for "A" that are smaller than the one used here.
-        That function skips all events that are known to be too small,
-        and therefore less time is waisted on re-computing small events.
+    Use :py:func:`cli_job_minimal` to run for "A" that are smaller than the one used here.
+    That function skips all events that are known to be too small,
+    and therefore less time is waisted on re-computing small events.
     """
 
     class MyFmt(
@@ -568,7 +597,7 @@ def cli_job(cli_args=None):
     simpaths = []
     if args.skip:
         with h5py.File(args.skip, "r") as file:
-            simpaths = list(g5.getpaths(file, max_depth=6))
+            simpaths = list(g5.getdatasets(file, max_depth=6))
             simpaths = [path.replace("/...", "") for path in simpaths]
 
     with h5py.File(args.info, "r") as file:
@@ -658,6 +687,84 @@ def cli_job(cli_args=None):
         return commands
 
 
+def cli_job_minimal(cli_args=None):
+    """
+    Generate job-scripts to run for fixed "A".
+    Jobs are generated that push either of two elements (``0`` and ``N / 2``).
+    Note that fixed "A" implies that "N - A" blocks are pinned,
+    leaving "A / 2" unpinned blocks on both sides of the pushed element.
+    Note that the assumption is made that the push on the different elements of the same system
+    in the same still still results in sufficiently independent measurements.
+
+    Use :py:func:`cli_job_minimal` to run for "A" that are smaller than the one used here.
+    That function skips all events that are known to be too small,
+    and therefore less time is waisted on re-computing small events.
+    """
+
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+
+    parser.add_argument("-a", "--size", type=int, default=600, help="Size to keep unpinned")
+    parser.add_argument("-n", "--group", type=int, default=100, help="#pushes to group")
+    parser.add_argument("-o", "--output", type=str, default=".", help="Output directory")
+    parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
+    parser.add_argument("collect", type=str, help="Earlier simulations")
+
+    if cli_args is None:
+        args = parser.parse_args(sys.argv[1:])
+    else:
+        args = parser.parse_args([str(arg) for arg in cli_args])
+
+    assert os.path.isfile(args.collect)
+    assert os.path.isdir(args.output)
+
+    executable = entry_points["cli_run"]
+    commands = []
+
+    with h5py.File(args.collect, "r") as file:
+
+        paths = list(g5.getdatasets(file, root="/data", max_depth=6))
+        paths = [path.replace("/...", "") for path in paths]
+        A = np.array([int(file[g5.join(path, "meta", executable)].attrs["A"]) for path in paths])
+
+        for path in np.array(paths)[A >= args.size]:
+
+            info = interpret_key(path)
+            info["A"] = args.size
+            info["filepath"] = file[g5.join(path, "meta", executable)].attrs["file"]
+            info["target_stress"] = file[g5.join(path, "meta", executable)].attrs["target_stress"]
+
+            r = "/data/stress={stress}/A={A}/id={id}/incc={incc}/element={element}".format(**info)
+            if r in paths:
+                continue
+
+            output = "stress={stress}_A={A}_id={id}_incc={incc}_element={element}.h5".format(**info)
+            info["output"] = output
+            info["executable"] = executable
+
+            commands.append("{executable} -f {filepath} -o {output} -s {target_stress:.8e} -i {incc} -e {element} -a {A}".format(**info))
+
+    slurm.serial_group(
+        commands,
+        basename=executable,
+        group=args.group,
+        outdir=args.output,
+        sbatch={"time": args.time},
+    )
+
+    if cli_args is not None:
+        return commands
+
+
 def output_scalar(filepath: str, sig0: float):
     """
     Interpret scalar data of an ensemble, collected by :py:func:`cli_collect`.
@@ -712,7 +819,7 @@ def output_scalar(filepath: str, sig0: float):
             plastic_sig /= sig0
 
             stress = "stress={stress:s}".format(**info)
-            A = "A={A:d}".format(**info)
+            A = "A={A:s}".format(**info)
             ret[stress][A]["S"].append(s)
             ret[stress][A]["A"].append(a)
             ret[stress][A]["Sig_xx"].append(Sig[0, 0])
@@ -855,7 +962,7 @@ def output_spatial(filepath: str, sig0: float):
                 return mapping.mapToRegular(field)[_elmat].reshape(elmat.shape)
 
             stress = "stress={stress:s}".format(**info)
-            A = "A={A:d}".format(**info)
+            A = "A={A:s}".format(**info)
             ret[stress][A]["S"].add_sample(s)
             ret[stress][A]["A"].add_sample(a.astype(int))
             ret[stress][A]["sig_xx"].add_sample(to_regular(Sig[:, 0, 0]))
@@ -1181,7 +1288,7 @@ def cli_getdynamics_sync_A_job(cli_args=None):
         a_target = []
         a_real = []
         for path in paths:
-            info = interpret_filename(path)
+            info = interpret_filename(path, convert=True)
             meta = g5.join("data", path, "meta", entry_points["cli_run"], root=True)
             meta = file[meta]
             stress += [info["stress"]]
@@ -1342,7 +1449,7 @@ def getdynamics_sync_A_check(filepaths: list[str]) -> dict:
 
         for path in Paths[filepath]:
 
-            info = interpret_filename(path)
+            info = interpret_filename(path, convert=True)
             stress = info["stress"]
             A = info["A"]
             s = info["id"]
@@ -1439,7 +1546,7 @@ def getdynamics_sync_A_average(paths: dict):
 
             for path in tqdm.tqdm(paths[filepath]):
 
-                info = interpret_filename(path)
+                info = interpret_filename(path, convert=True)
                 stress = info["stress"]
                 A = info["A"]
 

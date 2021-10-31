@@ -68,8 +68,9 @@ def _interpret(part: list[str], convert: bool = False) -> dict:
     info = {}
 
     for i in part:
-        key, value = i.split("=")
-        info[key] = value
+        if len(i.split("=")) > 1:
+            key, value = i.split("=")
+            info[key] = value
 
     if convert:
         for key in info:
@@ -97,7 +98,7 @@ def interpret_filename(filepath: str, convert: bool = False) -> dict:
     """
     Split filepath in useful information.
 
-    :param filepath: Filepath of which nly the basename is considered.
+    :param filepath: Filepath of which only the basename is considered.
     :param convert: Convert to numerical values.
     :return: Parameters as dictionary.
     """
