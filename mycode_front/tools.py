@@ -1,5 +1,36 @@
+from __future__ import annotations
+
+import re
+
 import GMatElastoPlasticQPot.Cartesian2d as GMat
 import numpy as np
+from numpy.typing import ArrayLike
+
+
+def read_parameters(string: str, convert: dict = None) -> dict:
+    """
+    Read parameters from a string: it is assumed that parameters are split by ``_`` or ``/``
+    and that parameters are stored as ``name=value``.
+
+    :param string: ``key=value`` separated by ``/`` or ``_``.
+    :param convert: Type conversion for a selection of keys. E.g. ``{"id": int}``.
+    :return: Parameters as dictionary.
+    """
+
+    part = re.split("_|/", string)
+
+    ret = {}
+
+    for i in part:
+        if len(i.split("=")) > 1:
+            key, value = i.split("=")
+            ret[key] = value
+
+    if convert:
+        for key in convert:
+            ret[key] = convert[key](ret[key])
+
+    return ret
 
 
 def filter(xn):
@@ -177,6 +208,47 @@ def fill_avalanche(broken):
     i = N
     j = 2 * N
     return ret[i:j]
+
+
+def distance(a: ArrayLike, b: ArrayLike) -> np.ndarray:
+    """
+    Compute the distance of each point in ``a`` to each point in ``b``,
+    whereby each row corresponds to the distance between the corresponding entry in ``a``
+    to all points in ``b``.
+
+    :param a: List with coordinates, shape: ``[n, d]``.
+    :param b: List with coordinates, shape: ``[m, d]``.
+    :return: Matrix with distances, shape: ``[n, m]``.
+    """
+
+    # https://mlxai.github.io/2017/01/03/finding-distances-between-data-points-with-numpy.html
+
+    M = np.dot(a, b.T)
+    da = np.square(a).sum(axis=1).reshape(-1, 1)
+    db = np.square(b).sum(axis=1).reshape(-1, 1)
+    return np.sqrt(-2 * M + db.T + da)
+
+
+def distance1d(a: ArrayLike, b: ArrayLike) -> np.ndarray:
+    """
+    Compute the distance of each point in ``a`` to each point in ``b``,
+    whereby each row corresponds to the distance between the corresponding entry in ``a``
+    to all points in ``b``.
+
+    :param a: List with coordinates, shape: ``[n]``.
+    :param b: List with coordinates, shape: ``[m]``.
+    :return: Matrix with distances, shape: ``[n, m]``.
+    """
+
+    # https://mlxai.github.io/2017/01/03/finding-distances-between-data-points-with-numpy.html
+
+    assert a.ndim == 1
+    assert b.ndim == 1
+
+    M = np.dot(a.reshape(-1, 1), b.reshape(1, -1))
+    da = np.square(a).reshape(-1, 1)
+    db = np.square(b).reshape(-1, 1)
+    return np.sqrt(-2 * M + db.T + da)
 
 
 if __name__ == "__main__":
