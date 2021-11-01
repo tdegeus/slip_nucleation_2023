@@ -8,21 +8,25 @@ import textwrap
 from collections import defaultdict
 
 import click
+import enstat
 import FrictionQPotFEM.UniformSingleLayer2d as model
 import h5py
 import numpy as np
 import tqdm
 
+from . import System
 from . import tag
 from . import tools
 from ._version import version
 
 entry_points = dict(
     cli_trigger_avalanche_ensembleinfo="TriggerAvalanche_EnsembleInfo",
+    cli_enstataverage_sync_A="TriggerAvalanche_enstataverage_sync_A",
 )
 
 file_defaults = dict(
     cli_trigger_avalanche_ensembleinfo="TriggerAvalanche_EnsembleInfo.h5",
+    cli_enstataverage_sync_A="TriggerAvalanche_enstataverage_sync_A.h5",
 )
 
 
@@ -238,3 +242,202 @@ def cli_trigger_avalanche_ensembleinfo(cli_args=None):
         file["t"] = data["t"]
         file["t"].attrs["S"] = data["t:S"]
         file["t"].attrs["A"] = data["t:A"]
+
+
+def enstataverage_sync_A(
+    filepaths: list[str],
+    ensembleinfo: str,
+    delta_A: int = 50,
+) -> dict:
+    """
+    Get the sums of the first and second statistical moments and the norm.
+
+    :param filepaths:
+        List of file paths.
+
+    :param ensembleinfo:
+        Path to global EnsembleInfo (for normalisation), see :py:func:`System.cli_ensembleinfo`
+
+    :return:
+
+        Dictionary with the following output::
+
+            {
+                "epsp": ..., #
+                "epspdot": ..., #
+                "moved": ..., #
+                "S": ..., #
+                "sig_xx": ..., #
+                "sig_xy": ..., #
+                "sig_yy": ..., #
+                "t": ..., #
+            }
+
+        whereby each variable is stored as an ``enstat.static`` object with shape ``[N + 1, N]```,
+        whereby the rows correspond to different ``A``.
+    """
+
+    with h5py.File(ensembleinfo, "r") as file:
+
+        N = int(file["/normalisation/N"][...])
+        t0 = float(file["/normalisation/t0"][...])
+        eps0 = float(file["/normalisation/eps0"][...])
+        sig0 = float(file["/normalisation/sig0"][...])
+        files = file["files"].asstr()[...]
+        asext = {os.path.splitext(f)[0]: f for f in files}
+
+    sourcedir = os.path.dirname(ensembleinfo)
+
+    ret = {
+        "epsp": enstat.static(shape=(N + 1, N), dtype=np.float),
+        "epspdot": enstat.static(shape=(N + 1, N), dtype=np.float),
+        "moved": enstat.static(shape=(N + 1, N), dtype=np.int64),
+        "S": enstat.static(shape=(N + 1, N), dtype=np.int64),
+        "sig_xx": enstat.static(shape=(N + 1, N), dtype=np.float),
+        "sig_xy": enstat.static(shape=(N + 1, N), dtype=np.float),
+        "sig_yy": enstat.static(shape=(N + 1, N), dtype=np.float),
+        "t": enstat.static(shape=(N + 1), dtype=np.float),
+    }
+
+    d = {
+        "epsp": np.zeros((N + 1, N), dtype=float),
+        "epspdot": np.zeros((N + 1, N), dtype=float),
+        "moved": np.zeros((N + 1, N), dtype=bool),
+        "S": np.zeros((N + 1, N), dtype=np.int64),
+        "sig_xx": np.zeros((N + 1, N), dtype=float),
+        "sig_xy": np.zeros((N + 1, N), dtype=float),
+        "sig_yy": np.zeros((N + 1, N), dtype=float),
+        "t": np.zeros((N + 1,), dtype=float),
+    }
+
+    # array indices (used below)
+    edx = np.empty((2, N), dtype=int)
+    edx[0, :] = np.arange(N)
+
+    for ifile, filepath in enumerate(tqdm.tqdm(filepaths)):
+
+        info = tools.read_parameters(filepath)
+        sourcepath = os.path.join(sourcedir, asext["id={id}".format(**info)])
+
+        with h5py.File(sourcepath, "r") as file:
+            epsy = System.read_epsy(file)
+            epsy = np.hstack((-epsy[:, 0].reshape(-1, 1), epsy))
+
+        with h5py.File(filepath, "r") as file:
+
+            if ifile == 0:
+                plastic = file["/meta/plastic"][...]
+
+            A = file["/sync-A/stored"][...].astype(np.int64)
+            d["t"][A] = file["/sync-A/global/iiter"][A] / t0
+
+            for ia, a in enumerate(A):
+
+                root = f"/sync-A/plastic/{a:d}"
+                sroot = None
+
+                if f"/sync-A/element/{a:d}/sig_xx" in file:
+                    sroot = f"/sync-A/element/{a:d}"
+
+                idx = file[f"{root}/idx"][...].astype(np.int64)
+
+                if ia == 0:
+                    idx0 = np.array(idx, copy=True)
+
+                d["moved"][a, :] = idx0 != idx
+                d["S"][a, :] = idx - idx0
+
+                edx[1, :] = idx
+                i = np.ravel_multi_index(edx, epsy.shape)
+                epsy_l = epsy.flat[i]
+                epsy_r = epsy.flat[i + 1]
+                d["epsp"][a, :] = 0.5 * (epsy_l + epsy_r) / eps0
+
+                if f"{root}/epsp" in file and a > 0:
+                    assert np.allclose(d["epsp"][a, :], file[f"{root}/epsp"][...] / eps0)
+
+                for key in ["sig_xx", "sig_xy", "sig_yy"]:
+                    if sroot:
+                        d[key][a, :] = file[f"{sroot}/{key}"][...][plastic] / sig0
+                    else:
+                        d[key][a, :] = file[f"{root}/{key}"][...] / sig0
+
+        roll = tools.center_avalanche_per_row(d["moved"])
+
+        i_delta = np.argmin(tools.distance1d(A - delta_A, A), axis=1)
+        mask_delta = np.ones((N + 1), dtype=bool)
+        mask_delta[A[A > A[i_delta]]] = False
+
+        for a, i_n in zip(A, i_delta):
+            a_n = A[i_n]
+            d["epspdot"][a, :] = (d["epsp"][a, :] - d["epsp"][a_n, :]) / (d["t"][a] - d["t"][a_n])
+
+        for key in d:
+            if key not in ["t"]:
+                d[key] = tools.indep_roll(d[key], roll)
+
+        mask = np.ones((N + 1), dtype=bool)
+        mask[A] = False
+
+        for key in ret:
+            if key not in ["epspdot"]:
+                ret[key].add_sample(d[key], mask=mask)
+
+        for key in ["epspdot"]:
+            ret[key].add_sample(d[key], mask=mask_delta)
+
+    return ret
+
+
+def cli_enstataverage_sync_A(cli_args=None):
+    """
+    Read the ensemble average synchronized at "A".
+    """
+
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    output = file_defaults[funcname]
+
+    parser.add_argument("--develop", action="store_true", help="Development mode")
+    parser.add_argument("-e", "--ensembleinfo", type=str, help="EnsembleInfo for normalisation")
+    parser.add_argument("-f", "--force", action="store_true", help="Force overwrite")
+    parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
+    parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("files", nargs="*", type=str, help="Simulation output")
+
+    if cli_args is None:
+        args = parser.parse_args(sys.argv[1:])
+    else:
+        args = parser.parse_args([str(arg) for arg in cli_args])
+
+    assert os.path.exists(args.ensembleinfo)
+    assert len(args.files) > 0
+    assert np.all([os.path.exists(f) for f in args.files])
+    assert args.develop or not tag.has_uncommitted(version)
+
+    if not args.force:
+        if os.path.isfile(args.output):
+            if not click.confirm(f'Overwrite "{args.output}"?'):
+                raise OSError("Cancelled")
+
+    data = enstataverage_sync_A(args.files, args.ensembleinfo)
+
+    with h5py.File(args.output, "w") as file:
+
+        meta = file.create_group("meta")
+        meta.attrs["version"] = version
+
+        file["/meta/files"] = args.files
+
+        for key in data:
+            file[f"{key}/first"] = data[key].first()
+            file[f"{key}/second"] = data[key].second()
+            file[f"{key}/norm"] = data[key].norm()
