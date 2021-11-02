@@ -17,6 +17,13 @@ Flow
     :members:
     :autosummary:
 
+Trigger
+=======
+
+.. automodule:: mycode_front.Trigger
+    :members:
+    :autosummary:
+
 PinAndTrigger
 =============
 
