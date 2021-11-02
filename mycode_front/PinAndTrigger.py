@@ -511,6 +511,7 @@ def cli_collect_combine(cli_args=None):
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
     progname = entry_points[funcname]
 
+    parser.add_argument("-i", "--ignore", action="store_true", help="Ignore version differences")
     parser.add_argument("-f", "--force", action="store_true", help="Overwrite output")
     parser.add_argument("-o", "--output", type=str, help="Output file", default=f"{progname}.h5")
     parser.add_argument("-v", "--version", action="version", version=version)
@@ -540,8 +541,9 @@ def cli_collect_combine(cli_args=None):
                 m = file["meta"]
                 n = output["meta"]
 
-                for key in ["version", "dependencies"]:
-                    assert list(m.attrs[key]) == list(n.attrs[key])
+                if not args.ignore:
+                    for key in ["version", "dependencies"]:
+                        assert list(m.attrs[key]) == list(n.attrs[key])
 
                 paths = list(g5.getdatapaths(file))
                 paths.remove("/meta")
