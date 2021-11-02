@@ -590,6 +590,7 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
             storage.dset_extend1d(file, "/t", inc, system.t())
             storage.dset_extend1d(file, "/kick", inc, kick)
             file[f"/disp/{inc:d}"] = system.u()
+            file.flush()
 
         print(f'"{basename}": completed')
         meta.attrs["completed"] = 1
