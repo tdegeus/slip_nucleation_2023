@@ -285,7 +285,7 @@ def enstataverage_sync_A(
                 # same as "layers", but blocks outside largest connected 'crack' are masked
                 "crack": {...},
                 # same as "layers", but blocks that have not yielded are masked
-                "moving": {...},
+                "moved": {...},
             }
 
         Each variable is stored as an ``enstat.static`` object with shape ``[N + 1, N]```
@@ -305,7 +305,7 @@ def enstataverage_sync_A(
 
     # allocate ensemble averages
     ret = {}
-    for mode in ["layer", "crack", "moving"]:
+    for mode in ["layer", "crack", "moved"]:
         ret[mode] = {
             "epsp": enstat.static(shape=(N + 1, N), dtype=np.float),
             "epspdot": enstat.static(shape=(N + 1, N), dtype=np.float),
@@ -318,23 +318,26 @@ def enstataverage_sync_A(
 
     ret["global"] = {
         "t": enstat.static(shape=(N + 1), dtype=np.float),
+        "sig_xx": enstat.static(shape=(N + 1), dtype=np.float),
+        "sig_xy": enstat.static(shape=(N + 1), dtype=np.float),
+        "sig_yy": enstat.static(shape=(N + 1), dtype=np.float),
     }
 
     # pre-allocate output per realisation (not averaged)
-    d = {
-        "epsp": np.zeros((N + 1, N), dtype=float),
-        "epspdot": np.zeros((N + 1, N), dtype=float),
-        "moved": np.zeros((N + 1, N), dtype=bool),
-        "S": np.zeros((N + 1, N), dtype=np.int64),
-        "sig_xx": np.zeros((N + 1, N), dtype=float),
-        "sig_xy": np.zeros((N + 1, N), dtype=float),
-        "sig_yy": np.zeros((N + 1, N), dtype=float),
-        "t": np.zeros((N + 1,), dtype=float),
-    }
+    crack = np.empty((N + 1, N), dtype=bool)
+    moved = np.zeros((N + 1, N), dtype=bool)
+    epsp = np.zeros((N + 1, N), dtype=float)
+    epspdot = np.zeros((N + 1, N), dtype=float)
+    S = np.zeros((N + 1, N), dtype=np.int64)
+    sig_xx = np.zeros((N + 1, N), dtype=float)
+    sig_xy = np.zeros((N + 1, N), dtype=float)
+    sig_yy = np.zeros((N + 1, N), dtype=float)
 
     mask = np.empty((N + 1), dtype=bool)
-    crack = np.empty((N + 1, N), dtype=bool)
-    moving = np.empty((N + 1, N), dtype=bool)
+    t = np.zeros((N + 1), dtype=float)
+    sigbar_xx = np.zeros((N + 1), dtype=float)
+    sigbar_xy = np.zeros((N + 1), dtype=float)
+    sigbar_yy = np.zeros((N + 1), dtype=float)
 
     # array indices (used below)
     edx = np.empty((2, N), dtype=int)
@@ -355,12 +358,15 @@ def enstataverage_sync_A(
                 plastic = file["/meta/plastic"][...]
 
             A = file["/sync-A/stored"][...].astype(np.int64)
-            d["t"][A] = file["/sync-A/global/iiter"][A] / t0
+            t[A] = file["/sync-A/global/iiter"][A] / t0
+            sigbar_xx[A] = file["/sync-A/global/sig_xx"][A] / sig0
+            sigbar_xy[A] = file["/sync-A/global/sig_xy"][A] / sig0
+            sigbar_yy[A] = file["/sync-A/global/sig_yy"][A] / sig0
 
             mask.fill(True)
             mask[A] = False
             crack[mask] = False
-            moving[mask] = False
+            moved[mask] = False
 
             for ia, a in enumerate(A):
 
@@ -380,10 +386,9 @@ def enstataverage_sync_A(
                     idx0 = np.array(idx, copy=True)
 
                 m = idx0 != idx
-                d["moved"][a, :] = m
-                d["S"][a, :] = idx - idx0
                 crack[a, :] = tools.fill_avalanche(m)
-                moving[a, :] = m
+                moved[a, :] = m
+                S[a, :] = idx - idx0
 
                 # plastic strain
 
@@ -391,18 +396,21 @@ def enstataverage_sync_A(
                 i = np.ravel_multi_index(edx, epsy.shape)
                 epsy_l = epsy.flat[i]
                 epsy_r = epsy.flat[i + 1]
-                d["epsp"][a, :] = 0.5 * (epsy_l + epsy_r) / eps0
+                epsp[a, :] = 0.5 * (epsy_l + epsy_r) / eps0
 
                 if f"{root}/epsp" in file and a > 0:
-                    assert np.allclose(d["epsp"][a, :], file[f"{root}/epsp"][...] / eps0)
+                    assert np.allclose(epsp[a, :], file[f"{root}/epsp"][...] / eps0)
 
                 # stress
 
-                for key in ["sig_xx", "sig_xy", "sig_yy"]:
-                    if sroot:
-                        d[key][a, :] = file[f"{sroot}/{key}"][...][plastic] / sig0
-                    else:
-                        d[key][a, :] = file[f"{root}/{key}"][...] / sig0
+                if sroot:
+                    sig_xx[a, :] = file[f"{sroot}/sig_xx"][...][plastic] / sig0
+                    sig_xy[a, :] = file[f"{sroot}/sig_xy"][...][plastic] / sig0
+                    sig_yy[a, :] = file[f"{sroot}/sig_yy"][...][plastic] / sig0
+                else:
+                    sig_xx[a, :] = file[f"{root}/sig_xx"][...] / sig0
+                    sig_xy[a, :] = file[f"{root}/sig_xy"][...] / sig0
+                    sig_yy[a, :] = file[f"{root}/sig_yy"][...] / sig0
 
         # plastic strain rate
 
@@ -410,33 +418,40 @@ def enstataverage_sync_A(
 
         for a, i_n in zip(A, i_delta):
             a_n = A[i_n]
-            d["epspdot"][a, :] = (d["epsp"][a, :] - d["epsp"][a_n, :]) / (d["t"][a] - d["t"][a_n])
+            epspdot[a, :] = (epsp[a, :] - epsp[a_n, :]) / (t[a] - t[a_n])
 
         # save
 
-        roll = tools.center_avalanche_per_row(d["moved"])
+        roll = tools.center_avalanche_per_row(moved)
 
-        for key in d:
-            if key not in ["t"]:
-                d[key] = tools.indep_roll(d[key], roll)
+        crack = tools.indep_roll(crack, roll)
+        moved = tools.indep_roll(moved, roll)
+        epsp = tools.indep_roll(epsp, roll)
+        epspdot = tools.indep_roll(epspdot, roll)
+        S = tools.indep_roll(S, roll)
+        sig_xx = tools.indep_roll(sig_xx, roll)
+        sig_xy = tools.indep_roll(sig_xy, roll)
+        sig_yy = tools.indep_roll(sig_yy, roll)
 
         for key in ret["layer"]:
             if key not in ["epspdot"]:
-                ret["layer"][key].add_sample(d[key], mask=mask)
-                ret["crack"][key].add_sample(d[key], mask=np.logical_not(crack))
-                ret["moving"][key].add_sample(d[key], mask=np.logical_not(moving))
+                ret["layer"][key].add_sample(locals()[key], mask=mask)
+                ret["crack"][key].add_sample(locals()[key], mask=np.logical_not(crack))
+                ret["moved"][key].add_sample(locals()[key], mask=np.logical_not(moved))
 
-        for key in ret["global"]:
-            ret["global"][key].add_sample(d[key], mask=mask)
+        ret["global"]["t"].add_sample(t, mask=mask)
+        ret["global"]["sig_xx"].add_sample(sigbar_xx, mask=mask)
+        ret["global"]["sig_xy"].add_sample(sigbar_xy, mask=mask)
+        ret["global"]["sig_yy"].add_sample(sigbar_yy, mask=mask)
 
         mask[A[A <= A[i_delta]]] = True
         crack[mask] = False
-        moving[mask] = False
+        moved[mask] = False
 
         for key in ["epspdot"]:
-            ret["layer"][key].add_sample(d[key], mask=mask)
-            ret["crack"][key].add_sample(d[key], mask=np.logical_not(crack))
-            ret["moving"][key].add_sample(d[key], mask=np.logical_not(moving))
+            ret["layer"][key].add_sample(locals()[key], mask=mask)
+            ret["crack"][key].add_sample(locals()[key], mask=np.logical_not(crack))
+            ret["moved"][key].add_sample(locals()[key], mask=np.logical_not(moved))
 
     return ret
 
