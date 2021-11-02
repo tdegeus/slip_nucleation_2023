@@ -187,6 +187,9 @@ def fill_avalanche(broken):
 
     assert broken.ndim == 1
 
+    if np.sum(broken) <= 1:
+        return broken
+
     N = broken.size
     broken = np.tile(broken, 3)
     ret = np.ones_like(broken)

@@ -258,23 +258,38 @@ def enstataverage_sync_A(
     :param ensembleinfo:
         Path to global EnsembleInfo (for normalisation), see :py:func:`System.cli_ensembleinfo`
 
+    :param delta_A:
+        Compute plastic strain rate based on the plastic strain and time difference between ``A``
+        and ``A - delta_A``. For small ``A`` the following is used ``delta_A = min(A, delta_A)``.
+
+    .. todo::
+
+        Write test.
+
     :return:
 
         Dictionary with the following output::
 
             {
-                "epsp": ..., #
-                "epspdot": ..., #
-                "moved": ..., #
-                "S": ..., #
-                "sig_xx": ..., #
-                "sig_xy": ..., #
-                "sig_yy": ..., #
-                "t": ..., #
+                # aligned avalanche but not masking in space
+                "layer": {
+                    "epsp": ..., # plastic strain accumulated in the event
+                    "epspdot": ..., # plastic strain rate
+                    "moved": ..., # block has moved or not
+                    "S": ..., # total number of times the block yielded
+                    "sig_xx": ..., # local stress: xx-component
+                    "sig_xy": ..., # local stress: xy-component
+                    "sig_yy": ..., # local stress: yy-component
+                    "t": ..., # time
+                },
+                # same as "layers", but blocks outside largest connected 'crack' are masked
+                "crack": {...},
+                # same as "layers", but blocks that have not yielded are masked
+                "moving": {...},
             }
 
-        whereby each variable is stored as an ``enstat.static`` object with shape ``[N + 1, N]```,
-        whereby the rows correspond to different ``A``.
+        Each variable is stored as an ``enstat.static`` object with shape ``[N + 1, N]```
+        (or ``[N + 1]`` for the time), with each row corresponding to a different ``A``.
     """
 
     with h5py.File(ensembleinfo, "r") as file:
@@ -288,17 +303,24 @@ def enstataverage_sync_A(
 
     sourcedir = os.path.dirname(ensembleinfo)
 
-    ret = {
-        "epsp": enstat.static(shape=(N + 1, N), dtype=np.float),
-        "epspdot": enstat.static(shape=(N + 1, N), dtype=np.float),
-        "moved": enstat.static(shape=(N + 1, N), dtype=np.int64),
-        "S": enstat.static(shape=(N + 1, N), dtype=np.int64),
-        "sig_xx": enstat.static(shape=(N + 1, N), dtype=np.float),
-        "sig_xy": enstat.static(shape=(N + 1, N), dtype=np.float),
-        "sig_yy": enstat.static(shape=(N + 1, N), dtype=np.float),
+    # allocate ensemble averages
+    ret = {}
+    for mode in ["layer", "crack", "moving"]:
+        ret[mode] = {
+            "epsp": enstat.static(shape=(N + 1, N), dtype=np.float),
+            "epspdot": enstat.static(shape=(N + 1, N), dtype=np.float),
+            "moved": enstat.static(shape=(N + 1, N), dtype=np.int64),
+            "S": enstat.static(shape=(N + 1, N), dtype=np.int64),
+            "sig_xx": enstat.static(shape=(N + 1, N), dtype=np.float),
+            "sig_xy": enstat.static(shape=(N + 1, N), dtype=np.float),
+            "sig_yy": enstat.static(shape=(N + 1, N), dtype=np.float),
+        }
+
+    ret["global"] = {
         "t": enstat.static(shape=(N + 1), dtype=np.float),
     }
 
+    # pre-allocate output per realisation (not averaged)
     d = {
         "epsp": np.zeros((N + 1, N), dtype=float),
         "epspdot": np.zeros((N + 1, N), dtype=float),
@@ -309,6 +331,10 @@ def enstataverage_sync_A(
         "sig_yy": np.zeros((N + 1, N), dtype=float),
         "t": np.zeros((N + 1,), dtype=float),
     }
+
+    mask = np.empty((N + 1), dtype=bool)
+    crack = np.empty((N + 1, N), dtype=bool)
+    moving = np.empty((N + 1, N), dtype=bool)
 
     # array indices (used below)
     edx = np.empty((2, N), dtype=int)
@@ -331,7 +357,14 @@ def enstataverage_sync_A(
             A = file["/sync-A/stored"][...].astype(np.int64)
             d["t"][A] = file["/sync-A/global/iiter"][A] / t0
 
+            mask.fill(True)
+            mask[A] = False
+            crack[mask] = False
+            moving[mask] = False
+
             for ia, a in enumerate(A):
+
+                # path aliases to shorten code
 
                 root = f"/sync-A/plastic/{a:d}"
                 sroot = None
@@ -339,13 +372,20 @@ def enstataverage_sync_A(
                 if f"/sync-A/element/{a:d}/sig_xx" in file:
                     sroot = f"/sync-A/element/{a:d}"
 
+                # current index & avalanche properties
+
                 idx = file[f"{root}/idx"][...].astype(np.int64)
 
                 if ia == 0:
                     idx0 = np.array(idx, copy=True)
 
-                d["moved"][a, :] = idx0 != idx
+                m = idx0 != idx
+                d["moved"][a, :] = m
                 d["S"][a, :] = idx - idx0
+                crack[a, :] = tools.fill_avalanche(m)
+                moving[a, :] = m
+
+                # plastic strain
 
                 edx[1, :] = idx
                 i = np.ravel_multi_index(edx, epsy.shape)
@@ -356,35 +396,47 @@ def enstataverage_sync_A(
                 if f"{root}/epsp" in file and a > 0:
                     assert np.allclose(d["epsp"][a, :], file[f"{root}/epsp"][...] / eps0)
 
+                # stress
+
                 for key in ["sig_xx", "sig_xy", "sig_yy"]:
                     if sroot:
                         d[key][a, :] = file[f"{sroot}/{key}"][...][plastic] / sig0
                     else:
                         d[key][a, :] = file[f"{root}/{key}"][...] / sig0
 
-        roll = tools.center_avalanche_per_row(d["moved"])
+        # plastic strain rate
 
         i_delta = np.argmin(tools.distance1d(A - delta_A, A), axis=1)
-        mask_delta = np.ones((N + 1), dtype=bool)
-        mask_delta[A[A > A[i_delta]]] = False
 
         for a, i_n in zip(A, i_delta):
             a_n = A[i_n]
             d["epspdot"][a, :] = (d["epsp"][a, :] - d["epsp"][a_n, :]) / (d["t"][a] - d["t"][a_n])
 
+        # save
+
+        roll = tools.center_avalanche_per_row(d["moved"])
+
         for key in d:
             if key not in ["t"]:
                 d[key] = tools.indep_roll(d[key], roll)
 
-        mask = np.ones((N + 1), dtype=bool)
-        mask[A] = False
-
-        for key in ret:
+        for key in ret["layer"]:
             if key not in ["epspdot"]:
-                ret[key].add_sample(d[key], mask=mask)
+                ret["layer"][key].add_sample(d[key], mask=mask)
+                ret["crack"][key].add_sample(d[key], mask=np.logical_not(crack))
+                ret["moving"][key].add_sample(d[key], mask=np.logical_not(moving))
+
+        for key in ret["global"]:
+            ret["global"][key].add_sample(d[key], mask=mask)
+
+        mask[A[A <= A[i_delta]]] = True
+        crack[mask] = False
+        moving[mask] = False
 
         for key in ["epspdot"]:
-            ret[key].add_sample(d[key], mask=mask_delta)
+            ret["layer"][key].add_sample(d[key], mask=mask)
+            ret["crack"][key].add_sample(d[key], mask=np.logical_not(crack))
+            ret["moving"][key].add_sample(d[key], mask=np.logical_not(moving))
 
     return ret
 
@@ -437,7 +489,8 @@ def cli_enstataverage_sync_A(cli_args=None):
 
         file["/meta/files"] = args.files
 
-        for key in data:
-            file[f"{key}/first"] = data[key].first()
-            file[f"{key}/second"] = data[key].second()
-            file[f"{key}/norm"] = data[key].norm()
+        for mode in data:
+            for key in data[mode]:
+                file[f"/{mode}/{key}/first"] = data[mode][key].first()
+                file[f"/{mode}/{key}/second"] = data[mode][key].second()
+                file[f"/{mode}/{key}/norm"] = data[mode][key].norm()
