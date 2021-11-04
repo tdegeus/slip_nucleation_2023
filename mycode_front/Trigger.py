@@ -17,6 +17,7 @@ import tqdm
 from . import System
 from . import tag
 from . import tools
+from . import storage
 from ._version import version
 
 entry_points = dict(
@@ -105,11 +106,13 @@ def trigger_avalanche_ensembleinfo(
             {
                 "A": [...], # avalanche area @ final step
                 "S": [...], # avalanche size @ final step
-                "sig_r": [...], # stress inside yielding blocks @ final step
-                "sig_star": [...], # macroscopic stress @ triggering
                 "t": [...], # avalanche duration: time between first and last event
                 "t:A": [...], # value of "A" corresponding to each entry in "t"
                 "t:S": [...], # value of "S" corresponding to each entry in "t"
+                "sigmar": [...], # stress inside yielding blocks @ final step
+                "Sigma": [...], # macroscopic stress @ final step
+                "t=0_Sigma": [...], # macroscopic stress @ triggering
+                "t=0_sigmar": [...], # stress 'inside' avalanche @ triggering
             }
 
         Note that the duration is only measured for non-system-spanning events,
@@ -140,7 +143,7 @@ def trigger_avalanche_ensembleinfo(
             Sig = file[f"/snapshot/plastic/{imin:d}/sig"][...]
             Sig = np.mean(Sig[:, idx_n != idx], axis=1)
 
-            ret["sig_star_local"].append(
+            ret["t=0_sigmar"].append(
                 tools.sigd(
                     xx=Sig[0] / sig0,
                     xy=Sig[1] / sig0,
@@ -154,7 +157,7 @@ def trigger_avalanche_ensembleinfo(
             ret["A"].append(A)
             ret["S"].append(S)
 
-            ret["sig_star"].append(
+            ret["t=0_Sigma"].append(
                 tools.sigd(
                     xx=file["/event/global/sig"][0, 0] / sig0,
                     xy=file["/event/global/sig"][1, 0] / sig0,
@@ -162,7 +165,15 @@ def trigger_avalanche_ensembleinfo(
                 )
             )
 
-            ret["sig_r"].append(
+            ret["Sigma"].append(
+                tools.sigd(
+                    xx=file["/overview/global/sig"][0, -1] / sig0,
+                    xy=file["/overview/global/sig"][1, -1] / sig0,
+                    yy=file["/overview/global/sig"][2, -1] / sig0,
+                )
+            )
+
+            ret["sigmar"].append(
                 tools.sigd(
                     xx=file["/event/crack/sig"][0, -1] / sig0,
                     xy=file["/event/crack/sig"][1, -1] / sig0,
@@ -236,12 +247,37 @@ def cli_trigger_avalanche_ensembleinfo(cli_args=None):
 
         file["S"] = data["S"]
         file["A"] = data["A"]
-        file["sig_r"] = data["sig_r"]
-        file["sig_star"] = data["sig_star"]
-        file["sig_star_local"] = data["sig_star_local"]
         file["t"] = data["t"]
         file["t"].attrs["S"] = data["t:S"]
         file["t"].attrs["A"] = data["t:A"]
+
+        storage.dump_with_atttrs(
+            file,
+            "Sigma",
+            data["Sigma"],
+            desc="Macroscopic stress @ final step"
+        )
+
+        storage.dump_with_atttrs(
+            file,
+            "/sigmar",
+            data["sigmar"],
+            desc="Residual stress inside the avalanche @ final step"
+        )
+
+        storage.dump_with_atttrs(
+            file,
+            "/initial/Sigma",
+            data["t=0_Sigma"],
+            desc="Macroscopic stress @ triggering"
+        )
+
+        storage.dump_with_atttrs(
+            file,
+            "/initial/sigmar",
+            data["t=0_sigmar"],
+            desc="Stress 'inside' the avalanche @ triggering"
+        )
 
 
 def enstataverage_sync_A(
