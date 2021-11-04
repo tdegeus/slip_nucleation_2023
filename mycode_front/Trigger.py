@@ -14,10 +14,10 @@ import h5py
 import numpy as np
 import tqdm
 
+from . import storage
 from . import System
 from . import tag
 from . import tools
-from . import storage
 from ._version import version
 
 entry_points = dict(
@@ -252,31 +252,25 @@ def cli_trigger_avalanche_ensembleinfo(cli_args=None):
         file["t"].attrs["A"] = data["t:A"]
 
         storage.dump_with_atttrs(
-            file,
-            "Sigma",
-            data["Sigma"],
-            desc="Macroscopic stress @ final step"
+            file, "Sigma", data["Sigma"], desc="Macroscopic stress @ final step"
         )
 
         storage.dump_with_atttrs(
             file,
             "/sigmar",
             data["sigmar"],
-            desc="Residual stress inside the avalanche @ final step"
+            desc="Residual stress inside the avalanche @ final step",
         )
 
         storage.dump_with_atttrs(
-            file,
-            "/initial/Sigma",
-            data["t=0_Sigma"],
-            desc="Macroscopic stress @ triggering"
+            file, "/initial/Sigma", data["t=0_Sigma"], desc="Macroscopic stress @ triggering"
         )
 
         storage.dump_with_atttrs(
             file,
             "/initial/sigmar",
             data["t=0_sigmar"],
-            desc="Stress 'inside' the avalanche @ triggering"
+            desc="Stress 'inside' the avalanche @ triggering",
         )
 
 

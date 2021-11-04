@@ -61,11 +61,15 @@ class MyTests(unittest.TestCase):
         with h5py.File(infoname, "r") as file:
             epsd = file[f"/full/{idname}/epsd"][...]
             sigd = file[f"/full/{idname}/sigd"][...]
+            incs = file[f"/full/{idname}/inc"][...]
             A = file[f"/full/{idname}/A"][...]
             sig0 = file["/normalisation/sig0"][...]
 
         self.assertTrue(np.allclose(epsd[1:], historic["epsd"][3:]))
         self.assertTrue(np.allclose(sigd[1:], historic["sigd"][3:]))
+
+        # call without check
+        my.System.interface_state({filename: incs[-2:]})
 
         # PinAndTrigger : full run + collection (try running only, not really test)
 
