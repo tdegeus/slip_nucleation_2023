@@ -649,6 +649,60 @@ def steadystate(epsd: ArrayLike, sigd: ArrayLike, kick: ArrayLike, **kwargs):
     return steadystate
 
 
+def interface_state(filepaths: dict) -> dict[np.ndarray]:
+    """
+    State of the interface at one or several increments per realisation.
+
+    :oaram filepaths:
+        Dictionary with a list of increments to consider per file.
+
+    :return:
+        A dictionary with per field a matrix of shape ``[n, N]``,
+        with each row corresponding to an increment of a file, and the columns corresponding to
+        the spatial distribution.
+        The following fields are included in the output:
+        ``sig_xx``, ``sig_xy``, ``sig_yy``, ``epsp``.
+    """
+
+    for filepath in filepaths:
+        if isinstance(filepaths[filepath], int):
+            filepaths[filepath] = [filepaths[filepath]]
+
+    n = sum(len(filepaths[filepath]) for filepath in filepaths)
+    i = 0
+
+    for filepath in tqdm.tqdm(filepaths):
+
+        with h5py.File(filepath, "r") as file:
+
+            if i == 0:
+                system = init(file)
+                plastic = system.plastic()
+                N = plastic.size
+                dV = system.quad().dV()[plastic, :]
+                dV2 = system.quad().AsTensor(2, dV)
+                ret = {
+                    "sig_xx": np.empty((n, N), dtype=float),
+                    "sig_xy": np.empty((n, N), dtype=float),
+                    "sig_yy": np.empty((n, N), dtype=float),
+                    "epsp": np.empty((n, N), dtype=float),
+                }
+            else:
+                system.reset_epsy(read_epsy(file))
+
+            for inc in filepaths[filepath]:
+                system.setU(file[f"/disp/{inc:d}"][...])
+                Sig = np.average(system.plastic_Sig(), weights=dV2, axis=1)
+                epsp = np.average(system.plastic_Epsp(), weights=dV, axis=1)
+                ret["sig_xx"][i, :] = Sig[:, 0, 0]
+                ret["sig_xy"][i, :] = Sig[:, 0, 1]
+                ret["sig_yy"][i, :] = Sig[:, 1, 1]
+                ret["epsp"][i, :] = epsp
+                i += 1
+
+    return ret
+
+
 def basic_output(system: model.System, file: h5py.File, verbose: bool = True) -> dict:
     """
     Read basic output from simulation.
