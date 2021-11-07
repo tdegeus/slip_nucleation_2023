@@ -649,12 +649,16 @@ def steadystate(epsd: ArrayLike, sigd: ArrayLike, kick: ArrayLike, **kwargs):
     return steadystate
 
 
-def interface_state(filepaths: dict) -> dict[np.ndarray]:
+def interface_state(filepaths: dict[int], read_disp: dict[str] = None) -> dict[np.ndarray]:
     """
     State of the interface at one or several increments per realisation.
 
     :oaram filepaths:
         Dictionary with a list of increments to consider per file.
+
+    :oaram read_disp:
+        Dictionary with a file-paths to read the displacement field from.
+        By default the displacement is read from the same files as the realisation.
 
     :return:
         A dictionary with per field a matrix of shape ``[n, N]``,
@@ -667,6 +671,12 @@ def interface_state(filepaths: dict) -> dict[np.ndarray]:
     for filepath in filepaths:
         if isinstance(filepaths[filepath], int):
             filepaths[filepath] = [filepaths[filepath]]
+
+    if read_disp:
+        for filepath in read_disp:
+            if isinstance(read_disp[filepath], str):
+                read_disp[filepath] = [read_disp[filepath]]
+            assert len(read_disp[filepath]) == len(filepaths[filepath])
 
     n = sum(len(filepaths[filepath]) for filepath in filepaths)
     i = 0
@@ -686,18 +696,25 @@ def interface_state(filepaths: dict) -> dict[np.ndarray]:
                     "sig_xy": np.empty((n, N), dtype=float),
                     "sig_yy": np.empty((n, N), dtype=float),
                     "epsp": np.empty((n, N), dtype=float),
+                    "S": np.empty((n, N), dtype=int),
                 }
             else:
                 system.reset_epsy(read_epsy(file))
 
-            for inc in filepaths[filepath]:
-                system.setU(file[f"/disp/{inc:d}"][...])
+            for j, inc in enumerate(filepaths[filepath]):
+
+                if read_disp:
+                    with h5py.File(read_disp[filepath][j], "r") as disp:
+                        system.setU(disp[f"/disp/{inc:d}"][...])
+                else:
+                    system.setU(file[f"/disp/{inc:d}"][...])
+
                 Sig = np.average(system.plastic_Sig(), weights=dV2, axis=1)
-                epsp = np.average(system.plastic_Epsp(), weights=dV, axis=1)
                 ret["sig_xx"][i, :] = Sig[:, 0, 0]
                 ret["sig_xy"][i, :] = Sig[:, 0, 1]
                 ret["sig_yy"][i, :] = Sig[:, 1, 1]
-                ret["epsp"][i, :] = epsp
+                ret["epsp"][i, :] = np.average(system.plastic_Epsp(), weights=dV, axis=1)
+                ret["S"][i, :] = system.plastic_CurrentIndex()[:, 0]
                 i += 1
 
     return ret
