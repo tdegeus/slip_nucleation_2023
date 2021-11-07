@@ -22,11 +22,13 @@ from ._version import version
 
 entry_points = dict(
     cli_trigger_avalanche_ensembleinfo="TriggerAvalanche_EnsembleInfo",
+    cli_trigger_avalanche_spatialprofile="TriggerAvalanche_SpatialProfile",
     cli_enstataverage_sync_A="TriggerAvalanche_enstataverage_sync_A",
 )
 
 file_defaults = dict(
     cli_trigger_avalanche_ensembleinfo="TriggerAvalanche_EnsembleInfo.h5",
+    cli_trigger_avalanche_spatialprofile="TriggerAvalanche_SpatialProfile.h5",
     cli_enstataverage_sync_A="TriggerAvalanche_enstataverage_sync_A.h5",
 )
 
@@ -199,7 +201,8 @@ def trigger_avalanche_ensembleinfo(
 
 def cli_trigger_avalanche_ensembleinfo(cli_args=None):
     """
-    Read and store the general ensemble information of triggered avalanches.
+    Read and store the general ensemble information of triggered avalanches
+    (previously known as ``EventEvolution``).
     """
 
     class MyFmt(
@@ -272,6 +275,90 @@ def cli_trigger_avalanche_ensembleinfo(cli_args=None):
             data["t=0_sigmar"],
             desc="Stress 'inside' the avalanche @ triggering",
         )
+
+
+def cli_trigger_avalanche_spatialprofile(cli_args=None):
+    """
+    Read and store the spatial profile of triggered avalanches
+    (previously known as ``EventEvolution``).
+    """
+
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    output = file_defaults[funcname]
+
+    parser.add_argument("--develop", action="store_true", help="Development mode")
+    parser.add_argument("-e", "--ensembleinfo", type=str, help="EnsembleInfo for normalisation")
+    parser.add_argument("-f", "--force", action="store_true", help="Force overwrite")
+    parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
+    parser.add_argument("-s", "--stress", action="store_true", help="Store stress")
+    parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("files", nargs="*", type=str, help="Simulation output")
+
+    if cli_args is None:
+        args = parser.parse_args(sys.argv[1:])
+    else:
+        args = parser.parse_args([str(arg) for arg in cli_args])
+
+    assert os.path.exists(args.ensembleinfo)
+    assert len(args.files) > 0
+    assert np.all([os.path.exists(f) for f in args.files])
+    assert args.develop or not tag.has_uncommitted(version)
+
+    if not args.force:
+        if os.path.isfile(args.output):
+            if not click.confirm(f'Overwrite "{args.output}"?'):
+                raise OSError("Cancelled")
+
+    with h5py.File(args.ensembleinfo, "r") as file:
+        N = int(file["/normalisation/N"][...])
+        files = file["/files"].asstr()[...]
+        asext = {os.path.splitext(f)[0]: f for f in files}
+
+    sourcedir = os.path.dirname(args.ensembleinfo)
+    filepaths = defaultdict(list)
+    read_disp = defaultdict(list)
+
+    for filepath in args.files:
+        info = tools.read_parameters(filepath)
+        sourcepath = os.path.join(sourcedir, asext["id={id}".format(**info)])
+        filepaths[sourcepath].append(0)
+        read_disp[sourcepath].append(filepath)
+
+    info = trigger_avalanche_ensembleinfo(args.files, args.ensembleinfo)
+    keep = info["A"] < N
+
+    data_0 = System.interface_state(filepaths, read_disp)
+
+    for key in filepaths:
+        filepaths[key] = [1 for i in filepaths[key]]
+
+    data_1 = System.interface_state(filepaths, read_disp)
+
+    with h5py.File(args.output, "w") as file:
+
+        meta = file.create_group("meta")
+        meta.attrs["version"] = version
+
+        file["/meta/files"] = args.files
+
+        if args.stress:
+            file["/sig_xx/0"] = data_0["sig_xx"][keep]
+            file["/sig_xy/0"] = data_0["sig_xy"][keep]
+            file["/sig_yy/0"] = data_0["sig_yy"][keep]
+            file["/sig_xx/1"] = data_1["sig_xx"][keep]
+            file["/sig_xy/1"] = data_1["sig_xy"][keep]
+            file["/sig_yy/1"] = data_1["sig_yy"][keep]
+
+        file["S"] = data_1["S"][keep] - data_0["S"][keep]
 
 
 def enstataverage_sync_A(
