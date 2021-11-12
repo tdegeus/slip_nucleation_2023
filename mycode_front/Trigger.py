@@ -413,6 +413,7 @@ def enstataverage_sync_A(
 
         N = int(file["/normalisation/N"][...])
         t0 = float(file["/normalisation/t0"][...])
+        dt = float(file["/normalisation/dt"][...])
         eps0 = float(file["/normalisation/eps0"][...])
         sig0 = float(file["/normalisation/sig0"][...])
         files = file["files"].asstr()[...]
@@ -475,7 +476,7 @@ def enstataverage_sync_A(
                 plastic = file["/meta/plastic"][...]
 
             A = file["/sync-A/stored"][...].astype(np.int64)
-            t[A] = file["/sync-A/global/iiter"][A] / t0
+            t[A] = file["/sync-A/global/iiter"][A] * dt / t0
             sigbar_xx[A] = file["/sync-A/global/sig_xx"][A] / sig0
             sigbar_xy[A] = file["/sync-A/global/sig_xy"][A] / sig0
             sigbar_yy[A] = file["/sync-A/global/sig_yy"][A] / sig0
@@ -536,6 +537,10 @@ def enstataverage_sync_A(
         for a, i_n in zip(A, i_delta):
             a_n = A[i_n]
             epspdot[a, :] = (epsp[a, :] - epsp[a_n, :]) / (t[a] - t[a_n])
+
+        # total plastic strain -> accumulated plastic strain
+
+        epsp = epsp - epsp[np.min(A), :]
 
         # save
 
