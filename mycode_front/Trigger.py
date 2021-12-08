@@ -99,7 +99,8 @@ def trigger_avalanche_ensembleinfo(
         List of file paths.
 
     :param ensembleinfo:
-        Path to global EnsembleInfo (for normalisation), see :py:func:`System.cli_ensembleinfo`
+        Path to global EnsembleInfo (for normalisation),
+        see :py:func:`mycode_front.System.cli_ensembleinfo`
 
     :return:
         A dictionary as follows::
@@ -291,6 +292,11 @@ def cli_trigger_avalanche_ensembleinfo(cli_args=None):
     """
     Read and store the general ensemble information of triggered avalanches
     (previously known as ``EventEvolution``).
+
+    .. note::
+
+        The output of :py:func:`mycode_front.System.cli_ensembleinfo`
+        is needed for normalisation.
     """
 
     class MyFmt(
@@ -306,7 +312,7 @@ def cli_trigger_avalanche_ensembleinfo(cli_args=None):
     output = file_defaults[funcname]
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
-    parser.add_argument("-e", "--ensembleinfo", type=str, help="EnsembleInfo for normalisation")
+    parser.add_argument("-e", "--ensembleinfo", required=True, type=str, help="Basic EnsembleInfo")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite")
     parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
     parser.add_argument("-v", "--version", action="version", version=version)
@@ -416,6 +422,11 @@ def cli_trigger_avalanche_spatialprofile(cli_args=None):
     """
     Read and store the spatial profile of triggered avalanches
     (previously known as ``EventEvolution``).
+
+    .. note::
+
+        The output of :py:func:`mycode_front.System.cli_ensembleinfo`
+        is needed for normalisation.
     """
 
     class MyFmt(
@@ -431,7 +442,7 @@ def cli_trigger_avalanche_spatialprofile(cli_args=None):
     output = file_defaults[funcname]
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
-    parser.add_argument("-e", "--ensembleinfo", type=str, help="EnsembleInfo for normalisation")
+    parser.add_argument("-e", "--ensembleinfo", required=True, type=str, help="Basic EnsembleInfo")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite")
     parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
     parser.add_argument("-s", "--stress", action="store_true", help="Store stress")
@@ -508,7 +519,7 @@ def enstataverage_sync_A(
         List of file paths.
 
     :param ensembleinfo:
-        Path to global EnsembleInfo (for normalisation), see :py:func:`System.cli_ensembleinfo`
+        Path to global EnsembleInfo (for normalisation), see :py:func:`mycode_front.System.cli_ensembleinfo`
 
     :param delta_A:
         Compute plastic strain rate based on the plastic strain and time difference between ``A``
@@ -716,6 +727,11 @@ def enstataverage_sync_A(
 def cli_enstataverage_sync_A(cli_args=None):
     """
     Read the ensemble average synchronized at "A".
+
+    .. note::
+
+        The output of :py:func:`mycode_front.System.cli_ensembleinfo`
+        is needed for normalisation.
     """
 
     class MyFmt(
@@ -731,7 +747,7 @@ def cli_enstataverage_sync_A(cli_args=None):
     output = file_defaults[funcname]
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
-    parser.add_argument("-e", "--ensembleinfo", type=str, help="EnsembleInfo for normalisation")
+    parser.add_argument("-e", "--ensembleinfo", required=True, type=str, help="Basic EnsembleInfo")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite")
     parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
     parser.add_argument("-v", "--version", action="version", version=version)
