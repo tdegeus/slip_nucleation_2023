@@ -18,6 +18,7 @@ dependencies:
 - make
 - nested_dict
 - ninja
+- openscienceplot_matplotlib
 - parallel
 - pre-commit
 - python

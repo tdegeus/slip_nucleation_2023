@@ -102,20 +102,26 @@ def trigger_avalanche_ensembleinfo(
         Path to global EnsembleInfo (for normalisation), see :py:func:`System.cli_ensembleinfo`
 
     :return:
+        A dictionary as follows::
 
-        Dictionary with the following output::
-
-            {
-                "A": [...], # avalanche area @ final step
-                "S": [...], # avalanche size @ final step
-                "t": [...], # avalanche duration: time between first and last event
-                "t:A": [...], # value of "A" corresponding to each entry in "t"
-                "t:S": [...], # value of "S" corresponding to each entry in "t"
-                "sigmar": [...], # stress inside yielding blocks @ final step
-                "Sigma": [...], # macroscopic stress @ final step
-                "t=0_Sigma": [...], # macroscopic stress @ triggering
-                "t=0_sigmar": [...], # stress 'inside' avalanche @ triggering
-            }
+            xi: size of connect region @ final step
+            A: avalanche area @ final step
+            S: avalanche size @ final step
+            t: avalanche duration; time between first and last event
+            "t:xi": value of ``xi`` corresponding to each entry in ``t``
+            "t:A": value of ``A`` corresponding to each entry in ``t``
+            "t:S": value of ``S`` corresponding to each entry in ``t``
+            t=0_Sigma: macroscopic stress @ triggering
+            t=t_Sigma: macroscopic stress @ last yielding event
+            t=e_Sigma: macroscopic stress @ equilibrium
+            t=0_sigmar: stress inside yielding blocks @ triggering
+            t=t_sigmar: stress inside yielding blocks @ last yielding event
+            t=e_sigmar: stress inside yielding blocks @ equilibrium
+            t=0_sigmar_connected: stress inside connected yielding region @ triggering
+            t=t_sigmar_connected: stress inside connected yielding region @ last yielding event
+            t=e_sigmar_connected: stress inside connected yielding region @ equilibrium
+            t=t_sigmar_connected_error: expected read error in ``t=t_sigmar_connected``
+            t=e_sigmar_connected_error: expected read error in ``t=e_sigmar_connected``
 
         Note that the duration is only measured for non-system-spanning events,
         as for other events the run is truncated.
@@ -138,24 +144,41 @@ def trigger_avalanche_ensembleinfo(
 
             imin = file["/snapshot/storage/snapshot"][0]
             imax = file["/snapshot/storage/snapshot"][-1]
+            iiter_last = file["/event/global/iiter"][-1]
+            v = file["/snapshot/storage/iiter/values"][...]
+            i = file["/snapshot/storage/iiter/index"][...]
+            iread = i[np.argmin(np.abs(v - iiter_last))]
 
             idx_n = file[f"/snapshot/plastic/{imin:d}/idx"][...]
             idx = file[f"/snapshot/plastic/{imax:d}/idx"][...]
 
+            connected = tools.fill_avalanche(idx_n != idx)
+            xi = np.sum(connected)
+
             Sig = file[f"/snapshot/plastic/{imin:d}/sig"][...]
-            Sig = np.mean(Sig[:, idx_n != idx], axis=1)
+            Sig_avalanche = np.mean(Sig[:, idx_n != idx], axis=1)
+            Sig_connected = np.mean(Sig[:, connected], axis=1)
 
             ret["t=0_sigmar"].append(
                 tools.sigd(
-                    xx=Sig[0] / sig0,
-                    xy=Sig[1] / sig0,
-                    yy=Sig[2] / sig0,
+                    xx=Sig_avalanche[0] / sig0,
+                    xy=Sig_avalanche[1] / sig0,
+                    yy=Sig_avalanche[2] / sig0,
+                )
+            )
+
+            ret["t=0_sigmar_connected"].append(
+                tools.sigd(
+                    xx=Sig_connected[0] / sig0,
+                    xy=Sig_connected[1] / sig0,
+                    yy=Sig_connected[2] / sig0,
                 )
             )
 
             A = file["/event/global/A"][-1]
             S = file["/event/global/S"][-1]
 
+            ret["xi"].append(xi)
             ret["A"].append(A)
             ret["S"].append(S)
 
@@ -167,7 +190,15 @@ def trigger_avalanche_ensembleinfo(
                 )
             )
 
-            ret["Sigma"].append(
+            ret["t=t_Sigma"].append(
+                tools.sigd(
+                    xx=file["/event/global/sig"][0, -1] / sig0,
+                    xy=file["/event/global/sig"][1, -1] / sig0,
+                    yy=file["/event/global/sig"][2, -1] / sig0,
+                )
+            )
+
+            ret["t=e_Sigma"].append(
                 tools.sigd(
                     xx=file["/overview/global/sig"][0, -1] / sig0,
                     xy=file["/overview/global/sig"][1, -1] / sig0,
@@ -175,11 +206,63 @@ def trigger_avalanche_ensembleinfo(
                 )
             )
 
-            ret["sigmar"].append(
+            ret["t=t_sigmar"].append(
                 tools.sigd(
                     xx=file["/event/crack/sig"][0, -1] / sig0,
                     xy=file["/event/crack/sig"][1, -1] / sig0,
                     yy=file["/event/crack/sig"][2, -1] / sig0,
+                )
+            )
+
+            Sig = file[f"/snapshot/plastic/{iread:d}/sig"][...]
+            Sig_avalanche = np.mean(Sig[:, idx_n != idx], axis=1)
+            Sig_connected = np.mean(Sig[:, connected], axis=1)
+
+            sigmar = tools.sigd(
+                xx=Sig_avalanche[0] / sig0,
+                xy=Sig_avalanche[1] / sig0,
+                yy=Sig_avalanche[2] / sig0,
+            )
+
+            ret["t=t_sigmar_connected_error"].append(
+                (sigmar - ret["t=t_sigmar"][-1]) / ret["t=t_sigmar"][-1]
+            )
+
+            ret["t=t_sigmar_connected"].append(
+                tools.sigd(
+                    xx=Sig_connected[0] / sig0,
+                    xy=Sig_connected[1] / sig0,
+                    yy=Sig_connected[2] / sig0,
+                )
+            )
+
+            ret["t=e_sigmar"].append(
+                tools.sigd(
+                    xx=file["/overview/crack/sig"][0, -1] / sig0,
+                    xy=file["/overview/crack/sig"][1, -1] / sig0,
+                    yy=file["/overview/crack/sig"][2, -1] / sig0,
+                )
+            )
+
+            Sig = file[f"/snapshot/plastic/{imax:d}/sig"][...]
+            Sig_avalanche = np.mean(Sig[:, idx_n != idx], axis=1)
+            Sig_connected = np.mean(Sig[:, connected], axis=1)
+
+            sigmar = tools.sigd(
+                xx=Sig_avalanche[0] / sig0,
+                xy=Sig_avalanche[1] / sig0,
+                yy=Sig_avalanche[2] / sig0,
+            )
+
+            ret["t=e_sigmar_connected_error"].append(
+                (sigmar - ret["t=e_sigmar"][-1]) / ret["t=e_sigmar"][-1]
+            )
+
+            ret["t=e_sigmar_connected"].append(
+                tools.sigd(
+                    xx=Sig_connected[0] / sig0,
+                    xy=Sig_connected[1] / sig0,
+                    yy=Sig_connected[2] / sig0,
                 )
             )
 
@@ -188,6 +271,7 @@ def trigger_avalanche_ensembleinfo(
 
             if t1 - t0 > 0 and A != N:
                 ret["t"].append((t1 - t0) * dt * cs / (l0))
+                ret["t:xi"].append(xi)
                 ret["t:A"].append(A)
                 ret["t:S"].append(S)
 
@@ -195,6 +279,10 @@ def trigger_avalanche_ensembleinfo(
 
     for key in ret:
         ret[key] = np.array(ret[key])
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    tools.check_docstring(doc, ret, ":return:")
 
     return ret
 
@@ -250,31 +338,78 @@ def cli_trigger_avalanche_ensembleinfo(cli_args=None):
 
         file["S"] = data["S"]
         file["A"] = data["A"]
+        file["xi"] = data["xi"]
         file["t"] = data["t"]
         file["t"].attrs["S"] = data["t:S"]
         file["t"].attrs["A"] = data["t:A"]
-
-        storage.dump_with_atttrs(
-            file, "Sigma", data["Sigma"], desc="Macroscopic stress @ final step"
-        )
+        file["t"].attrs["xi"] = data["t:xi"]
 
         storage.dump_with_atttrs(
             file,
-            "/sigmar",
-            data["sigmar"],
-            desc="Residual stress inside the avalanche @ final step",
-        )
-
-        storage.dump_with_atttrs(
-            file, "/initial/Sigma", data["t=0_Sigma"], desc="Macroscopic stress @ triggering"
+            "/initial/Sigma",
+            data["t=0_Sigma"],
+            desc="Macroscopic stress @ last yielding event",
         )
 
         storage.dump_with_atttrs(
             file,
             "/initial/sigmar",
             data["t=0_sigmar"],
-            desc="Stress 'inside' the avalanche @ triggering",
+            desc="Residual stress inside moving blocks @ last yielding event",
         )
+
+        storage.dump_with_atttrs(
+            file,
+            "/initial/sigmar_connected",
+            data["t=0_sigmar_connected"],
+            desc="Residual stress inside connected moving region @ last yielding event",
+        )
+
+        storage.dump_with_atttrs(
+            file,
+            "/last-event/Sigma",
+            data["t=t_Sigma"],
+            desc="Macroscopic stress @ last yielding event",
+        )
+
+        storage.dump_with_atttrs(
+            file,
+            "/last-event/sigmar",
+            data["t=t_sigmar"],
+            desc="Residual stress inside moving blocks @ last yielding event",
+        )
+
+        storage.dump_with_atttrs(
+            file,
+            "/last-event/sigmar_connected",
+            data["t=t_sigmar_connected"],
+            desc="Residual stress inside connected moving region @ last yielding event",
+        )
+
+        file["/last-event/sigmar_connected"].attrs["error"] = data["t=t_sigmar_connected_error"]
+
+        storage.dump_with_atttrs(
+            file,
+            "/equilibrium/Sigma",
+            data["t=e_Sigma"],
+            desc="Macroscopic stress @ last yielding event",
+        )
+
+        storage.dump_with_atttrs(
+            file,
+            "/equilibrium/sigmar",
+            data["t=e_sigmar"],
+            desc="Residual stress inside moving blocks @ last yielding event",
+        )
+
+        storage.dump_with_atttrs(
+            file,
+            "/equilibrium/sigmar_connected",
+            data["t=e_sigmar_connected"],
+            desc="Residual stress inside connected moving region @ last yielding event",
+        )
+
+        file["/equilibrium/sigmar_connected"].attrs["error"] = data["t=e_sigmar_connected_error"]
 
 
 def cli_trigger_avalanche_spatialprofile(cli_args=None):

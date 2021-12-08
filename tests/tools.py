@@ -16,6 +16,42 @@ class MyTests(unittest.TestCase):
     namespace tools
     """
 
+    def test_check_docstring(self):
+
+        docstring = """\
+        Foo bar.
+
+        :param a: ...
+        :param b: ...
+        :return:
+            A dictionary as follows::
+
+                a: My test
+                b: Other text
+
+            Some notes.
+        """
+
+        my.tools.check_docstring(docstring, dict(a=None, b=None))
+
+        docstring = """\
+        Foo bar.
+
+        :param a: ...
+        :param b: ...
+        :return:
+            A dictionary as follows:
+
+            .. code-block:: yaml
+
+                a: My test
+                b: Other text
+
+            Some notes.
+        """
+
+        my.tools.check_docstring(docstring, dict(a=None, b=None))
+
     def test_read_parameters(self):
 
         a = "/this/is/my/a=10_b=20/c=30.2"
