@@ -33,7 +33,7 @@ def read_parameters(string: str, convert: dict = None) -> dict:
     return ret
 
 
-def filter(xn):
+def signal_filter(xn):
     """
     Filter a signal.
 
