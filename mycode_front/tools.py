@@ -4,7 +4,64 @@ import re
 
 import GMatElastoPlasticQPot.Cartesian2d as GMat
 import numpy as np
+import yaml
 from numpy.typing import ArrayLike
+
+
+def inboth(a: dict | list, b: dict | list, name_a: str = "a", name_b: str = "b"):
+    """
+    Check if a dictionary/list ``a`` has all fields as ``b`` and vice-versa.
+
+    :param a: List or dictionary.
+    :param b: List or dictionary.
+    """
+
+    for key in a:
+        if key not in b:
+            raise OSError(f"{key} not in {name_b}")
+
+    for key in b:
+        if key not in a:
+            raise OSError(f"{key} not in {name_a}")
+
+
+def check_docstring(string: str, variable: dict, key: str = ":return:"):
+    """
+    Make sure that all variables in a dictionary are documented in a docstring.
+    The function assumes a docstring as follows::
+
+        :param a: ...
+        :param b: ...
+        :return: ...::
+            name: description
+
+    Thereby the docstring is split:
+    1.  At a parameter (e.g. `":return:"`)
+    2.  At `.. code-block::` or `::`
+
+    The indented code after is assumed to be formatted as YAML and is the code we search.
+    """
+
+    d = string.split(":return:")[1]
+
+    if len(d.split(".. code-block::")) > 1:
+        d = d.split(".. code-block::")[1].split("\n", 1)[1]
+    elif len(d.split("::")) > 1:
+        d = d.split("::")[1]
+
+    d = d.split("\n")
+    d = list(filter(None, d))
+
+    indent = len(d[0]) - len(d[0].lstrip())
+
+    for i in range(1, len(d)):
+        if len(d[i]) - len(d[i].lstrip()) != indent:
+            break
+
+    d = d[:i]
+    d = "\n".join(d)
+
+    inboth(yaml.safe_load(d), variable, "docstring", "variable")
 
 
 def read_parameters(string: str, convert: dict = None) -> dict:
