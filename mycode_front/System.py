@@ -695,6 +695,9 @@ def interface_state(filepaths: dict[int], read_disp: dict[str] = None) -> dict[n
                     "sig_xx": np.empty((n, N), dtype=float),
                     "sig_xy": np.empty((n, N), dtype=float),
                     "sig_yy": np.empty((n, N), dtype=float),
+                    "eps_xx": np.empty((n, N), dtype=float),
+                    "eps_xy": np.empty((n, N), dtype=float),
+                    "eps_yy": np.empty((n, N), dtype=float),
                     "epsp": np.empty((n, N), dtype=float),
                     "S": np.empty((n, N), dtype=int),
                 }
@@ -710,9 +713,13 @@ def interface_state(filepaths: dict[int], read_disp: dict[str] = None) -> dict[n
                     system.setU(file[f"/disp/{inc:d}"][...])
 
                 Sig = np.average(system.plastic_Sig(), weights=dV2, axis=1)
+                Eps = np.average(system.plastic_Eps(), weights=dV2, axis=1)
                 ret["sig_xx"][i, :] = Sig[:, 0, 0]
                 ret["sig_xy"][i, :] = Sig[:, 0, 1]
                 ret["sig_yy"][i, :] = Sig[:, 1, 1]
+                ret["eps_xx"][i, :] = Eps[:, 0, 0]
+                ret["eps_xy"][i, :] = Eps[:, 0, 1]
+                ret["eps_yy"][i, :] = Eps[:, 1, 1]
                 ret["epsp"][i, :] = np.average(system.plastic_Epsp(), weights=dV, axis=1)
                 ret["S"][i, :] = system.plastic_CurrentIndex()[:, 0]
                 i += 1
