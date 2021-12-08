@@ -252,11 +252,14 @@ def cli_serial_group(cli_args=None):
         formatter_class=MyFormatter, description=replace_entry_point(docstring)
     )
 
-    parser.add_argument("-o", "--outdir", type=str, default=".", help="Output dir")
+    account = slurm_defaults["account"]
+    parser.add_argument("-a", "--account", type=str, default=account, help="Account")
+    parser.add_argument("-b", "--basename", type=str, help="Basename for scripts. Default: command")
     parser.add_argument("-c", "--command", type=str, help="Command to use")
     parser.add_argument("-n", "--group", type=int, default=1, help="#commands to group")
-    parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
+    parser.add_argument("-o", "--outdir", type=str, default=".", help="Output dir")
     parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
     parser.add_argument("files", nargs="*", type=str, help="Files")
 
     args = parser.parse_args(cli_args)
@@ -267,10 +270,10 @@ def cli_serial_group(cli_args=None):
     commands = [f"{args.command} {file}" for file in files]
     serial_group(
         commands,
-        basename=args.command,
+        basename=args.basename if args.basename else args.command,
         group=args.group,
         outdir=args.outdir,
-        sbatch={"time": args.time},
+        sbatch={"time": args.time, "account": args.account},
     )
 
 
@@ -294,10 +297,12 @@ def cli_serial(cli_args=None):
         formatter_class=MyFormatter, description=replace_entry_point(docstring)
     )
 
-    parser.add_argument("-o", "--outdir", type=str, default=".", help="Output dir")
+    account = slurm_defaults["account"]
+    parser.add_argument("-a", "--account", type=str, default=account, help="Account")
     parser.add_argument("-n", "--name", type=str, help="Job name (default: from command)")
-    parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
+    parser.add_argument("-o", "--outdir", type=str, default=".", help="Output dir")
     parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
     parser.add_argument("command", type=str, help="The command")
 
     args = parser.parse_args(cli_args)
