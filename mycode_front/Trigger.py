@@ -445,7 +445,9 @@ def cli_trigger_avalanche_spatialprofile(cli_args=None):
     parser.add_argument("-e", "--ensembleinfo", required=True, type=str, help="Basic EnsembleInfo")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite")
     parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
-    parser.add_argument("-s", "--stress", action="store_true", help="Store stress")
+    parser.add_argument("--stress", action="store_true", help="Store stress tensor")
+    parser.add_argument("--strain", action="store_true", help="Store difference of strain tensor")
+    parser.add_argument("--epsp", action="store_true", help="Store difference of plastic strain")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("files", nargs="*", type=str, help="Simulation output")
 
@@ -503,6 +505,14 @@ def cli_trigger_avalanche_spatialprofile(cli_args=None):
             file["/sig_xx/1"] = data_1["sig_xx"][keep]
             file["/sig_xy/1"] = data_1["sig_xy"][keep]
             file["/sig_yy/1"] = data_1["sig_yy"][keep]
+
+        if args.strain:
+            file["deps_xx"] = data_1["eps_xx"][keep] - data_0["eps_xx"][keep]
+            file["deps_xy"] = data_1["eps_xy"][keep] - data_0["eps_xy"][keep]
+            file["deps_yy"] = data_1["eps_yy"][keep] - data_0["eps_yy"][keep]
+
+        if args.epsp:
+            file["depsp"] = data_1["epsp"][keep] - data_0["epsp"][keep]
 
         file["S"] = data_1["S"][keep] - data_0["S"][keep]
 

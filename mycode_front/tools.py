@@ -131,6 +131,16 @@ def sigd(xx, xy, yy):
     return GMat.Sigd(Sig)
 
 
+def epsd(xx, xy, yy):
+
+    Eps = np.empty(list(xx.shape) + [2, 2])
+    Eps[..., 0, 0] = xx
+    Eps[..., 0, 1] = xy
+    Eps[..., 1, 0] = xy
+    Eps[..., 1, 1] = yy
+    return GMat.Epsd(Eps)
+
+
 def _center_of_mass(x, L):
     """
     Compute the center of mass of a periodic system.
