@@ -63,13 +63,24 @@ class MyTests(unittest.TestCase):
             sigd = file[f"/full/{idname}/sigd"][...]
             incs = file[f"/full/{idname}/inc"][...]
             A = file[f"/full/{idname}/A"][...]
+            S = file[f"/full/{idname}/S"][...]
             sig0 = file["/normalisation/sig0"][...]
 
         self.assertTrue(np.allclose(epsd[1:], historic["epsd"][3:]))
         self.assertTrue(np.allclose(sigd[1:], historic["sigd"][3:]))
 
-        # call without check
+        # function call without without check
         my.System.interface_state({filename: incs[-2:]})
+
+        # Rerun increment
+
+        name = os.path.join(dirname, "rerun.h5")
+        i = np.argmax(S)
+        my.System.cli_rerun_event(["-f", "-i", i, "-o", name, filename])
+
+        with h5py.File(name, "r") as file:
+            s = file["S"][...]
+            self.assertEqual(S[i], np.sum(s))
 
         # PinAndTrigger : full run + collection (try running only, not really test)
 
