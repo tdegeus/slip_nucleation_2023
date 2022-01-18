@@ -10,6 +10,7 @@ import argparse
 import inspect
 import os
 import re
+import shutil
 import sys
 import textwrap
 import uuid
@@ -40,12 +41,16 @@ entry_points = dict(
     cli_run="Run",
     cli_plot="Run_plot",
     cli_rerun_event="RunEventMap",
+    cli_rerun_event_job_systemspanning="RunEventMap_JobAllSystemSpanning",
+    cli_rerun_event_collect="EventMapInfo",
 )
 
 
 file_defaults = dict(
     cli_ensembleinfo="EnsembleInfo.h5",
     cli_rerun_event="EventMap.h5",
+    cli_rerun_event_job_systemspanning="EventMap_SystemSpanning",
+    cli_rerun_event_collect="EventMapInfo.h5",
 )
 
 
@@ -847,7 +852,7 @@ def cli_ensembleinfo(cli_args=None):
 
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
 
-    parser.add_argument("-f", "--force", action="store_true", help="Force overwrite")
+    parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("files", nargs="*", type=str, help="Files to read")
@@ -1067,7 +1072,7 @@ def runinc_event_basic(system: model.System, file: h5py.File, inc: int, Smax=Non
     stored = file["/stored"][...]
 
     if Smax is None:
-        Smax = np.inf
+        Smax = sys.maxsize
 
     assert inc > 0
     assert inc in stored
@@ -1156,6 +1161,142 @@ def cli_rerun_event(cli_args=None):
         file["r"] = ret["r"]
         file["t"] = ret["t"]
         file["S"] = ret["S"]
+        meta = file.create_group(f"/meta/{progname}")
+        meta.attrs["version"] = version
+        meta.attrs["dependencies"] = dependencies(model)
+        meta.attrs["file"] = args.file
+        meta.attrs["inc"] = args.inc
+        meta.attrs["Smax"] = args.smax if args.smax else sys.maxsize
+
+    if cli_args is not None:
+        return ret
+
+
+def cli_rerun_event_job_systemspanning(cli_args=None):
+    """
+    Generate a job to rerun all system-spanning events and generate an event-map.
+    """
+
+    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    output = file_defaults[funcname]
+
+    parser.add_argument("-f", "--force", action="store_true", help="Force clean output directory")
+    parser.add_argument("-n", "--group", type=int, default=20, help="#increments to group")
+    parser.add_argument("-o", "--outdir", type=str, default=output, help="Output directory")
+    parser.add_argument("-t", "--truncate", action="store_true", help="Truncate at known Smax")
+    parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
+    parser.add_argument("EnsembleInfo", type=str, help="EnsembleInfo")
+
+    if cli_args is None:
+        args = parser.parse_args(sys.argv[1:])
+    else:
+        args = parser.parse_args([str(arg) for arg in cli_args])
+
+    assert os.path.isfile(args.EnsembleInfo)
+
+    if not args.force:
+        if os.path.isdir(args.outdir):
+            if not click.confirm(f'Clear "{args.outdir}"?'):
+                raise OSError("Cancelled")
+            shutil.rmtree(args.outdir)
+
+    os.makedirs(args.outdir)
+
+    with h5py.File(args.EnsembleInfo, "r") as file:
+        N = file["/normalisation/N"][...]
+        A = file["/avalanche/A"][...]
+        S = file["/avalanche/S"][...]
+        inc = file["/avalanche/inc"][...]
+        ifile = file["/avalanche/file"][...]
+        files = file["/files"].asstr()[...]
+
+    keep = A == N
+    S = S[keep]
+    inc = inc[keep]
+    ifile = ifile[keep]
+
+    commands = []
+    executable = entry_points["cli_rerun_event"]
+    relpath = os.path.relpath(os.path.dirname(args.EnsembleInfo), args.outdir)
+
+    for s, i, f in zip(S, inc, ifile):
+        fname = files[f]
+        basename = os.path.splitext(os.path.basename(fname))[0]
+        cmd = [executable, "-o", f"{basename}_inc={i:d}.h5", "-i", f"{i:d}"]
+        if args.truncate:
+            cmd += ["-s", f"{s:d}"]
+        cmd += [os.path.join(relpath, fname)]
+        commands.append(" ".join(cmd))
+
+    slurm.serial_group(
+        commands,
+        basename=executable,
+        group=args.group,
+        outdir=args.outdir,
+        sbatch={"time": args.time},
+    )
+
+    if cli_args is not None:
+        return commands
+
+
+def cli_rerun_event_collect(cli_args=None):
+    """
+    Collect basis information from
+    """
+
+    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    progname = entry_points[funcname]
+    output = file_defaults[funcname]
+
+    parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
+    parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
+    parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("files", nargs="*", type=str, help="Files to read")
+
+    if cli_args is None:
+        args = parser.parse_args(sys.argv[1:])
+    else:
+        args = parser.parse_args([str(arg) for arg in cli_args])
+
+    assert len(args.files) > 0
+    assert np.all([os.path.isfile(file) for file in args.files])
+
+    if not args.force:
+        if os.path.isfile(args.outdir):
+            if not click.confirm(f'Clear "{args.outdir}"?'):
+                raise OSError("Cancelled")
+
+    T = []
+    F = []
+    C = []
+    S = []
+    executable = entry_points["cli_rerun_event"]
+
+    for filepath in args.files:
+        with h5py.File(filepath, "r") as file:
+            meta = file[f"/meta/{executable}"]
+            T.append(file["t"][...][-1] - file["t"][...][0])
+            F.append(meta.attrs["file"])
+            C.append(meta.attrs["inc"])
+            S.append(meta.attrs["Smax"])
+
+    with h5py.File(args.output, "w") as file:
+        file["t"] = T
+        file["file"] = F
+        file["inc"] = C
+        file["Smax"] = S
         meta = file.create_group(f"/meta/{progname}")
         meta.attrs["version"] = version
         meta.attrs["dependencies"] = dependencies(model)
