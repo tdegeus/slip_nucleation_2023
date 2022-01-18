@@ -1,9 +1,9 @@
 repos:
-# - repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks
-#   rev: v2.1.0
-#   hooks:
-#   - id: pretty-format-yaml
-#     args: [--autofix, --indent, '2']
+- repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks
+  rev: v2.1.0
+  hooks:
+  - id: pretty-format-yaml
+    args: [--preserve-quotes, --autofix, --indent, '2']
 - repo: https://github.com/psf/black
   rev: 21.12b0
   hooks:
