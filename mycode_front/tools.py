@@ -51,14 +51,9 @@ def check_docstring(string: str, variable: dict, key: str = ":return:"):
 
     d = d.split("\n")
     d = list(filter(None, d))
-
+    d = list(filter(lambda name: name.strip(), d))
     indent = len(d[0]) - len(d[0].lstrip())
-
-    for i in range(1, len(d)):
-        if len(d[i]) - len(d[i].lstrip()) != indent:
-            break
-
-    d = d[:i]
+    d = list(filter(lambda name: len(name) - len(name.lstrip()) == indent, d))
     d = "\n".join(d)
 
     inboth(yaml.safe_load(d), variable, "docstring", "variable")

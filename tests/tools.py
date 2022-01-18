@@ -24,6 +24,21 @@ class MyTests(unittest.TestCase):
         :param a: ...
         :param b: ...
         :return:
+            A dictionary as follows,
+            with some comment::
+
+                a: My test
+                b: Other text
+        """
+
+        my.tools.check_docstring(docstring, dict(a=None, b=None))
+
+        docstring = """\
+        Foo bar.
+
+        :param a: ...
+        :param b: ...
+        :return:
             A dictionary as follows::
 
                 a: My test
