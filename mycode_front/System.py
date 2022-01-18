@@ -28,6 +28,7 @@ from numpy.typing import ArrayLike
 from . import slurm
 from . import storage
 from . import tag
+from . import tools
 from ._version import version
 
 plt.style.use(["goose", "goose-latex"])
@@ -38,6 +39,13 @@ entry_points = dict(
     cli_generate="Run_generate",
     cli_run="Run",
     cli_plot="Run_plot",
+    cli_rerun_event="RunEventMap",
+)
+
+
+file_defaults = dict(
+    cli_ensembleinfo="EnsembleInfo.h5",
+    cli_rerun_event="EventMap.h5",
 )
 
 
@@ -532,6 +540,19 @@ def create_check_meta(
     return meta
 
 
+def _restore_inc(file: h5py.File, system: model.System, inc: int):
+    """
+    Restore an increment.
+
+    :param file: Open simulation HDF5 archive (read-only).
+    :param system: The system,
+    :param inc: Increment number.
+    """
+
+    system.setT(file["/t"][inc])
+    system.setU(file[f"/disp/{inc:d}"][...])
+
+
 def run(filepath: str, dev: bool = False, progress: bool = True):
     """
     Run the simulation.
@@ -553,11 +574,10 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
             print(f'"{basename}": marked completed, skipping')
             return 1
 
-        deps = file["/run/epsd/kick"][...]
         inc = int(file["/stored"][-1])
         kick = file["/kick"][inc]
-        system.setT(file["/t"][inc])
-        system.setU(file[f"/disp/{inc:d}"][...])
+        deps = file["/run/epsd/kick"][...]
+        _restore_inc(file, system, inc)
         print(f'"{basename}": loading, inc = {inc:d}')
 
         system.initEventDrivenSimpleShear()
@@ -816,6 +836,7 @@ def cli_ensembleinfo(cli_args=None):
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     progname = entry_points[funcname]
+    output = file_defaults[funcname]
 
     class MyFmt(
         argparse.RawDescriptionHelpFormatter,
@@ -827,7 +848,7 @@ def cli_ensembleinfo(cli_args=None):
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
 
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite")
-    parser.add_argument("-o", "--output", type=str, default=f"{progname}.h5", help="Output file")
+    parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("files", nargs="*", type=str, help="Files to read")
 
@@ -1026,3 +1047,115 @@ def cli_plot(cli_args=None):
     ax.plot([e, e], lim, c="r", lw=1)
 
     plt.show()
+
+
+def runinc_event_basic(system: model.System, file: h5py.File, inc: int, Smax=None) -> dict:
+    """
+    Rerun increment and get basic event information.
+
+    :param system: The system (modified: increment loaded/rerun).
+    :param file: Open simulation HDF5 archive (read-only).
+    :param inc: The increment to rerun.
+    :param Smax: Stop at given S (to avoid spending time on final energy minimisation).
+    :return: A dictionary as follows::
+
+        r: Position of yielding event (block index).
+        t: Time of each yielding event.
+        S: Size (signed) of the yielding event.
+    """
+
+    stored = file["/stored"][...]
+
+    if Smax is None:
+        Smax = np.inf
+
+    assert inc > 0
+    assert inc in stored
+    assert inc - 1 in stored
+
+    _restore_inc(file, system, inc - 1)
+    system.initEventDrivenSimpleShear()
+
+    idx_n = system.plastic_CurrentIndex()[:, 0].astype(int)
+    idx_t = system.plastic_CurrentIndex()[:, 0].astype(int)
+
+    system.eventDrivenStep(file["/run/epsd/kick"][...], file["/kick"][inc])
+
+    R = []
+    T = []
+    S = []
+
+    while True:
+
+        niter = system.timeStepsUntilEvent()
+
+        idx = system.plastic_CurrentIndex()[:, 0].astype(int)
+        t = system.t()
+
+        for r in np.argwhere(idx != idx_t):
+            R += [r]
+            T += [t * np.ones(r.shape)]
+            S += [(idx - idx_t)[r]]
+
+        idx_t = np.array(idx, copy=True)
+
+        if np.sum(idx - idx_n) >= Smax:
+            break
+
+        if niter == 0:
+            break
+
+    ret = dict(r=np.array(R).ravel(), t=np.array(T).ravel(), S=np.array(S).ravel())
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    tools.check_docstring(doc, ret, ":return:")
+
+    return ret
+
+
+def cli_rerun_event(cli_args=None):
+    """
+    Rerun increment and store basic event info (position and time).
+    Tip: truncate when (known) S is reached to not waste time on final stage of energy minimisation.
+    """
+
+    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    progname = entry_points[funcname]
+    output = file_defaults[funcname]
+
+    parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output file")
+    parser.add_argument("-i", "--inc", required=True, type=int, help="Increment number")
+    parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
+    parser.add_argument("-s", "--smax", type=int, help="Truncate at a maximum total S")
+    parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("file", type=str, help="Simulation file")
+
+    if cli_args is None:
+        args = parser.parse_args(sys.argv[1:])
+    else:
+        args = parser.parse_args([str(arg) for arg in cli_args])
+
+    assert os.path.isfile(args.file)
+
+    if not args.force:
+        if os.path.isfile(args.output):
+            if not click.confirm(f'Overwrite "{args.output}"?'):
+                raise OSError("Cancelled")
+
+    with h5py.File(args.file, "r") as file:
+        system = init(file)
+        ret = runinc_event_basic(system, file, args.inc, args.smax)
+
+    with h5py.File(args.output, "w") as file:
+        file["r"] = ret["r"]
+        file["t"] = ret["t"]
+        file["S"] = ret["S"]
+        meta = file.create_group(f"/meta/{progname}")
+        meta.attrs["version"] = version
+        meta.attrs["dependencies"] = dependencies(model)
