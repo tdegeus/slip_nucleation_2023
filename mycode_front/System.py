@@ -1223,7 +1223,9 @@ def cli_rerun_event_job_systemspanning(cli_args=None):
 
     commands = []
     executable = entry_points["cli_rerun_event"]
-    relpath = os.path.relpath(os.path.dirname(args.EnsembleInfo), args.outdir)
+    basedir = os.path.dirname(args.EnsembleInfo)
+    basedir = basedir if basedir else "."
+    relpath = os.path.relpath(basedir, args.outdir)
 
     for s, i, f in zip(S, inc, ifile):
         fname = files[f]
