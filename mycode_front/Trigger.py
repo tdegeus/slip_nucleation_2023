@@ -93,7 +93,8 @@ def trigger_avalanche_ensembleinfo(
     ensembleinfo: str,
 ) -> dict:
     """
-    Read the general ensemble information of triggered avalanches.
+    Read the general ensemble information of triggered avalanches
+    (previously known as ``EventEvolution``).
 
     :param filepaths:
         List of file paths.
@@ -292,6 +293,7 @@ def cli_trigger_avalanche_ensembleinfo(cli_args=None):
     """
     Read and store the general ensemble information of triggered avalanches
     (previously known as ``EventEvolution``).
+    See :py:func:`trigger_avalanche_ensembleinfo` and datasets and their attributes.
 
     .. note::
 
@@ -420,8 +422,13 @@ def cli_trigger_avalanche_ensembleinfo(cli_args=None):
 
 def cli_trigger_avalanche_spatialprofile(cli_args=None):
     """
-    Read and store the spatial profile of triggered avalanches
-    (previously known as ``EventEvolution``).
+    Collect the spatial profile of triggered avalanches
+    (previously known as ``EventEvolution``)
+    in a single matrix, see :py:func:`mycode_front.System.interface_state`.
+    Note that:
+    *   System-spanning events are excluded.
+    *   The stress state before and after avalanche is stored (if selected).
+    *   Only the (plastic) strain drop is stored (if selected).
 
     .. note::
 
@@ -442,12 +449,12 @@ def cli_trigger_avalanche_spatialprofile(cli_args=None):
     output = file_defaults[funcname]
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
+    parser.add_argument("--store-epsp", action="store_true", help="Store diff. of plastic strain")
+    parser.add_argument("--store-strain", action="store_true", help="Store diff. of strain tensor")
+    parser.add_argument("--store-stress", action="store_true", help="Store stress tensor")
     parser.add_argument("-e", "--ensembleinfo", required=True, type=str, help="Basic EnsembleInfo")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite")
     parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
-    parser.add_argument("--stress", action="store_true", help="Store stress tensor")
-    parser.add_argument("--strain", action="store_true", help="Store difference of strain tensor")
-    parser.add_argument("--epsp", action="store_true", help="Store difference of plastic strain")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("files", nargs="*", type=str, help="Simulation output")
 
@@ -498,7 +505,7 @@ def cli_trigger_avalanche_spatialprofile(cli_args=None):
 
         file["/meta/files"] = args.files
 
-        if args.stress:
+        if args.store_stress:
             file["/sig_xx/0"] = data_0["sig_xx"][keep]
             file["/sig_xy/0"] = data_0["sig_xy"][keep]
             file["/sig_yy/0"] = data_0["sig_yy"][keep]
@@ -506,12 +513,12 @@ def cli_trigger_avalanche_spatialprofile(cli_args=None):
             file["/sig_xy/1"] = data_1["sig_xy"][keep]
             file["/sig_yy/1"] = data_1["sig_yy"][keep]
 
-        if args.strain:
+        if args.store_strain:
             file["deps_xx"] = data_1["eps_xx"][keep] - data_0["eps_xx"][keep]
             file["deps_xy"] = data_1["eps_xy"][keep] - data_0["eps_xy"][keep]
             file["deps_yy"] = data_1["eps_yy"][keep] - data_0["eps_yy"][keep]
 
-        if args.epsp:
+        if args.store_epsp:
             file["depsp"] = data_1["epsp"][keep] - data_0["epsp"][keep]
 
         file["S"] = data_1["S"][keep] - data_0["S"][keep]
@@ -523,13 +530,14 @@ def enstataverage_sync_A(
     delta_A: int = 50,
 ) -> dict:
     """
-    Get the sums of the first and second statistical moments and the norm.
+    Get the sums of the first and second statistical moments and the norm, at varying ``A``.
 
     :param filepaths:
         List of file paths.
 
     :param ensembleinfo:
-        Path to global EnsembleInfo (for normalisation), see :py:func:`mycode_front.System.cli_ensembleinfo`
+        Path to global EnsembleInfo (for normalisation),
+        see :py:func:`mycode_front.System.cli_ensembleinfo`.
 
     :param delta_A:
         Compute plastic strain rate based on the plastic strain and time difference between ``A``
@@ -541,7 +549,10 @@ def enstataverage_sync_A(
 
     :return:
 
-        Dictionary with the following output::
+        Dictionary with the following output.
+        Each variable is stored as an ``enstat.static`` object with shape ``[N + 1, N]```
+        (or ``[N + 1]`` for the time), with each row corresponding to a different ``A``.
+        The following is collected::
 
             {
                 # aligned avalanche but not masking in space
@@ -560,9 +571,6 @@ def enstataverage_sync_A(
                 # same as "layers", but blocks that have not yielded are masked
                 "moved": {...},
             }
-
-        Each variable is stored as an ``enstat.static`` object with shape ``[N + 1, N]```
-        (or ``[N + 1]`` for the time), with each row corresponding to a different ``A``.
     """
 
     with h5py.File(ensembleinfo, "r") as file:
