@@ -82,6 +82,15 @@ class MyTests(unittest.TestCase):
             s = file["S"][...]
             self.assertEqual(S[i], np.sum(s))
 
+        # function call without without check
+
+        my.System.cli_rerun_event_collect(
+            ["-f", "-o", os.path.join(dirname, "eventcollect.h5"), name]
+        )
+        my.System.cli_rerun_event_job_systemspanning(
+            ["-f", "-o", os.path.join(dirname, "eventmap"), infoname]
+        )
+
         # PinAndTrigger : full run + collection (try running only, not really test)
 
         iss = np.argwhere(A == N).ravel()
