@@ -1276,8 +1276,8 @@ def cli_rerun_event_collect(cli_args=None):
     assert np.all([os.path.isfile(file) for file in args.files])
 
     if not args.force:
-        if os.path.isfile(args.outdir):
-            if not click.confirm(f'Clear "{args.outdir}"?'):
+        if os.path.isfile(args.output):
+            if not click.confirm(f'Clear "{args.output}"?'):
                 raise OSError("Cancelled")
 
     T = []
