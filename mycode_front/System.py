@@ -1283,14 +1283,14 @@ def cli_rerun_event_collect(cli_args=None):
     # collecting data
 
     data = dict(
-        t = [],
-        A = [],
-        S = [],
-        file = [],
-        inc = [],
-        Smax = [],
-        version = [],
-        dependencies = [],
+        t=[],
+        A=[],
+        S=[],
+        file=[],
+        inc=[],
+        Smax=[],
+        version=[],
+        dependencies=[],
     )
 
     executable = entry_points["cli_rerun_event"]
@@ -1332,7 +1332,7 @@ def cli_rerun_event_collect(cli_args=None):
         for key in ["file", "version"]:
             value, index = np.unique(data[key], return_inverse=True)
             file[f"/{key}/index"] = index
-            file[f"/{key}/value"] = list([str(i) for i in value])
+            file[f"/{key}/value"] = list(str(i) for i in value)
 
         dep = [";".join(i) for i in data["dependencies"]]
         value, index = np.unique(dep, return_inverse=True)
