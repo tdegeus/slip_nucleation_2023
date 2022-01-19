@@ -1280,25 +1280,64 @@ def cli_rerun_event_collect(cli_args=None):
             if not click.confirm(f'Clear "{args.output}"?'):
                 raise OSError("Cancelled")
 
-    T = []
-    F = []
-    C = []
-    S = []
+    # collecting data
+
+    data = dict(
+        t = [],
+        A = [],
+        S = [],
+        file = [],
+        inc = [],
+        Smax = [],
+        version = [],
+        dependencies = [],
+    )
+
     executable = entry_points["cli_rerun_event"]
 
-    for filepath in args.files:
+    for filepath in tqdm.tqdm(args.files):
         with h5py.File(filepath, "r") as file:
             meta = file[f"/meta/{executable}"]
-            T.append(file["t"][...][-1] - file["t"][...][0])
-            F.append(meta.attrs["file"])
-            C.append(meta.attrs["inc"])
-            S.append(meta.attrs["Smax"])
+            data["t"].append(file["t"][...][-1] - file["t"][...][0])
+            data["S"].append(np.sum(file["S"][...]))
+            data["A"].append(np.unique(file["r"][...]).size)
+            data["file"].append(meta.attrs["file"])
+            data["inc"].append(meta.attrs["inc"])
+            data["Smax"].append(meta.attrs["Smax"])
+            data["version"].append(meta.attrs["version"])
+            data["dependencies"].append(meta.attrs["dependencies"])
+
+    # sorting simulation-id and then increment
+
+    _, index = np.unique(data["file"], return_inverse=True)
+    index = index * int(10 ** (np.ceil(np.log10(np.max(data["inc"]))) + 1)) + np.array(data["inc"])
+    index = np.argsort(index)
+
+    for key in data:
+        data[key] = [data[key][i] for i in index]
+
+    # store (compress where possible)
 
     with h5py.File(args.output, "w") as file:
-        file["t"] = T
-        file["file"] = F
-        file["inc"] = C
-        file["Smax"] = S
+
+        for key in ["t", "A", "S", "inc"]:
+            file[key] = data[key]
+
+        prefix = os.path.dirname(os.path.commonprefix(data["file"]))
+        if data["file"][0].removeprefix(prefix)[0] == "/":
+            prefix += "/"
+        data["file"] = [i.removeprefix(prefix) for i in data["file"]]
+        file["/file/prefix"] = prefix
+
+        for key in ["file", "version"]:
+            value, index = np.unique(data[key], return_inverse=True)
+            file[f"/{key}/index"] = index
+            file[f"/{key}/value"] = list([str(i) for i in value])
+
+        dep = [";".join(i) for i in data["dependencies"]]
+        value, index = np.unique(dep, return_inverse=True)
+        file["/dependencies/index"] = index
+        file["/dependencies/value"] = [data["dependencies"][i] for i in np.unique(index)]
+
         meta = file.create_group(f"/meta/{progname}")
         meta.attrs["version"] = version
-        meta.attrs["dependencies"] = dependencies(model)
