@@ -10,12 +10,10 @@ import argparse
 import inspect
 import os
 import re
-import shutil
 import sys
 import textwrap
 import uuid
 
-import click
 import FrictionQPotFEM.UniformSingleLayer2d as model
 import GMatElastoPlasticQPot.Cartesian2d as GMat
 import GooseFEM
@@ -642,7 +640,9 @@ def cli_run(cli_args=None):
     run(args.file, dev=args.develop)
 
 
-def steadystate(epsd: ArrayLike, sigd: ArrayLike, kick: ArrayLike, A: ArrayLike, N: int, **kwargs) -> int:
+def steadystate(
+    epsd: ArrayLike, sigd: ArrayLike, kick: ArrayLike, A: ArrayLike, N: int, **kwargs
+) -> int:
     """
     Estimate the first increment of the steady-state. Constraints:
     -   Start with elastic loading.
