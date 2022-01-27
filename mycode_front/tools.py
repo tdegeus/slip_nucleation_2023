@@ -1,15 +1,15 @@
 from __future__ import annotations
 
+import argparse
+import os
 import re
+import shutil
+import sys
 
+import click
 import GMatElastoPlasticQPot.Cartesian2d as GMat
 import numpy as np
 import yaml
-import os
-import argparse
-import shutil
-import click
-import sys
 from numpy.typing import ArrayLike
 
 
@@ -336,6 +336,7 @@ def _check_overwrite_file(filepath: str, force: bool):
 
     if not click.confirm(f'Overwrite "{filepath}"?'):
         raise OSError("Cancelled")
+
 
 def _create_or_clear_directory(dirpath: str, force: bool):
 
