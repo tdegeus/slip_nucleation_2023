@@ -71,6 +71,35 @@ def replace_ep(doc: str) -> str:
     return doc
 
 
+def _parse(parser: argparse.ArgumentParser, cli_args: list[str]) -> argparse.ArgumentParser:
+
+    if cli_args is None:
+        return parser.parse_args(sys.argv[1:])
+
+    return parser.parse_args([str(arg) for arg in cli_args])
+
+
+def _check_overwrite_file(filepath: str, force: bool):
+
+    if force or not os.path.isfile(filepath):
+        return
+
+    if not click.confirm(f'Overwrite "{filepath}"?'):
+        raise OSError("Cancelled")
+
+def _create_or_clear_directory(dirpath: str, force: bool):
+
+    if os.path.isdir(dirpath):
+
+        if not force:
+            if not click.confirm(f'Clear "{dirpath}"?'):
+                raise OSError("Cancelled")
+
+        shutil.rmtree(dirpath)
+
+    os.makedirs(dirpath)
+
+
 def interpret_filename(filename: str) -> dict:
     """
     Split filename in useful information.
@@ -480,10 +509,7 @@ def cli_generate(cli_args=None):
     parser.add_argument("-w", "--time", type=str, default="72h", help="Walltime")
     parser.add_argument("outdir", type=str, help="Output directory")
 
-    if cli_args is None:
-        args = parser.parse_args(sys.argv[1:])
-    else:
-        args = parser.parse_args([str(arg) for arg in cli_args])
+    args = _parse(parser, cli_args)
 
     assert os.path.isdir(args.outdir)
 
@@ -567,6 +593,7 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
     :param progress: Show progress bar.
     """
 
+    assert os.path.isfile(filepath)
     basename = os.path.basename(filepath)
     progname = entry_points["cli_run"]
 
@@ -640,33 +667,35 @@ def cli_run(cli_args=None):
     parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("file", type=str, help="Simulation file")
-
-    if cli_args is None:
-        args = parser.parse_args(sys.argv[1:])
-    else:
-        args = parser.parse_args([str(arg) for arg in cli_args])
-
-    assert os.path.isfile(args.file)
+    args = _parse(parser, cli_args)
     run(args.file, dev=args.develop)
 
 
-def steadystate(epsd: ArrayLike, sigd: ArrayLike, kick: ArrayLike, **kwargs):
+def steadystate(epsd: ArrayLike, sigd: ArrayLike, kick: ArrayLike, A: ArrayLike, N: int, **kwargs) -> int:
     """
-    Estimate the first increment of the steady-state. Additional constraints:
-    -   Skip at least two increments.
+    Estimate the first increment of the steady-state. Constraints:
     -   Start with elastic loading.
+    -   Sufficiently low tangent modulus.
+    -   All blocks yielded at least once.
 
-    :param epsd: Strain history [ninc].
-    :param sigd: Stress history [ninc].
-    :param kick: Per increment, skip or not [ninc].
+    .. note::
+
+        Keywords arguments that are not explicitly listed are ignored.
+
+    :param epsd: Macroscopic strain [ninc].
+    :param sigd: Macroscopic stress [ninc].
+    :param kick: Whether a kick was applied [ninc].
+    :param A: Number of blocks that yielded at least once [ninc].
+    :param N: Number of blocks.
     :return: Increment number.
     """
 
-    K = np.empty_like(sigd)
-    K[0] = np.inf
-    K[1:] = (sigd[1:] - sigd[0]) / (epsd[1:] - epsd[0])
+    tangent = np.empty_like(sigd)
+    tangent[0] = np.inf
+    tangent[1:] = (sigd[1:] - sigd[0]) / (epsd[1:] - epsd[0])
 
-    steadystate = max(2, np.argmax(K <= 0.95 * K[1]))
+    steadystate = max(np.argmax(A == N) + 1, np.argmax(tangent <= 0.95 * tangent[1]))
+    assert steadystate < kick.size
 
     if kick[steadystate]:
         steadystate += 1
@@ -679,18 +708,28 @@ def interface_state(filepaths: dict[int], read_disp: dict[str] = None) -> dict[n
     State of the interface at one or several increments per realisation.
 
     :oaram filepaths:
-        Dictionary with a list of increments to consider per file.
+        Dictionary with a list of increments to consider per file, e.g.
+        ``{"id=0.h5": [10, 20, 30], "id=1.h5": [20, 30, 40]}``
 
     :oaram read_disp:
-        Dictionary with a file-paths to read the displacement field from.
+        Dictionary with a file-paths to read the displacement field from, e.g.
+        ``{"id=0.h5": "mydisplacement.h5"}``, whereby the increment numbers should correspond
+        to those in ``mydisplacement.h5``.
         By default the displacement is read from the same files as the realisation.
 
     :return:
         A dictionary with per field a matrix of shape ``[n, N]``,
-        with each row corresponding to an increment of a file, and the columns corresponding to
-        the spatial distribution.
-        The following fields are included in the output:
-        ``sig_xx``, ``sig_xy``, ``sig_yy``, ``epsp``.
+        with each row corresponding to an increment of a file,
+        and the columns corresponding to the spatial distribution.
+        The output consists of the following::
+            sig_xx: xx-component of the average stress tensor of a block.
+            sig_xy: xy-component of the average stress tensor of a block.
+            sig_yy: yy-component of the average stress tensor of a block.
+            eps_xx: xx-component of the average strain tensor of a block.
+            eps_xy: xy-component of the average strain tensor of a block.
+            eps_yy: yy-component of the average strain tensor of a block.
+            epsp: Average plastic strain of a block.
+            S: The number of times the first integration point of a block yielded.
     """
 
     for filepath in filepaths:
@@ -749,6 +788,10 @@ def interface_state(filepaths: dict[int], read_disp: dict[str] = None) -> dict[n
                 ret["S"][i, :] = system.plastic_CurrentIndex()[:, 0]
                 i += 1
 
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    tools.check_docstring(doc, ret, ":return:")
+
     return ret
 
 
@@ -759,11 +802,32 @@ def basic_output(system: model.System, file: h5py.File, verbose: bool = True) ->
     :param system: The system (modified: all increments visited).
     :param file: Open simulation HDF5 archive (read-only).
     :param verbose: Print progress.
+
+    :return: Basic information as follows::
+        epsd: Macroscopic strain [ninc].
+        sigd: Macroscopic stress [ninc].
+        S: Number of times a block yielded [ninc].
+        A: Number of blocks that yielded at least once [ninc].
+        kick: Increment started with a kick (True), or contains only elastic loading (False) [ninc].
+        inc: Increment numbers == np.arange(ninc).
+        steadystate: Increment number where the steady state starts (int).
+        l0: Block size (float).
+        G: Shear modulus (float).
+        K: Bulk modulus (float).
+        rho: Mass density (float).
+        seed: Base seed (uint64) or uuid (str).
+        cs: Shear wave speed (float)
+        cd: Longitudinal wave speed (float).
+        eps0: Typical yield strain (float).
+        sig0: Typical yield stress (float).
+        N: Number of blocks (int).
+        t0: Unit of time == l0 / cs (float).
+        dt: Time step of time discretisation.
     """
 
     incs = file["/stored"][...]
     ninc = incs.size
-    assert np.all(incs == np.arange(ninc))
+    assert all(incs == np.arange(ninc))
 
     ret = dict(
         epsd=np.empty((ninc), dtype=float),
@@ -829,12 +893,17 @@ def basic_output(system: model.System, file: h5py.File, verbose: bool = True) ->
 
     ret["steadystate"] = steadystate(**ret)
 
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    tools.check_docstring(doc, ret, ":return:")
+
     return ret
 
 
 def cli_ensembleinfo(cli_args=None):
     """
-    Read information (avalanche size, stress, strain, ...) of an ensemble.
+    Read information (avalanche size, stress, strain, ...) of an ensemble,
+    see :py:func:`basic_output`.
     Store into a single output file.
     """
 
@@ -857,20 +926,12 @@ def cli_ensembleinfo(cli_args=None):
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("files", nargs="*", type=str, help="Files to read")
 
-    if cli_args is None:
-        args = parser.parse_args(sys.argv[1:])
-    else:
-        args = parser.parse_args([str(arg) for arg in cli_args])
-
+    args = _parse(parser, cli_args)
     assert len(args.files) > 0
-    assert np.all([os.path.isfile(file) for file in args.files])
+    assert all([os.path.isfile(file) for file in args.files])
+    _check_overwrite_file(args.output, args.force)
     files = [os.path.relpath(file, os.path.dirname(args.output)) for file in args.files]
     seeds = []
-
-    if not args.force:
-        if os.path.isfile(args.output):
-            if not click.confirm(f'Overwrite "{args.output}"?'):
-                raise OSError("Cancelled")
 
     fields_norm = ["l0", "G", "K", "rho", "cs", "cd", "sig0", "eps0", "N", "t0", "dt"]
     fields_full = ["epsd", "sigd", "S", "A", "kick", "inc", "steadystate"]
@@ -891,8 +952,8 @@ def cli_ensembleinfo(cli_args=None):
                     system.reset_epsy(read_epsy(file))
 
                 out = basic_output(system, file, verbose=False)
-                assert np.all(out["kick"][1::2])
-                assert not np.any(out["kick"][::2])
+                assert all(out["kick"][1::2])
+                assert not any(out["kick"][::2])
                 kick = np.array(out["kick"], copy=True)
                 load = np.logical_not(out["kick"])
                 kick[: out["steadystate"]] = False
@@ -939,7 +1000,7 @@ def cli_ensembleinfo(cli_args=None):
             output[f"/normalisation/{key}"] = value
 
         ss = np.equal(combine_kick["A"], norm["N"])
-        assert np.all(np.equal(combine_kick["inc"][ss], combine_load["inc"][ss] + 1))
+        assert all(np.equal(combine_kick["inc"][ss], combine_load["inc"][ss] + 1))
         output["/averages/sigd_top"] = np.mean(combine_load["sigd"][ss])
         output["/averages/sigd_bottom"] = np.mean(combine_kick["sigd"][ss])
 
@@ -969,10 +1030,10 @@ def pushincrements(
     N = plastic.size
     kick = file["/kick"][...].astype(bool)
     incs = file["/stored"][...].astype(int)
-    assert np.all(incs == np.arange(incs.size))
+    assert all(incs == np.arange(incs.size))
     assert kick.shape == incs.shape
-    assert np.all(np.logical_not(kick[::2]))
-    assert np.all(kick[1::2])
+    assert all(np.logical_not(kick[::2]))
+    assert all(kick[1::2])
 
     output = basic_output(system, file, verbose=False)
     Stress = output["sigd"] * output["sig0"]
@@ -990,7 +1051,7 @@ def pushincrements(
         s = Stress[i:istop:2]
         n = incs[i:istop:2]
 
-        if not np.any(s > target_stress) or Stress[istart] > target_stress:
+        if not any(s > target_stress) or Stress[istart] > target_stress:
             continue
 
         ipush = n[np.argmax(s > target_stress)] - 1
@@ -1029,11 +1090,7 @@ def cli_plot(cli_args=None):
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("file", type=str, help="Simulation file")
 
-    if cli_args is None:
-        args = parser.parse_args(sys.argv[1:])
-    else:
-        args = parser.parse_args([str(arg) for arg in cli_args])
-
+    args = _parse(parser, cli_args)
     assert os.path.isfile(args.file)
 
     with h5py.File(args.file, "r") as file:
@@ -1141,17 +1198,9 @@ def cli_rerun_event(cli_args=None):
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("file", type=str, help="Simulation file")
 
-    if cli_args is None:
-        args = parser.parse_args(sys.argv[1:])
-    else:
-        args = parser.parse_args([str(arg) for arg in cli_args])
-
+    args = _parse(parser, cli_args)
     assert os.path.isfile(args.file)
-
-    if not args.force:
-        if os.path.isfile(args.output):
-            if not click.confirm(f'Overwrite "{args.output}"?'):
-                raise OSError("Cancelled")
+    _check_overwrite_file(args.output, args.force)
 
     with h5py.File(args.file, "r") as file:
         system = init(file)
@@ -1193,20 +1242,9 @@ def cli_rerun_event_job_systemspanning(cli_args=None):
     parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
     parser.add_argument("EnsembleInfo", type=str, help="EnsembleInfo")
 
-    if cli_args is None:
-        args = parser.parse_args(sys.argv[1:])
-    else:
-        args = parser.parse_args([str(arg) for arg in cli_args])
-
+    args = _parse(parser, cli_args)
     assert os.path.isfile(args.EnsembleInfo)
-
-    if not args.force:
-        if os.path.isdir(args.outdir):
-            if not click.confirm(f'Clear "{args.outdir}"?'):
-                raise OSError("Cancelled")
-            shutil.rmtree(args.outdir)
-
-    os.makedirs(args.outdir)
+    _create_or_clear_directory(args.outdir, args.force)
 
     with h5py.File(args.EnsembleInfo, "r") as file:
         N = file["/normalisation/N"][...]
@@ -1250,7 +1288,7 @@ def cli_rerun_event_job_systemspanning(cli_args=None):
 
 def cli_rerun_event_collect(cli_args=None):
     """
-    Collect basis information from
+    Collect basis information from :py:func:`cli_rerun_event` and combine in a single output file.
     """
 
     class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
@@ -1267,18 +1305,10 @@ def cli_rerun_event_collect(cli_args=None):
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("files", nargs="*", type=str, help="Files to read")
 
-    if cli_args is None:
-        args = parser.parse_args(sys.argv[1:])
-    else:
-        args = parser.parse_args([str(arg) for arg in cli_args])
-
+    args = _parse(parser, cli_args)
     assert len(args.files) > 0
-    assert np.all([os.path.isfile(file) for file in args.files])
-
-    if not args.force:
-        if os.path.isfile(args.output):
-            if not click.confirm(f'Clear "{args.output}"?'):
-                raise OSError("Cancelled")
+    assert all([os.path.isfile(file) for file in args.files])
+    _check_overwrite_file(args.output, args.force)
 
     # collecting data
 
