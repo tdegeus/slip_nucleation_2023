@@ -21,14 +21,14 @@ from . import tools
 from ._version import version
 
 entry_points = dict(
-    cli_trigger_avalanche_ensembleinfo="TriggerAvalanche_EnsembleInfo",
-    cli_trigger_avalanche_spatialprofile="TriggerAvalanche_SpatialProfile",
+    cli_ensembleinfo="TriggerAvalanche_EnsembleInfo",
+    cli_spatialprofile="TriggerAvalanche_SpatialProfile",
     cli_enstataverage_sync_A="TriggerAvalanche_enstataverage_sync_A",
 )
 
 file_defaults = dict(
-    cli_trigger_avalanche_ensembleinfo="TriggerAvalanche_EnsembleInfo.h5",
-    cli_trigger_avalanche_spatialprofile="TriggerAvalanche_SpatialProfile.h5",
+    cli_ensembleinfo="TriggerAvalanche_EnsembleInfo.h5",
+    cli_spatialprofile="TriggerAvalanche_SpatialProfile.h5",
     cli_enstataverage_sync_A="TriggerAvalanche_enstataverage_sync_A.h5",
 )
 
@@ -42,7 +42,7 @@ def replace_ep(doc):
     return doc
 
 
-def trigger_avalanche(
+def trigger_and_run(
     system: model.System,
     element: int,
     deps_kick: float,
@@ -289,7 +289,7 @@ def trigger_avalanche_ensembleinfo(
     return ret
 
 
-def cli_trigger_avalanche_ensembleinfo(cli_args=None):
+def cli_ensembleinfo(cli_args=None):
     """
     Read and store the general ensemble information of triggered avalanches
     (previously known as ``EventEvolution``).
@@ -420,7 +420,7 @@ def cli_trigger_avalanche_ensembleinfo(cli_args=None):
         file["/equilibrium/sigmar_connected"].attrs["error"] = data["t=e_sigmar_connected_error"]
 
 
-def cli_trigger_avalanche_spatialprofile(cli_args=None):
+def cli_spatialprofile(cli_args=None):
     """
     Collect the spatial profile of triggered avalanches
     (previously known as ``EventEvolution``)
