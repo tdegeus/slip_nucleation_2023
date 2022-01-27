@@ -219,7 +219,7 @@ def cli_run(cli_args=None):
     parser.add_argument("-f", "--file", type=str, help="Simulation (read-only)")
     parser.add_argument("-i", "--incc", type=int, help="Last system-spanning event")
     parser.add_argument("-o", "--output", type=str, help="Output file (overwritten)")
-    parser.add_argument("-s", "--stress", type=float, help="Trigger stress (real unit)")
+    parser.add_argument("-s", "--stress", type=float, help="Trigger stress (real units)")
     parser.add_argument("-v", "--version", action="version", version=version)
 
     if cli_args is None:

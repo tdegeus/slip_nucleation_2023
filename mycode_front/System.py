@@ -71,35 +71,6 @@ def replace_ep(doc: str) -> str:
     return doc
 
 
-def _parse(parser: argparse.ArgumentParser, cli_args: list[str]) -> argparse.ArgumentParser:
-
-    if cli_args is None:
-        return parser.parse_args(sys.argv[1:])
-
-    return parser.parse_args([str(arg) for arg in cli_args])
-
-
-def _check_overwrite_file(filepath: str, force: bool):
-
-    if force or not os.path.isfile(filepath):
-        return
-
-    if not click.confirm(f'Overwrite "{filepath}"?'):
-        raise OSError("Cancelled")
-
-def _create_or_clear_directory(dirpath: str, force: bool):
-
-    if os.path.isdir(dirpath):
-
-        if not force:
-            if not click.confirm(f'Clear "{dirpath}"?'):
-                raise OSError("Cancelled")
-
-        shutil.rmtree(dirpath)
-
-    os.makedirs(dirpath)
-
-
 def interpret_filename(filename: str) -> dict:
     """
     Split filename in useful information.
@@ -509,7 +480,7 @@ def cli_generate(cli_args=None):
     parser.add_argument("-w", "--time", type=str, default="72h", help="Walltime")
     parser.add_argument("outdir", type=str, help="Output directory")
 
-    args = _parse(parser, cli_args)
+    args = tools._parse(parser, cli_args)
 
     assert os.path.isdir(args.outdir)
 
@@ -667,7 +638,7 @@ def cli_run(cli_args=None):
     parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("file", type=str, help="Simulation file")
-    args = _parse(parser, cli_args)
+    args = tools._parse(parser, cli_args)
     run(args.file, dev=args.develop)
 
 
@@ -926,10 +897,10 @@ def cli_ensembleinfo(cli_args=None):
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("files", nargs="*", type=str, help="Files to read")
 
-    args = _parse(parser, cli_args)
+    args = tools._parse(parser, cli_args)
     assert len(args.files) > 0
     assert all([os.path.isfile(file) for file in args.files])
-    _check_overwrite_file(args.output, args.force)
+    tools._check_overwrite_file(args.output, args.force)
     files = [os.path.relpath(file, os.path.dirname(args.output)) for file in args.files]
     seeds = []
 
@@ -1090,7 +1061,7 @@ def cli_plot(cli_args=None):
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("file", type=str, help="Simulation file")
 
-    args = _parse(parser, cli_args)
+    args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)
 
     with h5py.File(args.file, "r") as file:
@@ -1198,9 +1169,9 @@ def cli_rerun_event(cli_args=None):
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("file", type=str, help="Simulation file")
 
-    args = _parse(parser, cli_args)
+    args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)
-    _check_overwrite_file(args.output, args.force)
+    tools._check_overwrite_file(args.output, args.force)
 
     with h5py.File(args.file, "r") as file:
         system = init(file)
@@ -1242,9 +1213,9 @@ def cli_rerun_event_job_systemspanning(cli_args=None):
     parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
     parser.add_argument("EnsembleInfo", type=str, help="EnsembleInfo")
 
-    args = _parse(parser, cli_args)
+    args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.EnsembleInfo)
-    _create_or_clear_directory(args.outdir, args.force)
+    tools._create_or_clear_directory(args.outdir, args.force)
 
     with h5py.File(args.EnsembleInfo, "r") as file:
         N = file["/normalisation/N"][...]
@@ -1305,10 +1276,10 @@ def cli_rerun_event_collect(cli_args=None):
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("files", nargs="*", type=str, help="Files to read")
 
-    args = _parse(parser, cli_args)
+    args = tools._parse(parser, cli_args)
     assert len(args.files) > 0
     assert all([os.path.isfile(file) for file in args.files])
-    _check_overwrite_file(args.output, args.force)
+    tools._check_overwrite_file(args.output, args.force)
 
     # collecting data
 

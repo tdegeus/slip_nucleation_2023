@@ -5,6 +5,11 @@ import re
 import GMatElastoPlasticQPot.Cartesian2d as GMat
 import numpy as np
 import yaml
+import os
+import argparse
+import shutil
+import click
+import sys
 from numpy.typing import ArrayLike
 
 
@@ -314,6 +319,35 @@ def distance1d(a: ArrayLike, b: ArrayLike) -> np.ndarray:
     da = np.square(a).reshape(-1, 1)
     db = np.square(b).reshape(-1, 1)
     return np.sqrt(-2 * M + db.T + da)
+
+
+def _parse(parser: argparse.ArgumentParser, cli_args: list[str]) -> argparse.ArgumentParser:
+
+    if cli_args is None:
+        return parser.parse_args(sys.argv[1:])
+
+    return parser.parse_args([str(arg) for arg in cli_args])
+
+
+def _check_overwrite_file(filepath: str, force: bool):
+
+    if force or not os.path.isfile(filepath):
+        return
+
+    if not click.confirm(f'Overwrite "{filepath}"?'):
+        raise OSError("Cancelled")
+
+def _create_or_clear_directory(dirpath: str, force: bool):
+
+    if os.path.isdir(dirpath):
+
+        if not force:
+            if not click.confirm(f'Clear "{dirpath}"?'):
+                raise OSError("Cancelled")
+
+        shutil.rmtree(dirpath)
+
+    os.makedirs(dirpath)
 
 
 if __name__ == "__main__":
