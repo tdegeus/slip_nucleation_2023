@@ -795,6 +795,7 @@ def basic_output(system: model.System, file: h5py.File, verbose: bool = True) ->
         sigd: Macroscopic stress [ninc].
         S: Number of times a block yielded [ninc].
         A: Number of blocks that yielded at least once [ninc].
+        xi: Largest extension corresponding to A [ninc].
         kick: Increment started with a kick (True), or contains only elastic loading (False) [ninc].
         inc: Increment numbers == np.arange(ninc).
         steadystate: Increment number where the steady state starts (int).
@@ -821,6 +822,7 @@ def basic_output(system: model.System, file: h5py.File, verbose: bool = True) ->
         sigd=np.empty((ninc), dtype=float),
         S=np.zeros((ninc), dtype=int),
         A=np.zeros((ninc), dtype=int),
+        xi=np.zeros((ninc), dtype=int),
         kick=file["/kick"][...].astype(bool),
         inc=incs,
     )
@@ -865,18 +867,19 @@ def basic_output(system: model.System, file: h5py.File, verbose: bool = True) ->
         system.setU(file[f"/disp/{inc:d}"][...])
 
         if idx_n is None:
-            idx_n = system.plastic_CurrentIndex().astype(int)[:, 0].reshape(-1, N)
+            idx_n = system.plastic_CurrentIndex().astype(int)[:, 0]
 
         Sig = system.Sig() / sig0
         Eps = system.Eps() / eps0
-        idx = system.plastic_CurrentIndex().astype(int)[:, 0].reshape(-1, N)
+        idx = system.plastic_CurrentIndex().astype(int)[:, 0]
 
-        ret["S"][inc] = np.sum(idx - idx_n, axis=1)
-        ret["A"][inc] = np.sum(idx != idx_n, axis=1)
+        ret["S"][inc] = np.sum(idx - idx_n)
+        ret["A"][inc] = np.sum(idx != idx_n)
+        ret["xi"][inc] = np.sum(tools.fill_avalanche(idx != idx_n))
         ret["epsd"][inc] = GMat.Epsd(np.average(Eps, weights=dV, axis=(0, 1)))
         ret["sigd"][inc] = GMat.Sigd(np.average(Sig, weights=dV, axis=(0, 1)))
 
-        idx_n = np.array(idx, copy=True)
+        idx_n = np.copy(idx)
 
     ret["steadystate"] = steadystate(**ret)
 
@@ -941,7 +944,7 @@ def cli_ensembleinfo(cli_args=None):
                 out = basic_output(system, file, verbose=False)
                 assert all(out["kick"][1::2])
                 assert not any(out["kick"][::2])
-                kick = np.array(out["kick"], copy=True)
+                kick = np.copy(out["kick"])
                 load = np.logical_not(out["kick"])
                 kick[: out["steadystate"]] = False
                 load[: out["steadystate"]] = False
@@ -1146,7 +1149,7 @@ def runinc_event_basic(system: model.System, file: h5py.File, inc: int, Smax=Non
             T += [t * np.ones(r.shape)]
             S += [(idx - idx_t)[r]]
 
-        idx_t = np.array(idx, copy=True)
+        idx_t = np.copy(idx)
 
         if np.sum(idx - idx_n) >= Smax:
             break
