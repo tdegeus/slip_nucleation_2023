@@ -68,8 +68,8 @@ def trigger_and_run(
     # system.t()
 
     # idx = system.plastic_CurrentIndex()[:, 0].astype(np.int64)
-    # idx_n = np.array(idx, copy=True)
-    # idx_last = np.array(idx, copy=True)
+    # idx_n = np.copy(idx)
+    # idx_last = np.copy(idx)
 
     system.triggerElementWithLocalSimpleShear(deps_kick, element)
 
@@ -665,7 +665,7 @@ def enstataverage_sync_A(
                 idx = file[f"{root}/idx"][...].astype(np.int64)
 
                 if ia == 0:
-                    idx0 = np.array(idx, copy=True)
+                    idx0 = np.copy(idx)
 
                 m = idx0 != idx
                 crack[a, :] = tools.fill_avalanche(m)

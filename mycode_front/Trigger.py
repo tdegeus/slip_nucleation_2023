@@ -19,9 +19,15 @@ from . import tools
 from ._version import version
 
 entry_points = dict(
-    cli_run="Trigger_run",  # silence formatter
-    cli_job_strain="Trigger_JobStrain",  # silence formatter
+    cli_run="Trigger_run",
+    cli_job_strain="Trigger_JobStrain",
+    cli_ensembleinfo="Trigger_EnsembleInfo",
 )
+
+file_defaults = dict(
+    cli_ensembleinfo="Trigger_EnsembleInfo.h5",
+)
+
 
 
 def replace_ep(doc: str) -> str:
