@@ -120,6 +120,19 @@ def read_epsy(file: h5py.File) -> np.ndarray:
     return epsy
 
 
+def epsy_nchunk(file: h5py.File) -> int:
+    """
+    Return the size of the chunk of yield strains stored.
+    :param file: Opened simulation archive.
+    :return: Size.
+    """
+
+    if isinstance(file["/cusp/epsy"], h5py.Dataset):
+        return file["/cusp/epsy"].shape[1]
+
+    return file["/cusp/epsy/nchunk"][...]
+
+
 def init(file: h5py.File) -> model.System:
     r"""
     Initialise system from file.
@@ -210,8 +223,10 @@ def generate(
         epsy = eps_offset + 2.0 * eps0 * np.random.weibull(k, size=nchunk * N).reshape(N, -1)
         epsy[:, 0] = eps_offset + 2.0 * eps0 * np.random.random(N)
         epsy = np.cumsum(epsy, axis=1)
-        i = np.min(np.where(np.min(epsy, axis=0) > 0.55)[0])
-        epsy = epsy[:, :i]
+        nchunk = np.min(np.where(np.min(epsy, axis=0) > 0.55)[0])
+        if test_mode:
+            nchunk = 200
+        epsy = epsy[:, :nchunk]
     else:
         eps0 /= 10.0
         nchunk *= 6
@@ -329,6 +344,7 @@ def generate(
             file["/uuid"] = realization
 
         else:
+
             storage.dump_with_atttrs(
                 file,
                 "/cusp/epsy/initstate",
@@ -583,7 +599,7 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
 
         system.initEventDrivenSimpleShear()
 
-        nchunk = file["/cusp/epsy/nchunk"][...] - 5
+        nchunk = epsy_nchunk(file) - 5
         pbar = tqdm.tqdm(total=nchunk, disable=not progress)
 
         for inc in range(inc + 1, sys.maxsize):
