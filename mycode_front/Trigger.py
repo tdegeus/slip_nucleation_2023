@@ -132,17 +132,15 @@ def cli_run(cli_args=None):
         else:
             niter = system.minimise()
 
-        if niter > 0:
-            output["/disp/1"] = system.u()
-            output["/stored"] = [0, 1]
-            output["/kick"] = [False, True]
-        else:
+        output["/disp/1"] = system.u()
+        output["/stored"] = [0, 1]
+        output["/kick"] = [False, True]
+
+        if niter == 0:
             output["/restart/u"] = system.u()
             output["/restart/v"] = system.v()
             output["/restart/a"] = system.a()
             output["/restart/t"] = system.t()
-            output["/stored"] = [0]
-            output["/kick"] = [False]
 
         idx = system.plastic_CurrentIndex()[:, 0].astype(int)
 
