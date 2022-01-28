@@ -1077,6 +1077,7 @@ def cli_plot(cli_args=None):
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
 
+    parser.add_argument("-m", "--marker", type=str, help="Use marker")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("file", type=str, help="Simulation file")
 
@@ -1089,7 +1090,11 @@ def cli_plot(cli_args=None):
 
     fig, ax = plt.subplots()
 
-    ax.plot(data["epsd"], data["sigd"])
+    opts = {}
+    if args.marker:
+        opts["marker"] = args.marker
+
+    ax.plot(data["epsd"], data["sigd"], **opts)
 
     lim = ax.get_ylim()
     lim = [0, lim[-1]]
