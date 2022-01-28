@@ -50,3 +50,4 @@ jobs:
         python System.py
         python tag.py
         python tools.py
+        python Trigger.py
