@@ -34,7 +34,12 @@ class MyTests(unittest.TestCase):
             my.System.cli_ensembleinfo([filename, "--output", infoname])
 
             commands = my.Trigger.cli_job_strain(["-f", infoname, "-o", dirname])
-            my.Trigger.cli_run(commands[0].split(" ")[1:])
+            output = []
+            output.append(my.Trigger.cli_run(commands[0].split(" ")[1:]))
+            output.append(my.Trigger.cli_run(commands[1].split(" ")[1:]))
+
+            triggerinfo = os.path.join(dirname, "TriggerInfo.h5")
+            my.Trigger.cli_ensembleinfo(["-f", "-o", triggerinfo] + output)
 
             shutil.rmtree(dirname)
 
