@@ -39,6 +39,10 @@ def cli_run(cli_args=None):
 
     1.  Restore system at a given increment.
     2.  Push a specific element and minimise energy.
+
+    An option is provided to stop simulation once they become system-spanning.
+    In that case the ``niter`` meta-attribute will be equal to zero,
+    and the displacement field will only be stored under ``restart``.
     """
 
     class MyFmt(
@@ -54,9 +58,10 @@ def cli_run(cli_args=None):
     progname = entry_points[funcname]
 
     parser.add_argument("--element", type=int, required=True, help="Plastic element to push")
+    parser.add_argument("--inc", type=int, help="Trigger at specific element")
     parser.add_argument("--incc", type=int, required=True, help="Last system-spanning event")
     parser.add_argument("--stress", type=float, required=True, help="Trigger stress (real units)")
-    parser.add_argument("--inc", type=int, help="Trigger at specific element")
+    parser.add_argument("--truncate-system-spanning", action="store_true", help="Stop large events")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument("-i", "--input", type=str, help="Simulation (read-only)")
     parser.add_argument("-o", "--output", type=str, required=True, help="Output file (overwritten)")
@@ -113,9 +118,20 @@ def cli_run(cli_args=None):
         idx_n = system.plastic_CurrentIndex()[:, 0].astype(int)
 
         system.triggerElementWithLocalSimpleShear(eps_kick, args.element)
-        niter = system.minimise()
 
-        output["/disp/1"] = system.u()
+        if args.truncate_system_spanning:
+            niter = system.minimise_truncate(A_truncate=system.plastic().size)
+        else:
+            niter = system.minimise()
+
+        if niter > 0:
+            output["/disp/1"] = system.u()
+        else:
+            output["/restart/u"] = system.u()
+            output["/restart/v"] = system.v()
+            output["/restart/a"] = system.a()
+            output["/restart/t"] = system.t()
+
         idx = system.plastic_CurrentIndex()[:, 0].astype(int)
 
         print("done:", args.output, ", niter = ", niter)
@@ -129,10 +145,11 @@ def cli_run(cli_args=None):
         meta.attrs["target_element"] = args.element
         if args.inc is not None:
             meta.attrs["target_inc"] = args.inc
+        meta.attrs["niter"] = niter
         meta.attrs["S"] = np.sum(idx - idx_n)
         meta.attrs["A"] = np.sum(idx != idx_n)
 
-        if seed:
+        if seed is not None:
             meta.attrs["seed_base"] = seed
         else:
             meta.attrs["uuid"] = uuid
@@ -154,6 +171,8 @@ def cli_job_strain(cli_args=None):
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
 
+    parser.add_argument("--conda", type=str, default=slurm.default_condabase, help="Basename")
+    parser.add_argument("--truncate-system-spanning", action="store_true", help="Stop large events")
     parser.add_argument("-e", "--estep", type=int, default=365, help="Elements between triggers")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument("-n", "--group", type=int, default=50, help="#pushes to group")
@@ -161,7 +180,6 @@ def cli_job_strain(cli_args=None):
     parser.add_argument("-p", "--pushes", type=int, default=11, help="#pushes between ss-events")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
-    parser.add_argument("--conda", type=str, default=slurm.default_condabase, help="Basename")
     parser.add_argument("info", type=str, help="EnsembleInfo (read-only)")
 
     args = tools._parse(parser, cli_args)
@@ -197,6 +215,10 @@ def cli_job_strain(cli_args=None):
 
     commands = []
     outfiles = []
+    basecommand = [executable]
+
+    if args.truncate_system_spanning:
+        basecommand += ["--truncate-system-spanning"]
 
     for i in range(sigd.size - 1):
 
@@ -213,8 +235,9 @@ def cli_job_strain(cli_args=None):
                 bse = f"strain={istress + 1:02d}d{args.pushes - 1:02d}"
                 out = f"{bse}_{simid}_incc={inc[i]:d}_element={e:d}.h5"
                 cmd = " ".join(
-                    [
-                        f"{executable}",
+                    basecommand
+                    + [
+                        "-f",
                         f"--incc {inc[i]:d}",
                         f"--element {e:d}",
                         f"--stress {s:.8e}",
@@ -229,8 +252,9 @@ def cli_job_strain(cli_args=None):
             bse = f"strain=00d{args.pushes - 1:02d}"
             out = f"{bse}_{simid}_incc={inc[i]:d}_element={e:d}.h5"
             cmd = " ".join(
-                [
-                    f"{executable}",
+                basecommand
+                + [
+                    "-f",
                     f"--inc {inc[i]:d}",
                     f"--incc {inc[i]:d}",
                     f"--element {e:d}",
@@ -246,8 +270,9 @@ def cli_job_strain(cli_args=None):
             bse = f"strain={args.pushes - 1:02d}d{args.pushes - 1:02d}"
             out = f"{bse}_{simid}_incc={inc[i]:d}_element={e:d}.h5"
             cmd = " ".join(
-                [
-                    f"{executable}",
+                basecommand
+                + [
+                    "-f",
                     f"--inc {inc[i + 1]:d}",
                     f"--incc {inc[i]:d}",
                     f"--element {e:d}",
@@ -259,9 +284,13 @@ def cli_job_strain(cli_args=None):
             commands.append(cmd)
             outfiles.append(out)
 
-    if any([os.path.isfile(i) for i in outfiles]):
-        if not click.confirm("Overwrite output files?"):
-            raise OSError("Cancelled")
+    if not args.force:
+        if any([os.path.isfile(i) for i in outfiles]):
+            if not click.confirm("Overwrite output files?"):
+                raise OSError("Cancelled")
+
+    if cli_args is not None:
+        return [i.replace("--output ", f"--output {args.outdir}/") for i in commands]
 
     slurm.serial_group(
         commands,
@@ -271,6 +300,3 @@ def cli_job_strain(cli_args=None):
         conda=dict(condabase=args.conda),
         sbatch={"time": args.time},
     )
-
-    if cli_args is not None:
-        return commands
