@@ -682,7 +682,7 @@ def steadystate(
     tangent[1:] = (sigd[1:] - sigd[0]) / (epsd[1:] - epsd[0])
 
     steadystate = max(np.argmax(A == N) + 1, np.argmax(tangent <= 0.95 * tangent[1]))
-    assert steadystate < kick.size
+    assert steadystate < kick.size # this fails when reading triggers
 
     if kick[steadystate]:
         steadystate += 1
@@ -996,6 +996,8 @@ def cli_ensembleinfo(cli_args=None):
 
         output["files"] = files
         output["seeds"] = seeds
+
+        # there should be run versions here
 
         meta = output.create_group(f"/meta/{progname}")
         meta.attrs["version"] = version
