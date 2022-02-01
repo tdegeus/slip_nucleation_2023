@@ -21,15 +21,15 @@ from . import tools
 from ._version import version
 
 entry_points = dict(
-    cli_ensembleinfo="TriggerAvalanche_EnsembleInfo",
-    cli_spatialprofile="TriggerAvalanche_SpatialProfile",
-    cli_enstataverage_sync_A="TriggerAvalanche_enstataverage_sync_A",
+    cli_ensembleinfo="EventEvolution_EnsembleInfo",
+    cli_spatialprofile="EventEvolution_SpatialProfile",
+    cli_enstataverage_sync_A="EventEvolution_enstataverage_sync_A",
 )
 
 file_defaults = dict(
-    cli_ensembleinfo="TriggerAvalanche_EnsembleInfo.h5",
-    cli_spatialprofile="TriggerAvalanche_SpatialProfile.h5",
-    cli_enstataverage_sync_A="TriggerAvalanche_enstataverage_sync_A.h5",
+    cli_ensembleinfo="EventEvolution_EnsembleInfo.h5",
+    cli_spatialprofile="EventEvolution_SpatialProfile.h5",
+    cli_enstataverage_sync_A="EventEvolution_enstataverage_sync_A.h5",
 )
 
 
