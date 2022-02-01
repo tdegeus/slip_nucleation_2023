@@ -17,6 +17,7 @@ import tqdm
 
 from . import slurm
 from . import System
+from . import tag
 from . import tools
 from ._version import version
 
@@ -64,6 +65,7 @@ def cli_run(cli_args=None):
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
     progname = entry_points[funcname]
 
+    parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("--element", type=int, required=True, help="Plastic element to push")
     parser.add_argument("--inc", type=int, help="Trigger at specific element")
     parser.add_argument("--incc", type=int, required=True, help="Last system-spanning event")
@@ -77,6 +79,7 @@ def cli_run(cli_args=None):
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.input)
     assert os.path.realpath(args.input) != os.path.realpath(args.output)
+    assert args.develop or not tag.has_uncommitted(version)
     tools._check_overwrite_file(args.output, args.force)
 
     print("starting:", args.output)
@@ -147,7 +150,7 @@ def cli_run(cli_args=None):
         print("done:", args.output, ", niter = ", niter)
 
         meta = output.create_group(f"/meta/{progname}")
-        meta.attrs["file"] = os.path.relpath(args.input, os.path.dirname(args.output))
+        meta.attrs["filepath_rel"] = os.path.relpath(args.input, os.path.dirname(args.output))
         meta.attrs["filepath"] = args.input
         meta.attrs["version"] = version
         meta.attrs["dependencies"] = System.dependencies(model)
@@ -183,13 +186,16 @@ def cli_ensembleinfo(cli_args=None):
     progname = entry_points[funcname]
     output = file_defaults[funcname]
 
+    parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
+    parser.add_argument("-e", "--ensembleinfo", type=str, help="Basic EnsembleInfo")
     parser.add_argument("files", nargs="*", type=str, help="Files to read")
 
     args = tools._parse(parser, cli_args)
     assert len(args.files) > 0
     assert all([os.path.isfile(file) for file in args.files])
+    assert args.develop or not tag.has_uncommitted(version)
     tools._check_overwrite_file(args.output, args.force)
 
     ret = dict(
@@ -214,6 +220,12 @@ def cli_ensembleinfo(cli_args=None):
 
             meta = file[f"/meta/{entry_points['cli_run']}"]
             sourcepath = meta.attrs["filepath"]
+
+            if not os.path.isfile(sourcepath):
+                assert args.ensembleinfo
+                basedir = os.path.dirname(args.ensembleinfo)
+                sourcepath = os.path.join(basedir, os.path.basename(sourcepath))
+                assert os.path.isfile(sourcepath)
 
             with h5py.File(sourcepath, "r") as source:
 
@@ -281,16 +293,16 @@ def cli_job_strain(cli_args=None):
     parser.add_argument("-p", "--pushes", type=int, default=11, help="#pushes between ss-events")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
-    parser.add_argument("info", type=str, help="EnsembleInfo (read-only)")
+    parser.add_argument("ensembleinfo", type=str, help="EnsembleInfo (read-only)")
 
     args = tools._parse(parser, cli_args)
-    assert os.path.isfile(args.info)
+    assert os.path.isfile(args.ensembleinfo)
     assert os.path.isdir(args.outdir)
 
-    basedir = os.path.dirname(args.info)
+    basedir = os.path.dirname(args.ensembleinfo)
     executable = entry_points["cli_run"]
 
-    with h5py.File(args.info, "r") as file:
+    with h5py.File(args.ensembleinfo, "r") as file:
 
         files = [os.path.join(basedir, f) for f in file["/files"].asstr()[...]]
         N = file["/normalisation/N"][...]
