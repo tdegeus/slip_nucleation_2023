@@ -681,8 +681,15 @@ def steadystate(
     tangent[0] = np.inf
     tangent[1:] = (sigd[1:] - sigd[0]) / (epsd[1:] - epsd[0])
 
-    steadystate = max(np.argmax(A == N) + 1, np.argmax(tangent <= 0.95 * tangent[1]))
-    assert steadystate < kick.size # this fails when reading triggers
+    i_yield = np.argmax(A == N)
+    i_tangent = np.argmax(tangent <= 0.95 * tangent[1])
+    steadystate = max(i_yield + 1, i_tangent)
+
+    if i_yield == 0 or i_tangent == 0:
+        return None
+
+    if steadystate >= kick.size - 1:
+        return None
 
     if kick[steadystate]:
         steadystate += 1
@@ -942,6 +949,19 @@ def cli_ensembleinfo(cli_args=None):
                     system.reset_epsy(read_epsy(file))
 
                 out = basic_output(system, file, verbose=False)
+
+                if i == 0:
+                    norm = {key: out[key] for key in fields_norm}
+                else:
+                    for key in fields_norm:
+                        assert np.isclose(norm[key], out[key])
+
+                for key in fields_full:
+                    output[f"/full/{filename}/{key}"] = out[key]
+
+                if out["steadystate"] is None:
+                    continue
+
                 assert all(out["kick"][1::2])
                 assert not any(out["kick"][::2])
                 kick = np.copy(out["kick"])
@@ -954,9 +974,6 @@ def cli_ensembleinfo(cli_args=None):
 
                 assert np.sum(load) == np.sum(kick)
 
-                for key in fields_full:
-                    output[f"/full/{filename}/{key}"] = out[key]
-
                 for key in combine_load:
                     combine_load[key] += list(out[key][load])
                     combine_kick[key] += list(out[key][kick])
@@ -964,12 +981,6 @@ def cli_ensembleinfo(cli_args=None):
                 file_load += list(i * np.ones(np.sum(load), dtype=int))
                 file_kick += list(i * np.ones(np.sum(kick), dtype=int))
                 seeds += [out["seed"]]
-
-                if i == 0:
-                    norm = {key: out[key] for key in fields_norm}
-                else:
-                    for key in fields_norm:
-                        assert np.isclose(norm[key], out[key])
 
         combine_load["file"] = np.array(file_load, dtype=np.uint64)
         combine_kick["file"] = np.array(file_kick, dtype=np.uint64)
