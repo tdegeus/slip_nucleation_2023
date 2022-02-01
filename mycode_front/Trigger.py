@@ -126,12 +126,12 @@ def cli_run(cli_args=None):
         # (*) Apply push and minimise energy
 
         output["/disp/0"] = system.u()
-        idx_n = system.plastic_CurrentIndex()[:, 0].astype(int)
+        idx_n = system.plastic_CurrentIndex()[:, 0]
 
         system.triggerElementWithLocalSimpleShear(eps_kick, args.element)
 
         if args.truncate_system_spanning:
-            niter = system.minimise_truncate(A_truncate=system.plastic().size)
+            niter = system.minimise_truncate(idx_n=idx_n, A_truncate=system.plastic().size)
         else:
             niter = system.minimise()
 
@@ -146,11 +146,12 @@ def cli_run(cli_args=None):
             output["/restart/t"] = system.t()
 
         idx = system.plastic_CurrentIndex()[:, 0].astype(int)
+        idx_n = idx_n.astype(int)
 
         print("done:", args.output, ", niter = ", niter)
 
         meta = output.create_group(f"/meta/{progname}")
-        meta.attrs["filepath_rel"] = os.path.relpath(args.input, os.path.dirname(args.output))
+        meta.attrs["file"] = os.path.basename(args.input)
         meta.attrs["filepath"] = args.input
         meta.attrs["version"] = version
         meta.attrs["dependencies"] = System.dependencies(model)
@@ -211,7 +212,7 @@ def cli_ensembleinfo(cli_args=None):
         inc_c=[],
         file=[],
         version=[],
-        dependency=[],
+        dependencies=[],
     )
 
     for i, filepath in enumerate(tqdm.tqdm(args.files)):
@@ -250,15 +251,19 @@ def cli_ensembleinfo(cli_args=None):
             ret["inc_c"].append(meta.attrs["target_inc_system"])
             ret["file"].append(meta.attrs["file"])
             ret["version"].append(meta.attrs["version"])
-            ret["dependency"].append(";".join(meta.attrs["dependencies"]))
+            ret["dependencies"].append(";".join(meta.attrs["dependencies"]))
 
     with h5py.File(args.output, "w") as output:
 
-        for key in ["file", "version", "dependency"]:
-            ret[f"{key}s"], ret[key] = np.unique(ret[key], return_inverse=True)
-            ret[f"{key}s"] = [str(i) for i in ret[f"{key}s"]]
+        for key in ["file", "version", "dependencies"]:
+            value, index = np.unique(ret.pop(key), return_inverse=True)
+            if key == "dependencies":
+                value = [str(i).split(";") for i in value]
+            else:
+                value = [str(i) for i in value]
 
-        ret["dependencies"] = [i.split(";") for i in ret.pop("dependencys")]
+            output[f"/{key}/index"] = index
+            output[f"/{key}/value"] = value
 
         for key in ret:
             output[key] = ret[key]
