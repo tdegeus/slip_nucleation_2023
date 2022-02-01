@@ -927,8 +927,12 @@ def cli_ensembleinfo(cli_args=None):
     assert len(args.files) > 0
     assert all([os.path.isfile(file) for file in args.files])
     tools._check_overwrite_file(args.output, args.force)
-    files = [os.path.relpath(file, os.path.dirname(args.output)) for file in args.files]
-    seeds = []
+    info = dict(
+        seeds=[],
+        versions=[],
+        dependencies=[],
+        files=[os.path.relpath(file, os.path.dirname(args.output)) for file in args.files],
+    )
 
     fields_norm = ["l0", "G", "K", "rho", "cs", "cd", "sig0", "eps0", "N", "t0", "dt"]
     fields_full = ["epsd", "sigd", "S", "A", "kick", "inc", "steadystate"]
@@ -939,7 +943,7 @@ def cli_ensembleinfo(cli_args=None):
 
     with h5py.File(args.output, "w") as output:
 
-        for i, (filename, filepath) in enumerate(tqdm.tqdm(zip(files, args.files))):
+        for i, (filename, filepath) in enumerate(tqdm.tqdm(zip(info["files"], args.files))):
 
             with h5py.File(filepath, "r") as file:
 
@@ -958,6 +962,11 @@ def cli_ensembleinfo(cli_args=None):
 
                 for key in fields_full:
                     output[f"/full/{filename}/{key}"] = out[key]
+
+                meta = file[f"/meta/{entry_points['cli_run']}"]
+                info["seeds"].append(out["seed"])
+                info["versions"].append(meta.attrs["version"])
+                info["dependencies"].append(";".join(meta.attrs["dependencies"]))
 
                 if out["steadystate"] is None:
                     continue
@@ -980,7 +989,8 @@ def cli_ensembleinfo(cli_args=None):
 
                 file_load += list(i * np.ones(np.sum(load), dtype=int))
                 file_kick += list(i * np.ones(np.sum(kick), dtype=int))
-                seeds += [out["seed"]]
+
+        # store steady-state of full ensemble together
 
         combine_load["file"] = np.array(file_load, dtype=np.uint64)
         combine_kick["file"] = np.array(file_kick, dtype=np.uint64)
@@ -1000,15 +1010,31 @@ def cli_ensembleinfo(cli_args=None):
         for key, value in norm.items():
             output[f"/normalisation/{key}"] = value
 
+        # extract ensemble averages
+
         ss = np.equal(combine_kick["A"], norm["N"])
         assert all(np.equal(combine_kick["inc"][ss], combine_load["inc"][ss] + 1))
         output["/averages/sigd_top"] = np.mean(combine_load["sigd"][ss])
         output["/averages/sigd_bottom"] = np.mean(combine_kick["sigd"][ss])
 
-        output["files"] = files
-        output["seeds"] = seeds
+        # store metadata at runtime for each input file
 
-        # there should be run versions here
+        for key in info:
+            assert len(info[key]) == len(info["files"])
+
+        output["files"] = info["files"]
+        output["seeds"] = info["seeds"]
+
+        for key in ["versions", "dependencies"]:
+            value, index = np.unique(info[key], return_inverse=True)
+            if key == "dependencies":
+                value = [str(i).split(";") for i in value]
+            else:
+                value = [str(i) for i in value]
+            output[f"/{key}/index"] = index
+            output[f"/{key}/value"] = value
+
+        # metadata for this program
 
         meta = output.create_group(f"/meta/{progname}")
         meta.attrs["version"] = version
