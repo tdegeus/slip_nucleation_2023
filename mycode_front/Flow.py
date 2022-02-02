@@ -179,12 +179,13 @@ def default_gammadot():
     """
 
     eps0_new = 1.0e-3 / 2.0 / 10.0
-    eps0_old = 5e-4 / 8.0
-    Gammadot = np.linspace(1e-9, 20e-9, 20) / 8.0
-    Gammadot = Gammadot[4:]
-    Gammadot *= eps0_new / eps0_old
+    # eps0_old = 5e-4 / 8.0
+    # Gammadot = np.linspace(1e-9, 20e-9, 20) / 8.0
+    # Gammadot = Gammadot
+    # Gammadot *= eps0_new / eps0_old
+    Gammadot = [1e-13, 5e-13, 1e-12, 5e-12, 1e-11, 5e-11] + np.linspace(1e-10, 2e-9, 20).tolist()
 
-    return Gammadot, eps0_new
+    return np.array(Gammadot), eps0_new
 
 
 def cli_generate(cli_args=None):
