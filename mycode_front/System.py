@@ -528,17 +528,23 @@ def create_check_meta(
     dev: bool = False,
 ) -> h5py.Group:
     """
-    Create or read/check meta data. This function asserts that:
+    Create or read/check metadata. This function asserts that:
 
     -   There are no uncommitted changes.
     -   There are no version changes.
 
+    It create metadata as attributes to a group ``path`` as follows::
+
+        "uuid": A unique identifier that can be used to distinguish simulations if needed.
+        "version": The current version of this code (see below).
+        "dependencies": The current version of all relevant dependencies (see below).
+
     :param file: HDF5 archive.
-    :param path: Path in ``file``.
+    :param path: Path in ``file`` to store/read metadata.
     :param ver: Version string.
     :param deps: List of dependencies.
     :param dev: Allow uncommitted changes.
-    :return: Group to meta-data.
+    :return: Group to metadata.
     """
 
     assert dev or not tag.has_uncommitted(ver)
@@ -546,6 +552,7 @@ def create_check_meta(
 
     if path not in file:
         meta = file.create_group(path)
+        meta.attrs["uuid"] = str(uuid.uuid4())
         meta.attrs["version"] = ver
         meta.attrs["dependencies"] = deps
         return meta
