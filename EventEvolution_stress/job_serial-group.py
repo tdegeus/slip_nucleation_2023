@@ -8,7 +8,7 @@ import numpy as np
 dbase = os.path.relpath(
     os.path.normpath(os.path.join(os.path.dirname(__file__), "../../data/nx=3^6x2"))
 )
-N = 2 * (3 ** 6)
+N = 2 * (3**6)
 
 with h5py.File(os.path.join(dbase, "Run", "EnsembleInfo.h5"), "r") as data:
 

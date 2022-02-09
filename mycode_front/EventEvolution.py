@@ -38,7 +38,7 @@ def replace_ep(doc):
     Replace ":py:func:`...`" with the relevant entry_point name
     """
     for ep in entry_points:
-        doc = doc.replace(fr":py:func:`{ep:s}`", entry_points[ep])
+        doc = doc.replace(rf":py:func:`{ep:s}`", entry_points[ep])
     return doc
 
 

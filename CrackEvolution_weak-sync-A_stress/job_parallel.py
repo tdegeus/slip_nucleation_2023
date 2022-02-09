@@ -6,7 +6,7 @@ import numpy as np
 
 dbase = "../../../data/nx=3^6x2"
 nx = "nx=3^6x2"
-N = (3 ** 6) * 2
+N = (3**6) * 2
 
 with h5py.File(os.path.join(dbase, "EnsembleInfo.hdf5"), "r") as data:
 

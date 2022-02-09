@@ -4,7 +4,7 @@ import h5py
 import numpy as np
 
 dbase = "../../../data/nx=3^6x2"
-N = (3 ** 6) * 2
+N = (3**6) * 2
 
 keys = [
     "/conn",
@@ -40,7 +40,7 @@ with h5py.File(os.path.join(dbase, "EnsembleInfo.hdf5"), "r") as data:
     files = data["/files"].asstr()[...][data["/avalanche/file"][idx]]
     stresses = data["/avalanche/sigd"][idx] * sig0
 
-N = int(3 ** 6 * 2)
+N = int(3**6 * 2)
 itrigger = [int(N / 2)]
 
 for stress, inc, file in zip(stresses, incs, files):

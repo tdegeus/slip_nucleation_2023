@@ -139,7 +139,7 @@ m_sigd_xy = m_sig_xy
 m_sigd_yy = m_sig_yy - m_sig_m
 
 # equivalent stress
-m_sig_eq = np.sqrt(2.0 * (m_sigd_xx ** 2.0 + m_sigd_yy ** 2.0 + 2.0 * m_sigd_xy ** 2.0))
+m_sig_eq = np.sqrt(2.0 * (m_sigd_xx**2.0 + m_sigd_yy**2.0 + 2.0 * m_sigd_xy**2.0))
 
 # variance
 v_sig_eq = (

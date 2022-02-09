@@ -207,7 +207,7 @@ def main():
                     fdamp = system.fdamp()
                     fres = -(fmaterial + fdamp)
                     V = vector.AsDofs(system.v())
-                    K = M * V ** 2
+                    K = M * V**2
                     Ekin = vector.AsNode(K)
 
                     # nodal force density
