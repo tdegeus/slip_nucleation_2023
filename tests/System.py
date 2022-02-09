@@ -56,7 +56,7 @@ class MyTests(unittest.TestCase):
         N = 9
         my.System.generate(filename, N=N, test_mode=True)
         my.System.cli_run(["--develop", filename])
-        my.System.cli_ensembleinfo([filename, "--output", infoname])
+        my.System.cli_ensembleinfo([filename, "--output", infoname, "--dev"])
 
         with h5py.File(infoname, "r") as file:
             epsd = file[f"/full/{idname}/epsd"][...]

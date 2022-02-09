@@ -8,9 +8,77 @@ import sys
 
 import click
 import GMatElastoPlasticQPot.Cartesian2d as GMat
+import GooseHDF5 as g5
+import h5py
 import numpy as np
 import yaml
 from numpy.typing import ArrayLike
+
+
+def h5py_read_unique(
+    file: h5py.File,
+    path: str,
+    asstr: bool = False,
+) -> np.ndarray:
+    """
+    Return original array stored by :py:func:`h5py_save_unique`.
+
+    :param file: HDF5 archive.
+    :param path: Group containing ``index`` and ``value``.
+    :param asstr: Return as list of strings.
+    :returns: Data.
+    """
+
+    index = file[g5.join(path, "index", root=True)][...]
+
+    if asstr:
+        value = file[g5.join(path, "value", root=True)].asstr()[...]
+    else:
+        value = file[g5.join(path, "value", root=True)][...]
+
+    ret = value[index]
+
+    if asstr:
+        return ret.tolist()
+
+    return ret
+
+
+def h5py_save_unique(
+    data: ArrayLike,
+    file: h5py.File,
+    path: str,
+    asstr: bool = False,
+    split: str = None,
+):
+    """
+    Save a list of strings (or other data, but mostly relevant for strings)
+    with many duplicates as two datasets:
+
+    -   ``path/value``: list of unique strings.
+    -   ``path/index``: per item which index from ``path/value`` to take.
+
+    Use :py:func:`h5py_read_unique` to read data.
+
+    :param data: Data to store.
+    :param file: HDF5 archive.
+    :param path: Group containing ``index`` and ``value``.
+    :param asstr: Convert to list of strings before storing.
+    :param split: Split every item for a list of strings before storing.
+    """
+
+    value, index = np.unique(data, return_inverse=True)
+
+    if split is not None:
+        value = list(map(lambda i: str(i).split(split), value))
+    elif asstr:
+        value = list(map(str, value))
+
+    if isinstance(data, np.ndarray):
+        index = index.reshape(data.shape)
+
+    file[g5.join(path, "index", root=True)] = index
+    file[g5.join(path, "value", root=True)] = value
 
 
 def inboth(a: dict | list, b: dict | list, name_a: str = "a", name_b: str = "b"):
