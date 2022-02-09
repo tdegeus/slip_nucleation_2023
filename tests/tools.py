@@ -1,7 +1,9 @@
 import os
+import shutil
 import sys
 import unittest
 
+import h5py
 import numpy as np
 
 root = os.path.join(os.path.dirname(__file__), "..")
@@ -15,6 +17,45 @@ class MyTests(unittest.TestCase):
     """
     namespace tools
     """
+
+    def test_h5py_save_unique(self):
+
+        dirname = "mytest"
+        filepath = os.path.join(dirname, "foo.h5")
+
+        for file in [filepath]:
+            if os.path.isfile(file):
+                os.remove(file)
+
+        if not os.path.isdir(dirname):
+            os.makedirs(dirname)
+
+        a = ["a", "foo", "a", "a", "bar", "foo"]
+        b = (np.random.random((3, 4, 5)) * 10).astype(int)
+        c = [
+            ["a", "some"],
+            ["foo", "bar"],
+            ["a", "other"],
+            ["a", "some"],
+            ["bar", "foo"],
+            ["foo", "bar"],
+        ]
+
+        with h5py.File(filepath, "w") as file:
+            my.tools.h5py_save_unique(a, file, "a", asstr=True)
+            a_r = my.tools.h5py_read_unique(file, "a", asstr=True)
+
+            my.tools.h5py_save_unique(b, file, "b")
+            b_r = my.tools.h5py_read_unique(file, "b")
+
+            my.tools.h5py_save_unique([";".join(i) for i in c], file, "c", split=";")
+            c_r = my.tools.h5py_read_unique(file, "c", asstr=True)
+
+        self.assertEqual(a, a_r)
+        self.assertTrue(np.all(np.equal(b, b_r)))
+        self.assertEqual(c, c_r)
+
+        shutil.rmtree(dirname)
 
     def test_check_docstring(self):
 
