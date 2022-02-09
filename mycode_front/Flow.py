@@ -8,6 +8,7 @@ import sys
 import textwrap
 import warnings
 from collections import defaultdict
+from collections import namedtuple
 
 import click
 import enstat
@@ -175,8 +176,14 @@ def default_gammadot():
     """
     Shear rates to simulate.
 
-    :return: List of shear rates, and a typical shear rate.
+    :return:
+        ``namedtuple`` with fields:
+        -   ``values``: ensemble of applied shear rates.
+        -   ``normalisation``: strain normalisation presumed.
+        -
     """
+
+    namedtuple("Gammadot", ["values", "normalisation", "output"])
 
     eps0_new = 1.0e-3 / 2.0 / 10.0
     # eps0_old = 5e-4 / 8.0
