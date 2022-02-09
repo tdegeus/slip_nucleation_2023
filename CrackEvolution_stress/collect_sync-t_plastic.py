@@ -237,7 +237,7 @@ def store(
     m_sigd_yy = m_sig_yy - m_sig_m
 
     # equivalent stress
-    m_sig_eq = np.sqrt(2.0 * (m_sigd_xx ** 2.0 + m_sigd_yy ** 2.0 + 2.0 * m_sigd_xy ** 2.0))
+    m_sig_eq = np.sqrt(2.0 * (m_sigd_xx**2.0 + m_sigd_yy**2.0 + 2.0 * m_sigd_xy**2.0))
 
     # correct for division
     sig_eq = np.where(m_sig_eq != 0.0, m_sig_eq, 1.0)

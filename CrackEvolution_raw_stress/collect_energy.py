@@ -128,7 +128,7 @@ def main():
                     system.setV(data[f"/sync-A/{A:d}/v"][...])
 
                     V = vector.AsDofs(system.v())
-                    k = 0.5 * np.sum(M * V ** 2)
+                    k = 0.5 * np.sum(M * V**2)
 
                     E = system.Energy()
                     e = np.sum(E * dV)
@@ -180,7 +180,7 @@ def main():
                     system.setV(data[f"/sync-t/{t:d}/v"][...])
 
                     V = vector.AsDofs(system.v())
-                    k = 0.5 * np.sum(M * V ** 2)
+                    k = 0.5 * np.sum(M * V**2)
 
                     E = system.Energy()
                     e = np.sum(E * dV)

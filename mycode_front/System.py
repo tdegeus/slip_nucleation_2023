@@ -65,7 +65,7 @@ def replace_ep(doc: str) -> str:
     Replace ``:py:func:`...``` with the relevant entry_point name
     """
     for ep in entry_points:
-        doc = doc.replace(fr":py:func:`{ep:s}`", entry_points[ep])
+        doc = doc.replace(rf":py:func:`{ep:s}`", entry_points[ep])
     return doc
 
 
@@ -239,7 +239,7 @@ def generate(
     c = 1.0
     G = 1.0
     K = 10.0 * G
-    rho = G / c ** 2.0
+    rho = G / c**2.0
     qL = 2.0 * np.pi / L
     qh = 2.0 * np.pi / h
     alpha = np.sqrt(2.0) * qL * c * rho
@@ -488,7 +488,7 @@ def cli_generate(cli_args=None):
 
     parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-n", "--nsim", type=int, default=1, help="#simulations")
-    parser.add_argument("-N", "--size", type=int, default=2 * (3 ** 6), help="#blocks")
+    parser.add_argument("-N", "--size", type=int, default=2 * (3**6), help="#blocks")
     parser.add_argument("-s", "--start", type=int, default=0, help="Start simulation")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("-w", "--time", type=str, default="72h", help="Walltime")
@@ -859,7 +859,7 @@ def basic_output(system: model.System, file: h5py.File, verbose: bool = True) ->
         ret["l0"] = np.pi
         ret["G"] = G
         ret["K"] = 10.0 * G
-        ret["rho"] = G / 1.0 ** 2.0
+        ret["rho"] = G / 1.0**2.0
         ret["seed"] = str(file["/uuid"].asstr()[...])
 
     # interpret / store additional normalisation

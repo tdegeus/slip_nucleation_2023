@@ -13,8 +13,8 @@ files = sorted(
     )
 )
 
-N = int(3 ** 6 * 2)
-i = int(3 ** 6)
+N = int(3**6 * 2)
+i = int(3**6)
 
 for file in files:
 

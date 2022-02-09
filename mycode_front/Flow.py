@@ -52,7 +52,7 @@ def replace_ep(doc):
     Replace ":py:func:`...`" with the relevant entry_point name
     """
     for ep in entry_points:
-        doc = doc.replace(fr":py:func:`{ep:s}`", entry_points[ep])
+        doc = doc.replace(rf":py:func:`{ep:s}`", entry_points[ep])
     return doc
 
 
@@ -206,7 +206,7 @@ def cli_generate(cli_args=None):
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("-n", "--nsim", type=int, default=1, help="#simulations")
-    parser.add_argument("-N", "--size", type=int, default=2 * (3 ** 6), help="#blocks")
+    parser.add_argument("-N", "--size", type=int, default=2 * (3**6), help="#blocks")
     parser.add_argument("-s", "--start", type=int, default=0, help="Start simulation")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")

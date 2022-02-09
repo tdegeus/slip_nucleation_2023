@@ -59,7 +59,7 @@ def check_stress(filename, inc):
 
 
 dbase = "../../../data/nx=3^6x2"
-N = (3 ** 6) * 2
+N = (3**6) * 2
 
 keys = [
     "/conn",

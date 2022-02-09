@@ -201,7 +201,7 @@ with h5py.File(output, "w") as out:
         sigd_yy = sig_yy - sig_m
 
         # equivalent stress
-        sig_eq = np.sqrt(2.0 * (sigd_xx ** 2.0 + sigd_yy ** 2.0 + 2.0 * sigd_xy ** 2.0))
+        sig_eq = np.sqrt(2.0 * (sigd_xx**2.0 + sigd_yy**2.0 + 2.0 * sigd_xy**2.0))
 
         # write equivalent stress
         dataset_eq = "/sig_eq/" + str(a)
