@@ -3,6 +3,7 @@ import shutil
 import sys
 import unittest
 
+import GooseFEM
 import h5py
 import numpy as np
 
@@ -17,6 +18,36 @@ class MyTests(unittest.TestCase):
     """
     namespace tools
     """
+
+    def test_PartialDisplacement(self):
+
+        mesh = GooseFEM.Mesh.Quad4.Regular(4, 4)
+        conn = mesh.conn()
+        dofs = mesh.dofsPeriodic()
+
+        plastic = np.array([4, 5, 6, 7], dtype=int)
+        element_is_stored = np.zeros(conn.shape[0], dtype=bool)
+        element_is_stored[plastic] = True
+
+        store = my.tools.PartialDisplacement(conn, dofs, element_is_stored=element_is_stored)
+
+        dof_is_stored = np.zeros(int(np.max(dofs) + 1), dtype=bool)
+        dof_is_stored[(2 * 4) + np.arange(2 * 2 * 4)] = True
+
+        node_is_stored = np.zeros(dofs.shape[0], dtype=bool)
+        node_is_stored[(4 + 1) + np.arange(2 * (4 + 1))] = True
+
+        na_is_stored = np.zeros(dofs.shape[0], dtype=bool)
+
+        self.assertTrue(np.all(dof_is_stored == store.dof_is_stored()))
+        self.assertTrue(np.all(node_is_stored == store.node_is_stored()))
+        self.assertTrue(np.all(element_is_stored == store.element_is_stored()))
+        self.assertTrue(np.all(na_is_stored == store.nodeassembly_is_stored()))
+
+        self.assertTrue(np.all(np.argwhere(dof_is_stored).ravel() == store.dof_list()))
+        self.assertTrue(np.all(np.argwhere(node_is_stored).ravel() == store.node_list()))
+        self.assertTrue(np.all(np.argwhere(element_is_stored).ravel() == store.element_list()))
+        self.assertTrue(np.all(np.argwhere(na_is_stored).ravel() == store.nodeassembly_list()))
 
     def test_h5py_save_unique(self):
 

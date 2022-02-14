@@ -8,11 +8,166 @@ import sys
 
 import click
 import GMatElastoPlasticQPot.Cartesian2d as GMat
+import GooseFEM
 import GooseHDF5 as g5
 import h5py
 import numpy as np
 import yaml
 from numpy.typing import ArrayLike
+
+
+class PartialDisplacement:
+    """
+    Helper class to store/read only a partial displacement field.
+    Note that options makers (-) are mutually exclusive.
+
+    :param conn: Connectivity.
+    :param dofs: DOFs per node.
+    :param dof_is_stored: Per DOF: ``True`` if it is stored (-).
+    :param node_is_stored: Per node: ``True`` if it is stored (-).
+    :param element_is_stored: Per element: ``True`` if it is stored (-).
+    :param dof_list: List of DOFs stored (-).
+    :param node_list: List of nodes stored (-).
+    :param element_list: List of elements stored (-).
+    """
+
+    def __init__(
+        self,
+        conn: ArrayLike,
+        dofs: ArrayLike,
+        dof_is_stored: ArrayLike = None,
+        node_is_stored: ArrayLike = None,
+        element_is_stored: ArrayLike = None,
+        dof_list: ArrayLike = None,
+        node_list: ArrayLike = None,
+        element_list: ArrayLike = None,
+    ):
+
+        kwargs = locals()
+        del kwargs["conn"]
+        del kwargs["dofs"]
+        del kwargs["self"]
+        assert sum(kwargs[key] is not None for key in kwargs) == 1
+
+        if dof_list is not None:
+            dof_is_stored = np.zeros(int(np.max(dofs) + 1), dtype=bool)
+            dof_is_stored[dof_list] = True
+
+        if node_list is not None:
+            node_is_stored = np.zeros(dofs.shape[0], dtype=bool)
+            node_is_stored[node_list] = True
+
+        if element_list is not None:
+            element_is_stored = np.zeros(conn.shape[0], dtype=bool)
+            element_is_stored[element_list] = True
+
+        self.m_conn = np.copy(conn)
+        self.m_dofs = np.copy(dofs)
+        self.m_s_dofs = None
+        self.m_s_node = None
+        self.m_s_elem = None
+        self.m_s_assembly = None
+        self.m_i_dofs = None
+        self.m_i_node = None
+        self.m_i_elem = None
+        self.m_i_assembly = None
+
+        if dof_is_stored is not None:
+            dof_is_stored = np.array(dof_is_stored)
+            assert dof_is_stored.size == max(dofs) + 1
+            assert dof_is_stored.ndim == 1
+            self.m_s_dofs = np.copy(dof_is_stored).astype(bool)
+
+        if node_is_stored is not None:
+            node_is_stored = np.array(node_is_stored)
+            assert node_is_stored.size == dofs.shape[0]
+            assert node_is_stored.ndim == 1
+            self.m_s_node = np.copy(node_is_stored).astype(bool)
+            self.m_i_dofs = np.unique(dofs[self.m_s_node])
+
+        if element_is_stored is not None:
+            element_is_stored = np.array(element_is_stored)
+            assert element_is_stored.size == conn.shape[0]
+            assert element_is_stored.ndim == 1
+            self.m_s_elem = np.copy(element_is_stored).astype(bool)
+            self.m_i_node = np.unique(conn[self.m_s_elem])
+            self.m_i_dofs = np.unique(dofs[self.m_i_node, :].ravel())
+
+        if self.m_s_dofs is None:
+            self.m_s_dofs = np.zeros(int(np.max(dofs) + 1), dtype=bool)
+            self.m_s_dofs[self.m_i_dofs] = True
+
+        if self.m_i_dofs is None:
+            self.m_i_dofs = np.argwhere(self.m_s_node).ravel()
+
+        if self.m_s_node is None:
+            self.m_s_node = np.min(self.m_s_dofs[dofs], axis=1)
+
+        if self.m_i_node is None:
+            self.m_i_node = np.argwhere(self.m_s_node).ravel()
+
+        if self.m_s_elem is None:
+            self.m_s_elem = np.min(self.m_s_node[conn], axis=1)
+
+        if self.m_i_elem is None:
+            self.m_i_elem = np.argwhere(self.m_s_elem).ravel()
+
+    def dof_is_stored(self):
+        """
+        Per DOF: ``True`` if it can be reconstructed based on the storage.
+        """
+        return self.m_s_dofs
+
+    def node_is_stored(self):
+        """
+        Per node: ``True`` if it can be reconstructed based on the storage.
+        """
+        return self.m_s_node
+
+    def element_is_stored(self):
+        """
+        Per element: ``True`` if it can be reconstructed based on the storage.
+        """
+        return self.m_s_elem
+
+    def nodeassembly_is_stored(self):
+        """
+        Per node: ``True`` if it can be reconstructed based on the storage,
+        in the case that the nodal quantity follows from an assembly (e.g. a force).
+        """
+        if self.m_s_assembly is None:
+            self.m_s_assembly = np.zeros((self.m_dofs.shape[0]), dtype=bool)
+            nodemap = GooseFEM.Mesh.elem2node(conn=self.m_conn, dofs=self.m_dofs)
+            for i in np.argwhere(self.m_s_node).ravel():
+                self.m_s_assembly[i] = all(self.m_s_elem[nodemap[i]])
+            self.m_i_assembly = np.argwhere(self.m_s_assembly).ravel()
+        return self.m_s_assembly
+
+    def dof_list(self):
+        """
+        List of DOFs that can be reconstructed based on the storage.
+        """
+        return self.m_i_dofs
+
+    def node_list(self):
+        """
+        List of nodes that can be reconstructed based on the storage.
+        """
+        return self.m_i_node
+
+    def element_list(self):
+        """
+        List of elements that can be reconstructed based on the storage.
+        """
+        return self.m_i_elem
+
+    def nodeassembly_list(self):
+        """
+        List of nodes that can be reconstructed based on the storage,
+        in the case that the nodal quantity follows from an assembly (e.g. a force).
+        """
+        self.nodeassembly_is_stored()
+        return self.m_i_assembly
 
 
 def h5py_read_unique(
