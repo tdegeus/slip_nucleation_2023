@@ -11,10 +11,12 @@ import mycode_front as my  # noqa: E402
 
 
 class MyTests(unittest.TestCase):
-    def test_small(self):
-        def run(classic):
+    """ """
 
-            # Basic run / Get output
+    def test_small(self):
+        """ """
+
+        def run(classic):
 
             dirname = "mytest"
             idname = "id=0.h5"
@@ -31,12 +33,32 @@ class MyTests(unittest.TestCase):
             N = 9
             my.System.generate(filename, N=N, test_mode=True, classic=classic)
             my.System.cli_run(["--dev", filename])
-            my.System.cli_ensembleinfo([filename, "--output", infoname])
+            my.System.cli_ensembleinfo(["--dev", filename, "--output", infoname])
 
-            commands = my.Trigger.cli_job_strain(["-f", infoname, "-o", dirname])
+            ret = my.Trigger.cli_job_strain(
+                ["-f", infoname, "-p", 4, "--pushes-per-config", 1, "-o", dirname]
+            )
+            commands = ret["commands"]
             output = []
             output.append(my.Trigger.cli_run(["--dev"] + commands[0].split(" ")[1:]))
             output.append(my.Trigger.cli_run(["--dev"] + commands[1].split(" ")[1:]))
+            output.append(my.Trigger.cli_run(["--dev"] + commands[2].split(" ")[1:]))
+            output.append(my.Trigger.cli_run(["--dev"] + commands[3].split(" ")[1:]))
+            print("\n".join(commands[:4]))
+
+            triggerinfo = os.path.join(dirname, "TriggerInfo.h5")
+            my.Trigger.cli_ensembleinfo(["--dev", "-f", "-o", triggerinfo] + output)
+
+            ret = my.Trigger.cli_job_deltasigma(
+                ["-f", infoname, "-p", 4, "--pushes-per-config", 1, "-o", dirname]
+            )
+            commands = ret["commands"]
+            output = []
+            output.append(my.Trigger.cli_run(["--dev"] + commands[0].split(" ")[1:]))
+            output.append(my.Trigger.cli_run(["--dev"] + commands[1].split(" ")[1:]))
+            output.append(my.Trigger.cli_run(["--dev"] + commands[2].split(" ")[1:]))
+            output.append(my.Trigger.cli_run(["--dev"] + commands[3].split(" ")[1:]))
+            print("\n".join(commands[:4]))
 
             triggerinfo = os.path.join(dirname, "TriggerInfo.h5")
             my.Trigger.cli_ensembleinfo(["--dev", "-f", "-o", triggerinfo] + output)
@@ -44,7 +66,6 @@ class MyTests(unittest.TestCase):
             shutil.rmtree(dirname)
 
         run(classic=False)
-        run(classic=True)
 
 
 if __name__ == "__main__":

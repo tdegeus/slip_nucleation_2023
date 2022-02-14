@@ -24,6 +24,7 @@ from ._version import version
 entry_points = dict(
     cli_run="Trigger_run",
     cli_job_strain="Trigger_JobStrain",
+    cli_job_deltasigma="Trigger_JobDeltaSigma",
     cli_ensembleinfo="Trigger_EnsembleInfo",
 )
 
@@ -43,14 +44,18 @@ def replace_ep(doc: str) -> str:
 
 def cli_run(cli_args=None):
     """
-    Run simulation. The protocol is as follows:
+    Trigger event. The protocol is as follows:
 
-    1.  Restore system at a given increment.
-    2.  Push a specific element and minimise energy.
+    1.  Restore system at a given increment (using `--inc``) or
+        at fixed stress after a system-spanning event (using ``--incc`` and ``--stress``).
+    2.  Store the displacement field (`/disp/0``).
+    3.  Push a specific element and minimise energy.
+    4.  Store the new displacement field (`/disp/1``).
 
-    An option is provided to stop simulation once they become system-spanning.
-    In that case the ``niter`` meta-attribute will be equal to zero,
-    and the displacement field will only be stored under ``restart``.
+    An option is provided to truncate the simulation for example when an event is system-spanning.
+    In that case the ``truncated`` meta-attribute will be ``True``,
+    The displacement field will not correspond to a mechanical equilibrium and the state of
+    the system will be stored under ``restart``.
     """
 
     class MyFmt(
@@ -67,7 +72,7 @@ def cli_run(cli_args=None):
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("--element", type=int, required=True, help="Plastic element to push")
-    parser.add_argument("--inc", type=int, help="Trigger at specific element")
+    parser.add_argument("--inc", type=int, help="Trigger at specific increment")
     parser.add_argument("--incc", type=int, required=True, help="Last system-spanning event")
     parser.add_argument("--stress", type=float, required=True, help="Trigger stress (real units)")
     parser.add_argument("--truncate-system-spanning", action="store_true", help="Stop large events")
@@ -86,6 +91,8 @@ def cli_run(cli_args=None):
 
     with h5py.File(args.output, "w") as output:
 
+        meta = output.create_group(f"/meta/{progname}")
+
         # (*) Initialise system
 
         with h5py.File(args.input, "r") as file:
@@ -100,9 +107,20 @@ def cli_run(cli_args=None):
                 copy += ["/meta/seed_base", "/meta/normalisation"]
             g5.copy(file, output, copy)
 
+            m = "/meta/{:s}".format(System.entry_points["cli_run"])
+            if "uuid" in file[m].attrs:
+                meta["file_uuid"] = file[m].attrs["uuid"]
+
             if args.inc is not None:
 
                 system.setU(file[f"/disp/{args.inc:d}"])
+
+                d = System.basic_output(system, file, verbose=False)
+                if args.stress:
+                    assert np.isclose(args.stress, d["sigd"][args.inc] * d["sig0"])
+                if args.incc:
+                    i = d["inc"][d["A"] == d["N"]]
+                    assert i[i >= args.incc][1] > args.inc
 
             else:
 
@@ -139,6 +157,8 @@ def cli_run(cli_args=None):
         output["/stored"] = [0, 1]
         output["/kick"] = [False, True]
 
+        # in case that the event was truncated at a given "A":
+        # store state from which a restart from the moment of truncation is possible
         if niter == 0:
             output["/restart/u"] = system.u()
             output["/restart/v"] = system.v()
@@ -150,7 +170,6 @@ def cli_run(cli_args=None):
 
         print("done:", args.output, ", niter = ", niter)
 
-        meta = output.create_group(f"/meta/{progname}")
         meta.attrs["file"] = os.path.basename(args.input)
         meta.attrs["filepath"] = args.input
         meta.attrs["version"] = version
@@ -171,7 +190,7 @@ def cli_run(cli_args=None):
 
 def cli_ensembleinfo(cli_args=None):
     """
-    Read basic info from pushes.
+    Read and store basic info from individual pushes.
     """
 
     class MyFmt(
@@ -187,10 +206,11 @@ def cli_ensembleinfo(cli_args=None):
     progname = entry_points[funcname]
     output = file_defaults[funcname]
 
+    h = "Basic EnsembleInfo (not read, only its path is used to find where source files are stored)"
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
-    parser.add_argument("-e", "--ensembleinfo", type=str, help="Basic EnsembleInfo")
+    parser.add_argument("-e", "--ensembleinfo", type=str, help=h)
     parser.add_argument("files", nargs="*", type=str, help="Files to read")
 
     args = tools._parse(parser, cli_args)
@@ -273,9 +293,12 @@ def cli_ensembleinfo(cli_args=None):
         meta.attrs["dependencies"] = System.dependencies(model)
 
 
-def cli_job_strain(cli_args=None):
+def cli_job_deltasigma(cli_args=None):
     """
-    Create jobs to run at fixed strain intervals between system-spanning events.
+    Create jobs to trigger at fixed stress increase after the last system-spanning event.
+    Thereby: ``delta_sigma = (sigma_top - sigma_bottom) / (pushes - 1)``, with pushes at
+    ``sigma_c[i] +  * delta_sigma`` with ``j = 0, 1, ...``
+    The highest stress is thereby always lower than that where the next system spanning event.
     """
 
     class MyFmt(
@@ -289,13 +312,161 @@ def cli_job_strain(cli_args=None):
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
 
-    parser.add_argument("--conda", type=str, default=slurm.default_condabase, help="Basename")
+    h = "#elements triggered per configuration"
+    parser.add_argument("--conda", type=str, default=slurm.default_condabase, help="Env-basename")
     parser.add_argument("--truncate-system-spanning", action="store_true", help="Stop large events")
-    parser.add_argument("-e", "--estep", type=int, default=365, help="Elements between triggers")
+    parser.add_argument("--pushes-per-config", type=int, default=3, help=h)
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument("-n", "--group", type=int, default=50, help="#pushes to group")
     parser.add_argument("-o", "--outdir", type=str, default=".", help="Output directory")
-    parser.add_argument("-p", "--pushes", type=int, default=11, help="#pushes between ss-events")
+    parser.add_argument("-p", "--pushes", type=int, default=10, help="#pushes")
+    parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
+    parser.add_argument("ensembleinfo", type=str, help="EnsembleInfo (read-only)")
+
+    args = tools._parse(parser, cli_args)
+    assert os.path.isfile(args.ensembleinfo)
+    assert os.path.isdir(args.outdir)
+
+    basedir = os.path.dirname(args.ensembleinfo)
+    executable = entry_points["cli_run"]
+
+    with h5py.File(args.ensembleinfo, "r") as file:
+
+        files = [os.path.join(basedir, f) for f in file["/files"].asstr()[...]]
+        N = file["/normalisation/N"][...]
+        sig0 = file["/normalisation/sig0"][...]
+        A = file["/avalanche/A"][...]
+        inc = file["/avalanche/inc"][...]
+        sigd = file["/avalanche/sigd"][...]
+        ifile = file["/avalanche/file"][...]
+        inc_loading = file["/loading/inc"][...]
+        sigd_loading = file["/loading/sigd"][...]
+        ifile_loading = file["/loading/file"][...]
+        sig_bot = file["/averages/sigd_bottom"][...]
+        sig_top = file["/averages/sigd_top"][...]
+        delta_sig = (sig_top - sig_bot) / (args.pushes - 1)
+
+    keep = A == N
+    inc = inc[keep]
+    sigd = sigd[keep]
+    ifile = ifile[keep]
+    inc_loading = inc_loading[keep]
+    sigd_loading = sigd_loading[keep]
+    ifile_loading = ifile_loading[keep]
+    assert all(inc - 1 == inc_loading)
+    elements = np.linspace(0, N + 1, args.pushes_per_config + 1)[:-1].astype(int)
+
+    commands = []
+    outfiles = []
+    basecommand = [executable]
+    meta_sigma = []
+    meta_deltasigma = []
+
+    if args.truncate_system_spanning:
+        basecommand += ["--truncate-system-spanning"]
+
+    for i in range(sigd.size - 1):
+
+        if ifile[i] != ifile_loading[i + 1]:
+            continue
+
+        filepath = files[ifile[i]]
+        simid = os.path.basename(os.path.splitext(filepath)[0])
+        assert sigd_loading[i + 1] > sigd[i]
+        stress = sigd[i] + delta_sig * np.arange(100, dtype=float)
+        stress = stress[stress < sigd_loading[i + 1]] * sig0
+        meta_sigma += (stress / sig0).tolist()
+        meta_deltasigma += ((stress - sigd[i]) / sig0).tolist()
+
+        # directly after system-spanning events
+        for e in elements:
+            bse = f"deltasigma=00_pushes={args.pushes:02d}"
+            out = f"{bse}_{simid}_incc={inc[i]:d}_element={e:d}.h5"
+            cmd = " ".join(
+                basecommand
+                + [
+                    "-f",
+                    f"--inc {inc[i]:d}",
+                    f"--incc {inc[i]:d}",
+                    f"--element {e:d}",
+                    f"--stress {stress[0]:.8e}",
+                    f"--input {filepath:s}",
+                    f"--output {out:s}",
+                ]
+            )
+            commands.append(cmd)
+            outfiles.append(out)
+
+        # intermediate stresses
+        for istress, s in enumerate(stress[1:]):
+            for e in elements:
+                bse = f"deltasigma={istress + 1:02d}_pushes={args.pushes:02d}"
+                out = f"{bse}_{simid}_incc={inc[i]:d}_element={e:d}.h5"
+                cmd = " ".join(
+                    basecommand
+                    + [
+                        "-f",
+                        f"--incc {inc[i]:d}",
+                        f"--element {e:d}",
+                        f"--stress {s:.8e}",
+                        f"--input {filepath:s}",
+                        f"--output {out:s}",
+                    ]
+                )
+                commands.append(cmd)
+                outfiles.append(out)
+
+    if not args.force:
+        if any([os.path.isfile(i) for i in outfiles]):
+            if not click.confirm("Overwrite output files?"):
+                raise OSError("Cancelled")
+
+    if cli_args is not None:
+        return dict(
+            commands=[i.replace("--output ", f"--output {args.outdir}/") for i in commands],
+            sigma=np.array(meta_sigma),
+            delta_sigma=np.array(meta_deltasigma),
+        )
+
+    slurm.serial_group(
+        commands,
+        basename=executable,
+        group=args.group,
+        outdir=args.outdir,
+        conda=dict(condabase=args.conda),
+        sbatch={"time": args.time},
+    )
+
+
+def cli_job_strain(cli_args=None):
+    """
+    Create jobs to trigger at fixed intervals between system-spanning events.
+    The stress interval between two system spanning events is
+    ``delta_sigma_i = (sigma_n[i] - sigma_c[i]) / (pushes + 1)``
+    with pushes at ``j * delta_sigma_i`` with ``j = 0, 1, ..., pushes``.
+    This implies that there is no push that coincides with the next system-spanning event.
+    """
+
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+
+    h = "#elements triggered per configuration"
+    parser.add_argument("--conda", type=str, default=slurm.default_condabase, help="Env-basename")
+    parser.add_argument("--truncate-system-spanning", action="store_true", help="Stop large events")
+    parser.add_argument("--pushes-per-config", type=int, default=3, help=h)
+    parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
+    parser.add_argument("-n", "--group", type=int, default=50, help="#pushes to group")
+    parser.add_argument("-o", "--outdir", type=str, default=".", help="Output directory")
+    parser.add_argument("-p", "--pushes", type=int, default=10, help="#pushes")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
     parser.add_argument("ensembleinfo", type=str, help="EnsembleInfo (read-only)")
@@ -328,12 +499,12 @@ def cli_job_strain(cli_args=None):
     sigd_loading = sigd_loading[keep]
     ifile_loading = ifile_loading[keep]
     assert all(inc - 1 == inc_loading)
-    elements = args.estep * np.arange(100, dtype=int)
-    elements = elements[elements < N]
+    elements = np.linspace(0, N + 1, args.pushes_per_config + 1)[:-1].astype(int)
 
     commands = []
     outfiles = []
     basecommand = [executable]
+    meta_sigma = []
 
     if args.truncate_system_spanning:
         basecommand += ["--truncate-system-spanning"]
@@ -346,28 +517,12 @@ def cli_job_strain(cli_args=None):
         filepath = files[ifile[i]]
         simid = os.path.basename(os.path.splitext(filepath)[0])
         assert sigd_loading[i + 1] > sigd[i]
-        stress = np.linspace(sigd[i], sigd_loading[i + 1], args.pushes) * sig0
+        stress = np.linspace(sigd[i], sigd_loading[i + 1], args.pushes + 1) * sig0
+        meta_sigma += (stress[:-1] / sig0).tolist()
 
-        for istress, s in enumerate(stress[1:-1]):
-            for e in elements:
-                bse = f"strain={istress + 1:02d}d{args.pushes - 1:02d}"
-                out = f"{bse}_{simid}_incc={inc[i]:d}_element={e:d}.h5"
-                cmd = " ".join(
-                    basecommand
-                    + [
-                        "-f",
-                        f"--incc {inc[i]:d}",
-                        f"--element {e:d}",
-                        f"--stress {s:.8e}",
-                        f"--input {filepath:s}",
-                        f"--output {out:s}",
-                    ]
-                )
-                commands.append(cmd)
-                outfiles.append(out)
-
+        # directly after system-spanning events
         for e in elements:
-            bse = f"strain=00d{args.pushes - 1:02d}"
+            bse = f"strain=00_pushes={args.pushes:02d}"
             out = f"{bse}_{simid}_incc={inc[i]:d}_element={e:d}.h5"
             cmd = " ".join(
                 basecommand
@@ -384,23 +539,24 @@ def cli_job_strain(cli_args=None):
             commands.append(cmd)
             outfiles.append(out)
 
-        for e in elements:
-            bse = f"strain={args.pushes - 1:02d}d{args.pushes - 1:02d}"
-            out = f"{bse}_{simid}_incc={inc[i]:d}_element={e:d}.h5"
-            cmd = " ".join(
-                basecommand
-                + [
-                    "-f",
-                    f"--inc {inc[i + 1]:d}",
-                    f"--incc {inc[i]:d}",
-                    f"--element {e:d}",
-                    f"--stress {stress[-1]:.8e}",
-                    f"--input {filepath:s}",
-                    f"--output {out:s}",
-                ]
-            )
-            commands.append(cmd)
-            outfiles.append(out)
+        # intermediate stresses
+        for istress, s in enumerate(stress[1:-1]):
+            for e in elements:
+                bse = f"strain={istress + 1:02d}_pushes={args.pushes:02d}"
+                out = f"{bse}_{simid}_incc={inc[i]:d}_element={e:d}.h5"
+                cmd = " ".join(
+                    basecommand
+                    + [
+                        "-f",
+                        f"--incc {inc[i]:d}",
+                        f"--element {e:d}",
+                        f"--stress {s:.8e}",
+                        f"--input {filepath:s}",
+                        f"--output {out:s}",
+                    ]
+                )
+                commands.append(cmd)
+                outfiles.append(out)
 
     if not args.force:
         if any([os.path.isfile(i) for i in outfiles]):
@@ -408,7 +564,10 @@ def cli_job_strain(cli_args=None):
                 raise OSError("Cancelled")
 
     if cli_args is not None:
-        return [i.replace("--output ", f"--output {args.outdir}/") for i in commands]
+        return dict(
+            commands=[i.replace("--output ", f"--output {args.outdir}/") for i in commands],
+            sigma=np.array(meta_sigma),
+        )
 
     slurm.serial_group(
         commands,
