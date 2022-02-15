@@ -684,6 +684,9 @@ def steadystate(
     :return: Increment number.
     """
 
+    if sigd.size <= 2:
+        return None
+
     tangent = np.empty_like(sigd)
     tangent[0] = np.inf
     tangent[1:] = (sigd[1:] - sigd[0]) / (epsd[1:] - epsd[0])
