@@ -19,6 +19,7 @@ from . import slurm
 from . import System
 from . import tag
 from . import tools
+from . import storage
 from ._version import version
 
 entry_points = dict(
@@ -72,120 +73,63 @@ def cli_run(cli_args=None):
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("--element", type=int, required=True, help="Plastic element to push")
-    parser.add_argument("--inc", type=int, help="Trigger at specific increment")
-    parser.add_argument("--incc", type=int, required=True, help="Last system-spanning event")
-    parser.add_argument("--stress", type=float, required=True, help="Trigger stress (real units)")
     parser.add_argument("--truncate-system-spanning", action="store_true", help="Stop large events")
-    parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
-    parser.add_argument("-i", "--input", type=str, help="Simulation (read-only)")
-    parser.add_argument("-o", "--output", type=str, required=True, help="Output file (overwritten)")
+    parser.add_argument("--silent", action="store_true", help="No screen output")
     parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("file", type=str, help="Input/output file")
 
     args = tools._parse(parser, cli_args)
-    assert os.path.isfile(args.input)
-    assert os.path.realpath(args.input) != os.path.realpath(args.output)
+    assert os.path.isfile(args.file)
     assert args.develop or not tag.has_uncommitted(version)
-    tools._check_overwrite_file(args.output, args.force)
 
-    print("starting:", args.output)
+    pbar = tqdm.tqdm(total=1, disable=args.silent)
+    pbar.set_description(args.file)
 
-    with h5py.File(args.output, "w") as output:
+    with h5py.File(args.file, "a") as file:
 
-        meta = output.create_group(f"/meta/{progname}")
-
-        # (*) Initialise system
-
-        with h5py.File(args.input, "r") as file:
-
-            system = System.init(file)
-            eps_kick = file["/run/epsd/kick"][...]
-
-            copy = ["/run/dt"]
-            if "uuid" in file:
-                copy += ["/uuid"]
-            else:
-                copy += ["/meta/seed_base", "/meta/normalisation"]
-            g5.copy(file, output, copy)
-
-            m = "/meta/{:s}".format(System.entry_points["cli_run"])
-            if "uuid" in file[m].attrs:
-                meta["file_uuid"] = file[m].attrs["uuid"]
-
-            if args.inc is not None:
-
-                system.setU(file[f"/disp/{args.inc:d}"])
-
-                d = System.basic_output(system, file, verbose=False)
-                if args.stress:
-                    assert np.isclose(args.stress, d["sigd"][args.inc] * d["sig0"])
-                if args.incc:
-                    i = d["inc"][d["A"] == d["N"]]
-                    assert i[i >= args.incc][1] > args.inc
-
-            else:
-
-                # determine at which increment a push could be applied
-
-                inc_system, inc_push = System.pushincrements(system, file, args.stress)
-
-                # reload specific increment based on target stress and system-spanning increment
-
-                assert args.incc in inc_system
-                i = np.argmax(np.logical_and(args.incc == inc_system, args.incc <= inc_push))
-                inc = inc_push[i]
-                assert args.incc == inc_system[i]
-
-                system.setU(file[f"/disp/{inc:d}"])
-                idx_n = system.plastic_CurrentIndex()
-                system.addSimpleShearToFixedStress(args.stress)
-                idx = system.plastic_CurrentIndex()
-                assert np.all(idx == idx_n)
-
-        # (*) Apply push and minimise energy
-
-        output["/disp/0"] = system.u()
+        system = System.init(file)
+        inc = int(file["/stored"][-1])
+        deps = file["/run/epsd/kick"][...]
+        System._restore_inc(file, system, inc)
         idx_n = system.plastic_CurrentIndex()[:, 0]
 
-        system.triggerElementWithLocalSimpleShear(eps_kick, args.element)
+        system.triggerElementWithLocalSimpleShear(deps, args.element)
 
         if args.truncate_system_spanning:
             niter = system.minimise_truncate(idx_n=idx_n, A_truncate=system.plastic().size)
         else:
             niter = system.minimise()
 
-        output["/disp/1"] = system.u()
-        output["/stored"] = [0, 1]
-        output["/kick"] = [False, True]
+        inc += 1
+        storage.dset_extend1d(file, "/stored", inc, inc)
+        storage.dset_extend1d(file, "/t", inc, system.t())
+        storage.dset_extend1d(file, "/kick", inc, True)
+        file[f"/disp/{inc:d}"] = system.u()
+        file.flush()
 
         # in case that the event was truncated at a given "A":
         # store state from which a restart from the moment of truncation is possible
         if niter == 0:
-            output["/restart/u"] = system.u()
-            output["/restart/v"] = system.v()
-            output["/restart/a"] = system.a()
-            output["/restart/t"] = system.t()
+            file["/restart/u"] = system.u()
+            file["/restart/v"] = system.v()
+            file["/restart/a"] = system.a()
+            file["/restart/t"] = system.t()
 
         idx = system.plastic_CurrentIndex()[:, 0].astype(int)
         idx_n = idx_n.astype(int)
 
-        print("done:", args.output, ", niter = ", niter)
+        if not args.silent:
+            pbar.n = niter
+            pbar.refresh()
 
-        meta.attrs["file"] = os.path.basename(args.input)
-        meta.attrs["filepath"] = args.input
-        meta.attrs["version"] = version
-        meta.attrs["dependencies"] = System.dependencies(model)
+        meta = System.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
         meta.attrs["truncated"] = niter == 0
-        meta.attrs["target_stress"] = args.stress
-        meta.attrs["target_inc_system"] = args.incc
-        meta.attrs["target_element"] = args.element
-        if args.inc is not None:
-            meta.attrs["target_inc"] = args.inc
         meta.attrs["niter"] = niter
+        meta.attrs["element"] = args.element
         meta.attrs["S"] = np.sum(idx - idx_n)
         meta.attrs["A"] = np.sum(idx != idx_n)
 
-    if cli_args is not None:
-        return args.output
+    return args.file
 
 
 def cli_ensembleinfo(cli_args=None):
@@ -206,11 +150,9 @@ def cli_ensembleinfo(cli_args=None):
     progname = entry_points[funcname]
     output = file_defaults[funcname]
 
-    h = "Basic EnsembleInfo (not read, only its path is used to find where source files are stored)"
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
-    parser.add_argument("-e", "--ensembleinfo", type=str, help=h)
     parser.add_argument("files", nargs="*", type=str, help="Files to read")
 
     args = tools._parse(parser, cli_args)
@@ -229,35 +171,30 @@ def cli_ensembleinfo(cli_args=None):
         sigd0=[],
         truncated=[],
         element=[],
-        inc_c=[],
-        file=[],
         version=[],
         dependencies=[],
+        file=[],
+        inc=[],
+        incc=[],
+        stress=[],
     )
 
     for i, filepath in enumerate(tqdm.tqdm(args.files)):
 
         with h5py.File(filepath, "r") as file:
 
-            meta = file[f"/meta/{entry_points['cli_run']}"]
-            sourcepath = meta.attrs["filepath"]
-
-            if not os.path.isfile(sourcepath):
-                assert args.ensembleinfo
-                basedir = os.path.dirname(args.ensembleinfo)
-                sourcepath = os.path.join(basedir, os.path.basename(sourcepath))
-                assert os.path.isfile(sourcepath)
-
-            with h5py.File(sourcepath, "r") as source:
-
-                if i == 0:
-                    system = System.init(source)
-                else:
-                    system.reset_epsy(System.read_epsy(source))
+            if i == 0:
+                system = System.init(file)
+            else:
+                system.reset_epsy(System.read_epsy(file))
 
             out = System.basic_output(system, file, verbose=False)
+
+            meta = file[f"/meta/{entry_points['cli_run']}"]
             assert out["S"][1] == meta.attrs["S"]
             assert out["A"][1] == meta.attrs["A"]
+
+            meta_branch = file["/meta/branch_fixed_stress"]
 
             ret["S"].append(out["S"][1])
             ret["A"].append(out["A"][1])
@@ -267,11 +204,13 @@ def cli_ensembleinfo(cli_args=None):
             ret["sigd"].append(out["epsd"][1])
             ret["sigd0"].append(out["epsd"][0])
             ret["truncated"].append(meta.attrs["truncated"])
-            ret["element"].append(meta.attrs["target_element"])
-            ret["inc_c"].append(meta.attrs["target_inc_system"])
-            ret["file"].append(meta.attrs["file"])
+            ret["element"].append(meta.attrs["element"])
             ret["version"].append(meta.attrs["version"])
             ret["dependencies"].append(";".join(meta.attrs["dependencies"]))
+            ret["file"].append(meta_branch.attrs["file"])
+            ret["inc"].append(meta_branch.attrs["inc"] if "inc" in meta_branch.attrs else int(-1))
+            ret["incc"].append(meta_branch.attrs["incc"] if "incc" in meta_branch.attrs else int(-1))
+            ret["stress"].append(meta_branch.attrs["stress"] if "stress" in meta_branch.attrs else int(-1))
 
     with h5py.File(args.output, "w") as output:
 
@@ -291,6 +230,48 @@ def cli_ensembleinfo(cli_args=None):
         meta = output.create_group(f"/meta/{progname}")
         meta.attrs["version"] = version
         meta.attrs["dependencies"] = System.dependencies(model)
+
+
+def _write(ret: dict, basename: str, **kwargs):
+
+    if not kwargs["force"]:
+        if any([os.path.isfile(i) for i in ret["dest"]]):
+            if not click.confirm("Overwrite output files?"):
+                raise OSError("Cancelled")
+
+    for i in tqdm.tqdm(range(len(ret["command"]))):
+
+        s = ret["source"][i]
+        d = os.path.join(kwargs["outdir"], ret["dest"][i])
+
+        with h5py.File(s, "r") as source, h5py.File(d, "w") as dest:
+
+            if i == 0:
+                system = System.init(source)
+                initialise = False
+            else:
+                initialise = ret["source"][i] != ret["source"][i - 1]
+
+            System.branch_fixed_stress(
+                source = source,
+                dest = dest,
+                inc = ret["inc"][i],
+                incc = ret["incc"][i],
+                stress = ret["stress"][i],
+                normalised = True,
+                system = system,
+                initialise = initialise,
+                dev = kwargs["develop"],
+            )
+
+    slurm.serial_group(
+        ret["command"],
+        basename=basename,
+        group=kwargs["group"],
+        outdir=kwargs["outdir"],
+        conda=dict(condabase=kwargs["conda"]),
+        sbatch={"time": kwargs["time"]},
+    )
 
 
 def cli_job_deltasigma(cli_args=None):
@@ -314,8 +295,9 @@ def cli_job_deltasigma(cli_args=None):
 
     h = "#elements triggered per configuration"
     parser.add_argument("--conda", type=str, default=slurm.default_condabase, help="Env-basename")
-    parser.add_argument("--truncate-system-spanning", action="store_true", help="Stop large events")
+    parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("--pushes-per-config", type=int, default=3, help=h)
+    parser.add_argument("--truncate-system-spanning", action="store_true", help="Stop large events")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument("-n", "--group", type=int, default=50, help="#pushes to group")
     parser.add_argument("-o", "--outdir", type=str, default=".", help="Output directory")
@@ -357,12 +339,16 @@ def cli_job_deltasigma(cli_args=None):
     assert all(inc - 1 == inc_loading)
     elements = np.linspace(0, N + 1, args.pushes_per_config + 1)[:-1].astype(int)
 
-    commands = []
-    outfiles = []
-    basecommand = [executable]
-    meta_sigma = []
-    meta_deltasigma = []
+    ret = dict(
+        command = [],
+        source = [],
+        dest = [],
+        inc = [],
+        incc = [],
+        stress = [],
+    )
 
+    basecommand = [executable]
     if args.truncate_system_spanning:
         basecommand += ["--truncate-system-spanning"]
 
@@ -375,68 +361,35 @@ def cli_job_deltasigma(cli_args=None):
         simid = os.path.basename(os.path.splitext(filepath)[0])
         assert sigd_loading[i + 1] > sigd[i]
         stress = sigd[i] + delta_sig * np.arange(100, dtype=float)
-        stress = stress[stress < sigd_loading[i + 1]] * sig0
-        meta_sigma += (stress / sig0).tolist()
-        meta_deltasigma += ((stress - sigd[i]) / sig0).tolist()
+        stress = stress[stress < sigd_loading[i + 1]]
 
         # directly after system-spanning events
         for e in elements:
             bse = f"deltasigma=00_pushes={args.pushes:02d}"
             out = f"{bse}_{simid}_incc={inc[i]:d}_element={e:d}.h5"
-            cmd = " ".join(
-                basecommand
-                + [
-                    "-f",
-                    f"--inc {inc[i]:d}",
-                    f"--incc {inc[i]:d}",
-                    f"--element {e:d}",
-                    f"--stress {stress[0]:.8e}",
-                    f"--input {filepath:s}",
-                    f"--output {out:s}",
-                ]
-            )
-            commands.append(cmd)
-            outfiles.append(out)
+            ret["command"].append(" ".join(basecommand + [f"--element {e:d}", f"{out:s}"]))
+            ret["source"].append(filepath)
+            ret["dest"].append(out)
+            ret["inc"].append(inc[i])
+            ret["incc"].append(inc[i])
+            ret["stress"].append(stress[0])
 
         # intermediate stresses
         for istress, s in enumerate(stress[1:]):
             for e in elements:
                 bse = f"deltasigma={istress + 1:02d}_pushes={args.pushes:02d}"
                 out = f"{bse}_{simid}_incc={inc[i]:d}_element={e:d}.h5"
-                cmd = " ".join(
-                    basecommand
-                    + [
-                        "-f",
-                        f"--incc {inc[i]:d}",
-                        f"--element {e:d}",
-                        f"--stress {s:.8e}",
-                        f"--input {filepath:s}",
-                        f"--output {out:s}",
-                    ]
-                )
-                commands.append(cmd)
-                outfiles.append(out)
-
-    if not args.force:
-        if any([os.path.isfile(i) for i in outfiles]):
-            if not click.confirm("Overwrite output files?"):
-                raise OSError("Cancelled")
+                ret["command"].append(" ".join(basecommand + [f"--element {e:d}", f"{out:s}"]))
+                ret["source"].append(filepath)
+                ret["dest"].append(out)
+                ret["inc"].append(None)
+                ret["incc"].append(inc[i])
+                ret["stress"].append(s)
 
     if cli_args is not None:
-        return dict(
-            commands=[i.replace("--output ", f"--output {args.outdir}/") for i in commands],
-            sigma=np.array(meta_sigma),
-            delta_sigma=np.array(meta_deltasigma),
-        )
+        return ret, vars(args)
 
-    slurm.serial_group(
-        commands,
-        basename=executable,
-        group=args.group,
-        outdir=args.outdir,
-        conda=dict(condabase=args.conda),
-        sbatch={"time": args.time},
-    )
+    _write(ret, executable, vars(args))
 
 
 def cli_job_strain(cli_args=None):
@@ -461,8 +414,9 @@ def cli_job_strain(cli_args=None):
 
     h = "#elements triggered per configuration"
     parser.add_argument("--conda", type=str, default=slurm.default_condabase, help="Env-basename")
-    parser.add_argument("--truncate-system-spanning", action="store_true", help="Stop large events")
+    parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("--pushes-per-config", type=int, default=3, help=h)
+    parser.add_argument("--truncate-system-spanning", action="store_true", help="Stop large events")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument("-n", "--group", type=int, default=50, help="#pushes to group")
     parser.add_argument("-o", "--outdir", type=str, default=".", help="Output directory")
@@ -501,11 +455,16 @@ def cli_job_strain(cli_args=None):
     assert all(inc - 1 == inc_loading)
     elements = np.linspace(0, N + 1, args.pushes_per_config + 1)[:-1].astype(int)
 
-    commands = []
-    outfiles = []
-    basecommand = [executable]
-    meta_sigma = []
+    ret = dict(
+        command = [],
+        source = [],
+        dest = [],
+        inc = [],
+        incc = [],
+        stress = [],
+    )
 
+    basecommand = [executable]
     if args.truncate_system_spanning:
         basecommand += ["--truncate-system-spanning"]
 
@@ -517,63 +476,34 @@ def cli_job_strain(cli_args=None):
         filepath = files[ifile[i]]
         simid = os.path.basename(os.path.splitext(filepath)[0])
         assert sigd_loading[i + 1] > sigd[i]
-        stress = np.linspace(sigd[i], sigd_loading[i + 1], args.pushes + 1) * sig0
-        meta_sigma += (stress[:-1] / sig0).tolist()
+        stress = np.linspace(sigd[i], sigd_loading[i + 1], args.pushes + 1)
 
         # directly after system-spanning events
         for e in elements:
             bse = f"strain=00_pushes={args.pushes:02d}"
             out = f"{bse}_{simid}_incc={inc[i]:d}_element={e:d}.h5"
-            cmd = " ".join(
-                basecommand
-                + [
-                    "-f",
-                    f"--inc {inc[i]:d}",
-                    f"--incc {inc[i]:d}",
-                    f"--element {e:d}",
-                    f"--stress {stress[0]:.8e}",
-                    f"--input {filepath:s}",
-                    f"--output {out:s}",
-                ]
-            )
-            commands.append(cmd)
-            outfiles.append(out)
+            ret["command"].append(" ".join(basecommand + [f"--element {e:d}", f"{out:s}"]))
+            ret["source"].append(filepath)
+            ret["dest"].append(out)
+            ret["inc"].append(inc[i])
+            ret["incc"].append(inc[i])
+            ret["stress"].append(stress[0])
 
         # intermediate stresses
         for istress, s in enumerate(stress[1:-1]):
             for e in elements:
                 bse = f"strain={istress + 1:02d}_pushes={args.pushes:02d}"
                 out = f"{bse}_{simid}_incc={inc[i]:d}_element={e:d}.h5"
-                cmd = " ".join(
-                    basecommand
-                    + [
-                        "-f",
-                        f"--incc {inc[i]:d}",
-                        f"--element {e:d}",
-                        f"--stress {s:.8e}",
-                        f"--input {filepath:s}",
-                        f"--output {out:s}",
-                    ]
-                )
-                commands.append(cmd)
-                outfiles.append(out)
-
-    if not args.force:
-        if any([os.path.isfile(i) for i in outfiles]):
-            if not click.confirm("Overwrite output files?"):
-                raise OSError("Cancelled")
+                ret["command"].append(" ".join(basecommand + [f"--element {e:d}", f"{out:s}"]))
+                ret["source"].append(filepath)
+                ret["dest"].append(out)
+                ret["inc"].append(None)
+                ret["incc"].append(inc[i])
+                ret["stress"].append(s)
 
     if cli_args is not None:
-        return dict(
-            commands=[i.replace("--output ", f"--output {args.outdir}/") for i in commands],
-            sigma=np.array(meta_sigma),
-        )
+        return ret, vars(args)
 
-    slurm.serial_group(
-        commands,
-        basename=executable,
-        group=args.group,
-        outdir=args.outdir,
-        conda=dict(condabase=args.conda),
-        sbatch={"time": args.time},
-    )
+    _write(ret, executable, vars(args))
+
+
