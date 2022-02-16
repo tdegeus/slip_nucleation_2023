@@ -10,16 +10,15 @@ import textwrap
 
 import click
 import FrictionQPotFEM.UniformSingleLayer2d as model
-import GooseHDF5 as g5
 import h5py
 import numpy as np
 import tqdm
 
 from . import slurm
+from . import storage
 from . import System
 from . import tag
 from . import tools
-from . import storage
 from ._version import version
 
 entry_points = dict(
@@ -194,7 +193,7 @@ def cli_ensembleinfo(cli_args=None):
             assert out["S"][1] == meta.attrs["S"]
             assert out["A"][1] == meta.attrs["A"]
 
-            meta_branch = file["/meta/branch_fixed_stress"]
+            branch = file["/meta/branch_fixed_stress"]
 
             ret["S"].append(out["S"][1])
             ret["A"].append(out["A"][1])
@@ -207,10 +206,10 @@ def cli_ensembleinfo(cli_args=None):
             ret["element"].append(meta.attrs["element"])
             ret["version"].append(meta.attrs["version"])
             ret["dependencies"].append(";".join(meta.attrs["dependencies"]))
-            ret["file"].append(meta_branch.attrs["file"])
-            ret["inc"].append(meta_branch.attrs["inc"] if "inc" in meta_branch.attrs else int(-1))
-            ret["incc"].append(meta_branch.attrs["incc"] if "incc" in meta_branch.attrs else int(-1))
-            ret["stress"].append(meta_branch.attrs["stress"] if "stress" in meta_branch.attrs else int(-1))
+            ret["file"].append(branch.attrs["file"])
+            ret["inc"].append(branch.attrs["inc"] if "inc" in branch.attrs else int(-1))
+            ret["incc"].append(branch.attrs["incc"] if "incc" in branch.attrs else int(-1))
+            ret["stress"].append(branch.attrs["stress"] if "stress" in branch.attrs else int(-1))
 
     with h5py.File(args.output, "w") as output:
 
@@ -253,15 +252,15 @@ def _write(ret: dict, basename: str, **kwargs):
                 initialise = ret["source"][i] != ret["source"][i - 1]
 
             System.branch_fixed_stress(
-                source = source,
-                dest = dest,
-                inc = ret["inc"][i],
-                incc = ret["incc"][i],
-                stress = ret["stress"][i],
-                normalised = True,
-                system = system,
-                initialise = initialise,
-                dev = kwargs["develop"],
+                source=source,
+                dest=dest,
+                inc=ret["inc"][i],
+                incc=ret["incc"][i],
+                stress=ret["stress"][i],
+                normalised=True,
+                system=system,
+                initialise=initialise,
+                dev=kwargs["develop"],
             )
 
     slurm.serial_group(
@@ -317,7 +316,6 @@ def cli_job_deltasigma(cli_args=None):
 
         files = [os.path.join(basedir, f) for f in file["/files"].asstr()[...]]
         N = file["/normalisation/N"][...]
-        sig0 = file["/normalisation/sig0"][...]
         A = file["/avalanche/A"][...]
         inc = file["/avalanche/inc"][...]
         sigd = file["/avalanche/sigd"][...]
@@ -340,12 +338,12 @@ def cli_job_deltasigma(cli_args=None):
     elements = np.linspace(0, N + 1, args.pushes_per_config + 1)[:-1].astype(int)
 
     ret = dict(
-        command = [],
-        source = [],
-        dest = [],
-        inc = [],
-        incc = [],
-        stress = [],
+        command=[],
+        source=[],
+        dest=[],
+        inc=[],
+        incc=[],
+        stress=[],
     )
 
     basecommand = [executable]
@@ -436,7 +434,6 @@ def cli_job_strain(cli_args=None):
 
         files = [os.path.join(basedir, f) for f in file["/files"].asstr()[...]]
         N = file["/normalisation/N"][...]
-        sig0 = file["/normalisation/sig0"][...]
         A = file["/avalanche/A"][...]
         inc = file["/avalanche/inc"][...]
         sigd = file["/avalanche/sigd"][...]
@@ -456,12 +453,12 @@ def cli_job_strain(cli_args=None):
     elements = np.linspace(0, N + 1, args.pushes_per_config + 1)[:-1].astype(int)
 
     ret = dict(
-        command = [],
-        source = [],
-        dest = [],
-        inc = [],
-        incc = [],
-        stress = [],
+        command=[],
+        source=[],
+        dest=[],
+        inc=[],
+        incc=[],
+        stress=[],
     )
 
     basecommand = [executable]
@@ -505,5 +502,3 @@ def cli_job_strain(cli_args=None):
         return ret, vars(args)
 
     _write(ret, executable, vars(args))
-
-
