@@ -310,6 +310,7 @@ def generate(
     init_run: bool = True,
     classic: bool = False,
     test_mode: bool = False,
+    dev: bool = False,
 ):
     """
     Generate input file. See :py:func:`read_epsy` for different strategies to store yield strains.
@@ -320,6 +321,7 @@ def generate(
     :param init_run: Initialise for use with :py:func:`run`.
     :param classic: The yield strain are hard-coded in the file, otherwise prrng is used.
     :param test_mode: Run in test mode (smaller chunk).
+    :param dev: Allow uncommitted changes.
     """
 
     assert test_mode or not tag.has_uncommitted(version)
@@ -586,8 +588,7 @@ def generate(
             desc="Basic seed == 'unique' identifier",
         )
 
-        meta = file.create_group(f"/meta/{progname}")
-        meta.attrs["version"] = version
+        create_check_meta(file, f"/meta/{progname}", dev=dev)
 
         if init_run:
 
@@ -641,6 +642,7 @@ def cli_generate(cli_args=None):
             N=args.size,
             seed=i * args.size,
             test_mode=args.develop,
+            dev=args.develop,
         )
 
     executable = entry_points["cli_run"]
@@ -1381,6 +1383,7 @@ def cli_rerun_event(cli_args=None):
     progname = entry_points[funcname]
     output = file_defaults[funcname]
 
+    parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output file")
     parser.add_argument("-i", "--inc", required=True, type=int, help="Increment number")
     parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
@@ -1400,9 +1403,8 @@ def cli_rerun_event(cli_args=None):
         file["r"] = ret["r"]
         file["t"] = ret["t"]
         file["S"] = ret["S"]
-        meta = file.create_group(f"/meta/{progname}")
-        meta.attrs["version"] = version
-        meta.attrs["dependencies"] = dependencies(model)
+
+        meta = create_check_meta(file, f"/meta/{progname}", dev=args.develop)
         meta.attrs["file"] = args.file
         meta.attrs["inc"] = args.inc
         meta.attrs["Smax"] = args.smax if args.smax else sys.maxsize
@@ -1490,6 +1492,7 @@ def cli_rerun_event_collect(cli_args=None):
     progname = entry_points[funcname]
     output = file_defaults[funcname]
 
+    parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
     parser.add_argument("-v", "--version", action="version", version=version)
@@ -1559,5 +1562,4 @@ def cli_rerun_event_collect(cli_args=None):
         file["/dependencies/index"] = index
         file["/dependencies/value"] = [data["dependencies"][i] for i in np.unique(index)]
 
-        meta = file.create_group(f"/meta/{progname}")
-        meta.attrs["version"] = version
+        create_check_meta(file, f"/meta/{progname}", dev=args.develop)
