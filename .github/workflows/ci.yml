@@ -45,6 +45,7 @@ jobs:
       working-directory: tests
       run: |
         python Flow.py
+        python MeasureDynamics.py
         python PinAndTrigger.py
         python slurm.py
         python storage.py

@@ -23,9 +23,9 @@ dependencies:
 - pre-commit
 - python
 - python-cppcolormap
-- python-frictionqpotfem
+- python-frictionqpotfem >=0.17.3
 - python-gmatelastoplasticqpot
-- python-goosefem
+- python-goosefem >=1.1.0
 - python-prrng
 - python-qpot
 - qpot
