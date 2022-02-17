@@ -13,13 +13,6 @@ if os.path.exists(os.path.join(root, "mycode_front", "_version.py")):
 import mycode_front as my  # noqa: E402
 
 
-def getfilebase(path):
-    """
-    Remove directory and extension.
-    """
-    return os.path.splitext(os.path.basename(path))[0]
-
-
 class MyTests(unittest.TestCase):
     def test_small(self):
 
