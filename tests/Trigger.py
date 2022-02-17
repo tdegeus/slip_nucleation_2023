@@ -16,56 +16,49 @@ class MyTests(unittest.TestCase):
     def test_small(self):
         """ """
 
-        def run(classic):
+        dirname = "mytest"
+        idname = "id=0.h5"
+        filename = os.path.join(dirname, idname)
+        infoname = os.path.join(dirname, "EnsembleInfo.h5")
 
-            dirname = "mytest"
-            idname = "id=0.h5"
-            filename = os.path.join(dirname, idname)
-            infoname = os.path.join(dirname, "EnsembleInfo.h5")
+        for file in [filename, infoname]:
+            if os.path.isfile(file):
+                os.remove(file)
 
-            for file in [filename, infoname]:
-                if os.path.isfile(file):
-                    os.remove(file)
+        if not os.path.isdir(dirname):
+            os.makedirs(dirname)
 
-            if not os.path.isdir(dirname):
-                os.makedirs(dirname)
+        N = 9
+        my.System.generate(filename, N=N, test_mode=True, classic=False)
+        my.System.cli_run(["--dev", filename])
+        my.System.cli_ensembleinfo(["--dev", filename, "--output", infoname])
 
-            N = 9
-            my.System.generate(filename, N=N, test_mode=True, classic=classic)
-            my.System.cli_run(["--dev", filename])
-            my.System.cli_ensembleinfo(["--dev", filename, "--output", infoname])
+        n = 6
+        ret = my.Trigger.cli_job_strain(
+            ["--dev", "-f", infoname, "-p", 4, "--pushes-per-config", 1, "-o", dirname, "--nmax", n]
+        )
+        output = []
+        for i in range(n):
+            c = ret["command"][i].split(" ")[1:]
+            c[-1] = os.path.join(dirname, c[-1])
+            output.append(my.Trigger.cli_run(["--dev"] + c))
 
-            ret = my.Trigger.cli_job_strain(
-                ["-f", infoname, "-p", 4, "--pushes-per-config", 1, "-o", dirname]
-            )
-            commands = ret["commands"]
-            output = []
-            output.append(my.Trigger.cli_run(["--dev"] + commands[0].split(" ")[1:]))
-            output.append(my.Trigger.cli_run(["--dev"] + commands[1].split(" ")[1:]))
-            output.append(my.Trigger.cli_run(["--dev"] + commands[2].split(" ")[1:]))
-            output.append(my.Trigger.cli_run(["--dev"] + commands[3].split(" ")[1:]))
-            print("\n".join(commands[:4]))
+        triggerinfo = os.path.join(dirname, "TriggerInfo.h5")
+        my.Trigger.cli_ensembleinfo(["--dev", "-f", "-o", triggerinfo] + output)
 
-            triggerinfo = os.path.join(dirname, "TriggerInfo.h5")
-            my.Trigger.cli_ensembleinfo(["--dev", "-f", "-o", triggerinfo] + output)
+        n = 5
+        ret = my.Trigger.cli_job_deltasigma(
+            ["--dev", "-f", infoname, "-p", 4, "--pushes-per-config", 1, "-o", dirname, "--nmax", n]
+        )
+        for i in range(n):
+            c = ret["command"][i].split(" ")[1:]
+            c[-1] = os.path.join(dirname, c[-1])
+            output.append(my.Trigger.cli_run(["--dev"] + c))
 
-            ret = my.Trigger.cli_job_deltasigma(
-                ["-f", infoname, "-p", 4, "--pushes-per-config", 1, "-o", dirname]
-            )
-            commands = ret["commands"]
-            output = []
-            output.append(my.Trigger.cli_run(["--dev"] + commands[0].split(" ")[1:]))
-            output.append(my.Trigger.cli_run(["--dev"] + commands[1].split(" ")[1:]))
-            output.append(my.Trigger.cli_run(["--dev"] + commands[2].split(" ")[1:]))
-            output.append(my.Trigger.cli_run(["--dev"] + commands[3].split(" ")[1:]))
-            print("\n".join(commands[:4]))
+        triggerinfo = os.path.join(dirname, "TriggerInfo.h5")
+        my.Trigger.cli_ensembleinfo(["--dev", "-f", "-o", triggerinfo] + output)
 
-            triggerinfo = os.path.join(dirname, "TriggerInfo.h5")
-            my.Trigger.cli_ensembleinfo(["--dev", "-f", "-o", triggerinfo] + output)
-
-            shutil.rmtree(dirname)
-
-        run(classic=False)
+        shutil.rmtree(dirname)
 
 
 if __name__ == "__main__":

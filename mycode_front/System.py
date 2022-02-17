@@ -17,6 +17,7 @@ import uuid
 import FrictionQPotFEM.UniformSingleLayer2d as model
 import GMatElastoPlasticQPot.Cartesian2d as GMat
 import GooseFEM
+import GooseHDF5 as g5
 import h5py
 import matplotlib.pyplot as plt
 import numpy as np
@@ -158,6 +159,148 @@ def init(file: h5py.File) -> model.System:
     system.setDt(file["/run/dt"][...])
 
     return system
+
+
+def clone(source: h5py.File, dest: h5py.File) -> list[str]:
+    """
+    Clone a configuration. This clone does not include::
+
+        /stored
+        /t
+        /kick
+        /disp/...
+
+    :param source: Source file.
+    :param dest: Destination file.
+    :return: List of copied datasets.
+    """
+
+    datasets = list(g5.getdatasets(source, fold="/disp"))
+
+    for key in ["/stored", "/t", "/kick", "/disp/..."]:
+        datasets.remove(key)
+
+    g5.copy(source, dest, datasets)
+
+    return datasets
+
+
+def _init_run_state(file: h5py.File):
+    """
+    Initialise as extendible datasets:
+    *   ``"/stored"``: stored increments.
+    *   ``"/t"``: time at the end of the increment.
+    *   ``"/kick"``: kick setting of the increment.
+
+    Furthermore, add a description to ``"/disp"``.
+    """
+
+    desc = 'One entry per item in "/stored".'
+    storage.create_extendible(file, "/stored", np.uint64, desc="List of stored increments")
+    storage.create_extendible(file, "/t", np.float64, desc=f"Time (end of increment). {desc}")
+    storage.create_extendible(file, "/kick", bool, desc=f"Kick used. {desc}")
+
+    storage.dset_extend1d(file, "/stored", 0, 0)
+    storage.dset_extend1d(file, "/t", 0, 0.0)
+    storage.dset_extend1d(file, "/kick", 0, False)
+
+    file["/disp"].attrs["desc"] = f"Displacement {desc}"
+
+
+def branch_fixed_stress(
+    source: h5py.File,
+    dest: h5py.File,
+    inc: int = None,
+    incc: int = None,
+    stress: float = None,
+    normalised: bool = False,
+    system: model.System = None,
+    initialise: bool = True,
+    dev: bool = False,
+):
+    """
+    Branch a configuration at a given:
+    *   Increment (``inc``).
+        If ``incc`` and ``stress`` are supplied they ignored.
+        They are only checked to be consistent with the state at ``inc`` and stored as meta-data.
+    *   Fixed stress after a system spanning event (``incc`` and ``stress``).
+
+    :param source: Source file.
+    :param dest: Destination file.
+    :param inc: Branch at specific increment.
+    :param incc: Branch at fixed stress after this system-spanning event.
+    :param stress: Branch at fixed stress.
+    :param normalised: Assume ``stress`` to be normalised (see ``sig0`` in :py:func:`basic_output`).
+    :param system: The system (optional, specify to avoid reallocation).
+    :param initialise: Read yield strains (otherwise ``system`` is assumed fully initialised).
+    :param dev: Allow uncommitted changes.
+    """
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+
+    if system is None:
+        system = init(source)
+    elif initialise:
+        system.reset_epsy(read_epsy(source))
+
+    data = basic_output(system, source, verbose=False)
+
+    if stress is None:
+        real_stress = None
+        stress = None
+    elif normalised:
+        real_stress = stress * data["sig0"]
+        stress = stress
+    else:
+        real_stress = stress
+        stress = stress / data["sig0"]
+
+    clone(source, dest)
+
+    if inc is not None:
+
+        dest["/disp/0"] = source[f"/disp/{inc:d}"][...]
+
+        if stress is not None:
+            assert np.isclose(stress, data["sigd"][inc])
+        if incc is not None:
+            i = data["inc"][data["A"] == data["N"]]
+            assert i[i >= incc][1] > inc
+
+    else:
+
+        assert incc is not None and stress is not None
+
+        # determine at which increment a push could be applied
+
+        inc_system, inc_push = pushincrements(system, source, real_stress, data)
+
+        # reload specific increment based on target stress and system-spanning increment
+
+        assert incc in inc_system
+        i = np.argmax(np.logical_and(incc == inc_system, incc <= inc_push))
+        load_inc = inc_push[i]
+        assert incc == inc_system[i]
+
+        system.setU(source[f"/disp/{load_inc:d}"])
+        idx_n = system.plastic_CurrentIndex()
+        system.addSimpleShearToFixedStress(real_stress)
+        idx = system.plastic_CurrentIndex()
+        assert np.all(idx == idx_n)
+
+        dest["/disp/0"] = system.u()
+
+    _init_run_state(dest)
+
+    assert f"/meta/{funcname}" not in dest
+    meta = create_check_meta(dest, f"/meta/{funcname}", dev=dev)
+    meta.attrs["file"] = os.path.basename(source.filename)
+    if stress is not None:
+        meta.attrs["stress"] = stress
+    if incc is not None:
+        meta.attrs["incc"] = int(incc)
+    if inc is not None:
+        meta.attrs["inc"] = int(inc)
 
 
 def generate(
@@ -455,19 +598,10 @@ def generate(
                 desc="Strain kick to apply",
             )
 
-            desc = '(end of increment). One entry per item in "/stored".'
-            storage.create_extendible(file, "/stored", np.uint64, desc="List of stored increments")
-            storage.create_extendible(file, "/t", np.float64, desc=f"Time {desc}")
-            storage.create_extendible(file, "/kick", bool, desc=f"Kick {desc}")
-
-            storage.dset_extend1d(file, "/stored", 0, 0)
-            storage.dset_extend1d(file, "/t", 0, 0.0)
-            storage.dset_extend1d(file, "/kick", 0, False)
+            assert np.min(np.diff(read_epsy(file), axis=1)) > file["/run/epsd/kick"][...]
 
             file["/disp/0"] = np.zeros_like(coor)
-            file["/disp"].attrs["desc"] = f"Displacement {desc}"
-
-            assert np.min(np.diff(read_epsy(file), axis=1)) > file["/run/epsd/kick"][...]
+            _init_run_state(file)
 
 
 def cli_generate(cli_args=None):
@@ -1058,7 +1192,10 @@ def cli_ensembleinfo(cli_args=None):
 
 
 def pushincrements(
-    system: model.System, file: h5py.File, target_stress: float
+    system: model.System,
+    file: h5py.File,
+    target_stress: float,
+    output: dict = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     r"""
     Get a list of increment from which the stress can be reached by elastic loading only.
@@ -1066,6 +1203,7 @@ def pushincrements(
     :param system: The system (modified: all increments visited).
     :param file: Open simulation HDF5 archive (read-only).
     :param target_stress: The stress at which to push (in real units).
+    :param output: Output of :py:func:`basic_output` (read if not specified).
     :return:
         ``inc_system`` List of system spanning avalanches.
         ``inc_push`` List of increment from which the stress can be reached by elastic loading only.
@@ -1080,7 +1218,9 @@ def pushincrements(
     assert all(np.logical_not(kick[::2]))
     assert all(kick[1::2])
 
-    output = basic_output(system, file, verbose=False)
+    if output is None:
+        output = basic_output(system, file, verbose=False)
+
     Stress = output["sigd"] * output["sig0"]
     A = output["A"]
     A[: output["steadystate"]] = 0
