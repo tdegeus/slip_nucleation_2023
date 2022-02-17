@@ -185,6 +185,28 @@ def clone(source: h5py.File, dest: h5py.File) -> list[str]:
     return datasets
 
 
+def _init_run_state(file: h5py.File):
+    """
+    Initialise as extendible datasets:
+    *   ``"/stored"``: stored increments.
+    *   ``"/t"``: time at the end of the increment.
+    *   ``"/kick"``: kick setting of the increment.
+
+    Furthermore, add a description to ``"/disp"``.
+    """
+
+    desc = 'One entry per item in "/stored".'
+    storage.create_extendible(file, "/stored", np.uint64, desc="List of stored increments")
+    storage.create_extendible(file, "/t", np.float64, desc=f"Time (end of increment). {desc}")
+    storage.create_extendible(file, "/kick", bool, desc=f"Kick used. {desc}")
+
+    storage.dset_extend1d(file, "/stored", 0, 0)
+    storage.dset_extend1d(file, "/t", 0, 0.0)
+    storage.dset_extend1d(file, "/kick", 0, False)
+
+    file["/disp"].attrs["desc"] = f"Displacement {desc}"
+
+
 def branch_fixed_stress(
     source: h5py.File,
     dest: h5py.File,
@@ -192,22 +214,24 @@ def branch_fixed_stress(
     incc: int = None,
     stress: float = None,
     normalised: bool = False,
-    kick: bool = False,
     system: model.System = None,
     initialise: bool = True,
     dev: bool = False,
 ):
     """
-    Branch a configuration at a given fixed stress.
+    Branch a configuration at a given:
+    *   Increment (``inc``).
+        If ``incc`` and ``stress`` are supplied they ignored.
+        They are only checked to be consistent with the state at ``inc`` and stored as meta-data.
+    *   Fixed stress after a system spanning event (``incc`` and ``stress``).
 
     :param source: Source file.
     :param dest: Destination file.
-    :param inc: Branch at specific increment (``incc`` and ``stress`` are 'ignored').
-    :param incc: Branch at fixed stress of this system-spanning event.
+    :param inc: Branch at specific increment.
+    :param incc: Branch at fixed stress after this system-spanning event.
     :param stress: Branch at fixed stress.
-    :param normalised: Assume ``stress`` to be normalised (see :py:func:`basic_output`).
-    :param kick: Value for ``kick`` of the first increment of the branched simulation.
-    :param system: The system.
+    :param normalised: Assume ``stress`` to be normalised (see ``sig0`` in :py:func:`basic_output`).
+    :param system: The system (optional, specify to avoid reallocation).
     :param initialise: Read yield strains (otherwise ``system`` is assumed fully initialised).
     :param dev: Allow uncommitted changes.
     """
@@ -232,15 +256,6 @@ def branch_fixed_stress(
         stress = stress / data["sig0"]
 
     clone(source, dest)
-
-    desc = '(end of increment). One entry per item in "/stored".'
-    storage.create_extendible(dest, "/stored", np.uint64, desc="List of stored increments")
-    storage.create_extendible(dest, "/t", np.float64, desc=f"Time {desc}")
-    storage.create_extendible(dest, "/kick", bool, desc=f"Kick {desc}")
-
-    storage.dset_extend1d(dest, "/stored", 0, 0)
-    storage.dset_extend1d(dest, "/t", 0, 0.0)
-    storage.dset_extend1d(dest, "/kick", 0, False)
 
     if inc is not None:
 
@@ -275,6 +290,8 @@ def branch_fixed_stress(
 
         dest["/disp/0"] = system.u()
 
+    _init_run_state(dest)
+
     assert f"/meta/{funcname}" not in dest
     meta = create_check_meta(dest, f"/meta/{funcname}", dev=dev)
     meta.attrs["file"] = os.path.basename(source.filename)
@@ -290,7 +307,6 @@ def generate(
     filepath: str,
     N: int,
     seed: int = 0,
-    init_run: bool = True,
     classic: bool = False,
     test_mode: bool = False,
 ):
@@ -300,7 +316,6 @@ def generate(
     :param filepath: The filepath of the input file.
     :param N: The number of blocks.
     :param seed: Base seed to use to generate the disorder.
-    :param init_run: Initialise for use with :py:func:`run`.
     :param classic: The yield strain are hard-coded in the file, otherwise prrng is used.
     :param test_mode: Run in test mode (smaller chunk).
     """
@@ -515,6 +530,15 @@ def generate(
 
         storage.dump_with_atttrs(
             file,
+            "/run/epsd/kick",
+            eps0 * 2e-4,
+            desc="Strain kick to apply",
+        )
+
+        assert np.min(np.diff(read_epsy(file), axis=1)) > file["/run/epsd/kick"][...]
+
+        storage.dump_with_atttrs(
+            file,
             "/meta/normalisation/N",
             N,
             desc="Number of blocks along each plastic layer",
@@ -572,28 +596,8 @@ def generate(
         meta = file.create_group(f"/meta/{progname}")
         meta.attrs["version"] = version
 
-        if init_run:
-
-            storage.dump_with_atttrs(
-                file,
-                "/run/epsd/kick",
-                eps0 * 2e-4,
-                desc="Strain kick to apply",
-            )
-
-            desc = '(end of increment). One entry per item in "/stored".'
-            storage.create_extendible(file, "/stored", np.uint64, desc="List of stored increments")
-            storage.create_extendible(file, "/t", np.float64, desc=f"Time {desc}")
-            storage.create_extendible(file, "/kick", bool, desc=f"Kick {desc}")
-
-            storage.dset_extend1d(file, "/stored", 0, 0)
-            storage.dset_extend1d(file, "/t", 0, 0.0)
-            storage.dset_extend1d(file, "/kick", 0, False)
-
-            file["/disp/0"] = np.zeros_like(coor)
-            file["/disp"].attrs["desc"] = f"Displacement {desc}"
-
-            assert np.min(np.diff(read_epsy(file), axis=1)) > file["/run/epsd/kick"][...]
+        file["/disp/0"] = np.zeros_like(coor)
+        _init_run_state(file)
 
 
 def cli_generate(cli_args=None):
