@@ -307,6 +307,7 @@ def generate(
     filepath: str,
     N: int,
     seed: int = 0,
+    init_run: bool = True,
     classic: bool = False,
     test_mode: bool = False,
 ):
@@ -316,6 +317,7 @@ def generate(
     :param filepath: The filepath of the input file.
     :param N: The number of blocks.
     :param seed: Base seed to use to generate the disorder.
+    :param init_run: Initialise for use with :py:func:`run`.
     :param classic: The yield strain are hard-coded in the file, otherwise prrng is used.
     :param test_mode: Run in test mode (smaller chunk).
     """
@@ -530,15 +532,6 @@ def generate(
 
         storage.dump_with_atttrs(
             file,
-            "/run/epsd/kick",
-            eps0 * 2e-4,
-            desc="Strain kick to apply",
-        )
-
-        assert np.min(np.diff(read_epsy(file), axis=1)) > file["/run/epsd/kick"][...]
-
-        storage.dump_with_atttrs(
-            file,
             "/meta/normalisation/N",
             N,
             desc="Number of blocks along each plastic layer",
@@ -596,8 +589,19 @@ def generate(
         meta = file.create_group(f"/meta/{progname}")
         meta.attrs["version"] = version
 
-        file["/disp/0"] = np.zeros_like(coor)
-        _init_run_state(file)
+        if init_run:
+
+            storage.dump_with_atttrs(
+                file,
+                "/run/epsd/kick",
+                eps0 * 2e-4,
+                desc="Strain kick to apply",
+            )
+
+            assert np.min(np.diff(read_epsy(file), axis=1)) > file["/run/epsd/kick"][...]
+
+            file["/disp/0"] = np.zeros_like(coor)
+            _init_run_state(file)
 
 
 def cli_generate(cli_args=None):
