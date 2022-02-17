@@ -22,7 +22,12 @@ def getfilebase(path):
 
 
 class MyTests(unittest.TestCase):
+    """ """
+
     def test_generate(self):
+        """
+        Generate a simulation (no real test)
+        """
 
         dirname = "mytest"
 
@@ -34,8 +39,9 @@ class MyTests(unittest.TestCase):
         shutil.rmtree(dirname)
 
     def test_small(self):
-
-        # Basic run / Get output
+        """
+        Generate + run + check historic output
+        """
 
         historic = shelephant.yaml.read(
             os.path.join(os.path.dirname(__file__), "data_System_small.yaml")
@@ -54,7 +60,7 @@ class MyTests(unittest.TestCase):
             os.makedirs(dirname)
 
         N = 9
-        my.System.generate(filename, N=N, test_mode=True)
+        my.System.generate(filename, N=N, test_mode=True, dev=True)
         my.System.cli_run(["--develop", filename])
         my.System.cli_ensembleinfo([filename, "--output", infoname, "--dev"])
 
@@ -62,9 +68,6 @@ class MyTests(unittest.TestCase):
             epsd = file[f"/full/{idname}/epsd"][...]
             sigd = file[f"/full/{idname}/sigd"][...]
             incs = file[f"/full/{idname}/inc"][...]
-            A = file[f"/full/{idname}/A"][...]
-            S = file[f"/full/{idname}/S"][...]
-            sig0 = file["/normalisation/sig0"][...]
 
         self.assertTrue(np.allclose(epsd[1:], historic["epsd"][3:]))
         self.assertTrue(np.allclose(sigd[1:], historic["sigd"][3:]))
@@ -72,11 +75,33 @@ class MyTests(unittest.TestCase):
         # function call without without check
         my.System.interface_state({filename: incs[-2:]})
 
+    def test_rerun(self):
+
+        dirname = "mytest"
+        idname = "id=0.h5"
+        filename = os.path.join(dirname, idname)
+        infoname = os.path.join(dirname, "EnsembleInfo.h5")
+
+        for file in [filename, infoname]:
+            if os.path.isfile(file):
+                os.remove(file)
+
+        if not os.path.isdir(dirname):
+            os.makedirs(dirname)
+
+        N = 9
+        my.System.generate(filename, N=N, test_mode=True, dev=True)
+        my.System.cli_run(["--develop", filename])
+        my.System.cli_ensembleinfo([filename, "--output", infoname, "--dev"])
+
+        with h5py.File(infoname, "r") as file:
+            S = file[f"/full/{idname}/S"][...]
+
         # Rerun increment
 
         name = os.path.join(dirname, "rerun.h5")
         i = np.argmax(S)
-        my.System.cli_rerun_event(["-f", "-i", i, "-o", name, filename])
+        my.System.cli_rerun_event(["--dev", "-f", "-i", i, "-o", name, filename])
 
         with h5py.File(name, "r") as file:
             s = file["S"][...]
@@ -85,139 +110,11 @@ class MyTests(unittest.TestCase):
         # function call without without check
 
         my.System.cli_rerun_event_collect(
-            ["-f", "-o", os.path.join(dirname, "eventcollect.h5"), name]
+            ["--dev", "-f", "-o", os.path.join(dirname, "eventcollect.h5"), name]
         )
         my.System.cli_rerun_event_job_systemspanning(
             ["-f", "-o", os.path.join(dirname, "eventmap"), infoname]
         )
-
-        # PinAndTrigger : full run + collection (try running only, not really test)
-
-        iss = np.argwhere(A == N).ravel()
-        sign = np.mean(sigd[iss - 1])
-        sigc = np.mean(sigd[iss])
-
-        sigtarget = 0.5 * (sigc + sign)
-        pushincs = [iss[-30], iss[-20], iss[-15], iss[-10], iss[-4]]
-        fmt = os.path.join(dirname, "stress=mid_A=4_id=0_incc={0:d}_element=0.h5")
-        pushnames = [fmt.format(i) for i in pushincs]
-
-        for pushname, incc in zip(pushnames, pushincs):
-
-            my.PinAndTrigger.cli_run(
-                [
-                    "--file",
-                    filename,
-                    "--output",
-                    pushname,
-                    "--stress",
-                    sigtarget * sig0,
-                    "--incc",
-                    incc,
-                    "--element",
-                    0,
-                    "--size",
-                    4,
-                ]
-            )
-
-        collectname1 = os.path.join(dirname, "mypushes_1.h5")
-        collectname2 = os.path.join(dirname, "mypushes_2.h5")
-        collectname = os.path.join(dirname, "mypushes.h5")
-
-        for file in [collectname1, collectname2, collectname]:
-            if os.path.isfile(file):
-                os.remove(file)
-
-        my.PinAndTrigger.cli_collect(
-            [
-                "--output",
-                collectname1,
-                "--min-a",
-                1,
-            ]
-            + pushnames[:2]
-        )
-
-        my.PinAndTrigger.cli_collect(
-            [
-                "--output",
-                collectname2,
-                "--min-a",
-                1,
-            ]
-            + pushnames[2:]
-        )
-
-        my.PinAndTrigger.cli_collect_combine(
-            [
-                "--output",
-                collectname,
-                collectname1,
-                collectname2,
-            ]
-        )
-
-        # PinAndTrigger : interpret data (try running only, not really test)
-
-        interpret = os.path.join(dirname, "myinterpret.h5")
-        spatial = os.path.join(dirname, "myspatial.h5")
-
-        my.PinAndTrigger.cli_output_scalar(["-f", "-i", infoname, "-o", interpret, collectname])
-
-        my.PinAndTrigger.cli_output_spatial(["-f", "-i", infoname, "-o", spatial, collectname])
-
-        # PinAndTrigger : extract dynamics (try running only, not really test)
-
-        paths = my.PinAndTrigger.cli_getdynamics_sync_A_job(
-            ["-c", collectname, "-i", infoname, "--group", 2, dirname]
-        )
-
-        for path in paths:
-            dirname = os.path.dirname(path)
-            filename = os.path.basename(path)
-            pwd = os.getcwd()
-            os.chdir(dirname)
-            my.PinAndTrigger.cli_getdynamics_sync_A([filename])
-            os.chdir(pwd)
-
-        my.PinAndTrigger.cli_getdynamics_sync_A_combine(
-            ["-f", "-o", os.path.join(dirname, "mydynamics.h5")]
-            + [path.replace(".yaml", ".h5") for path in paths]
-        )
-
-        my.PinAndTrigger.cli_getdynamics_sync_A_average(
-            [
-                "-f",
-                "-o",
-                os.path.join(dirname, "myaverage.h5"),
-                "-s",
-                os.path.join(dirname, "myaverage.yaml"),
-            ]
-            + paths
-        )
-
-        shutil.rmtree(dirname)
-
-    def PinAndTrigger_cli_job(self):
-        """
-        Tries running only, not really a test
-        """
-        return
-
-        dirname = "mytest"
-        infoname = os.path.join(dirname, "EnsembleInfo.h5")
-
-        my.PinAndTrigger.cli_job(["-a", 4, infoname, "-o", dirname, "-n", int(1e9)])
-
-        pwd = os.getcwd()
-        os.chdir(dirname)
-        with open("PinAndTrigger_1-of-1.slurm") as file:
-            cmd = file.read().split("\n")[-3].split("stdbuf -o0 -e0 PinAndTrigger ")[1].split(" ")
-            my.PinAndTrigger.cli_run(cmd)
-        os.chdir(pwd)
-
-        shutil.rmtree(dirname)
 
 
 if __name__ == "__main__":
