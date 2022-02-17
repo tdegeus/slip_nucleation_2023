@@ -63,29 +63,32 @@ def cli_run(cli_args=None):
     progname = entry_points[funcname]
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
-    parser.add_argument("--element", type=int, required=True, help="Plastic element to push")
     parser.add_argument("--truncate-system-spanning", action="store_true", help="Stop large events")
-    parser.add_argument("--silent", action="store_true", help="No screen output")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("file", type=str, help="Input/output file")
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)
 
-    pbar = tqdm.tqdm(total=1, disable=args.silent)
+    pbar = tqdm.tqdm(total=1)
     pbar.set_description(args.file)
 
     with h5py.File(args.file, "a") as file:
 
-        inc = int(file["/stored"][-1])
+        System.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
         system = System.init(file)
-        meta = System.create_check_meta(file, f"/meta/{progname}/{inc + 1:d}", dev=args.develop)
 
-        deps = file["/run/epsd/kick"][...]
+        inc = int(file["/stored"][-1])
         System._restore_inc(file, system, inc)
         idx_n = system.plastic_CurrentIndex()[:, 0]
 
-        system.triggerElementWithLocalSimpleShear(deps, args.element)
+        assert not file["/trigger/truncated"][inc]
+        if file["/trigger/element"].size - 1 == inc:
+            storage.dset_extend1d(file, "/trigger/element", inc + 1, file["/trigger/element"][inc])
+
+        system.triggerElementWithLocalSimpleShear(
+            file["/run/epsd/kick"][...], file["/trigger/element"][inc + 1]
+        )
 
         if args.truncate_system_spanning:
             niter = system.minimise_truncate(idx_n=idx_n, A_truncate=system.plastic().size)
@@ -96,6 +99,8 @@ def cli_run(cli_args=None):
         storage.dset_extend1d(file, "/stored", inc, inc)
         storage.dset_extend1d(file, "/t", inc, system.t())
         storage.dset_extend1d(file, "/kick", inc, True)
+        storage.dset_extend1d(file, "/trigger/branched", inc, False)
+        storage.dset_extend1d(file, "/trigger/truncated", inc, niter == 0)
         file[f"/disp/{inc:d}"] = system.u()
 
         # in case that the event was truncated at a given "A":
@@ -106,18 +111,8 @@ def cli_run(cli_args=None):
             file["/restart/a"] = system.a()
             file["/restart/t"] = system.t()
 
-        idx = system.plastic_CurrentIndex()[:, 0].astype(int)
-        idx_n = idx_n.astype(int)
-
-        if not args.silent:
-            pbar.n = niter
-            pbar.refresh()
-
-        meta.attrs["truncated"] = niter == 0
-        meta.attrs["niter"] = niter
-        meta.attrs["element"] = args.element
-        meta.attrs["S"] = np.sum(idx - idx_n)
-        meta.attrs["A"] = np.sum(idx != idx_n)
+        pbar.n = niter
+        pbar.refresh()
 
     return args.file
 
@@ -179,11 +174,10 @@ def cli_ensembleinfo(cli_args=None):
 
             out = System.basic_output(system, file, verbose=False)
             assert len(out["S"]) == 2
+            assert file["/trigger/branched"][0]
+            assert not file["/trigger/branched"][1]
 
-            meta = file[f"/meta/{entry_points['cli_run']}/1"]
-            assert out["S"][1] == meta.attrs["S"]
-            assert out["A"][1] == meta.attrs["A"]
-
+            meta = file[f"/meta/{entry_points['cli_run']}"]
             branch = file["/meta/branch_fixed_stress"]
 
             ret["S"].append(out["S"][1])
@@ -193,8 +187,8 @@ def cli_ensembleinfo(cli_args=None):
             ret["epsd0"].append(out["epsd"][0])
             ret["sigd"].append(out["epsd"][1])
             ret["sigd0"].append(out["epsd"][0])
-            ret["truncated"].append(meta.attrs["truncated"])
-            ret["element"].append(meta.attrs["element"])
+            ret["truncated"].append(file["/trigger/truncated"][1])
+            ret["element"].append(file["/trigger/element"][1])
             ret["version"].append(meta.attrs["version"])
             ret["dependencies"].append(";".join(meta.attrs["dependencies"]))
             ret["file"].append(branch.attrs["file"])
@@ -257,6 +251,31 @@ def _write(ret: dict, basename: str, **kwargs):
                 initialise=initialise,
                 dev=kwargs["develop"],
             )
+
+            storage.create_extendible(
+                dest,
+                "/trigger/element",
+                np.uint64,
+                desc="Plastic element to trigger",
+            )
+
+            storage.create_extendible(
+                dest,
+                "/trigger/truncated",
+                bool,
+                desc="Flag if run was truncated before equilibrium",
+            )
+
+            storage.create_extendible(
+                dest,
+                "/trigger/branched",
+                bool,
+                desc="Flag if configuration followed from a branch",
+            )
+
+            storage.dset_extend1d(dest, "/trigger/element", 0, ret["element"][i])
+            storage.dset_extend1d(dest, "/trigger/truncated", 0, False)
+            storage.dset_extend1d(dest, "/trigger/branched", 0, True)
 
     slurm.serial_group(
         ret["command"],
@@ -342,6 +361,7 @@ def cli_job_deltasigma(cli_args=None):
         inc=[],
         incc=[],
         stress=[],
+        element=[],
     )
 
     basecommand = [executable]
@@ -369,12 +389,13 @@ def cli_job_deltasigma(cli_args=None):
             for e in elements:
                 bse = f"deltasigmapushes={args.pushes:02d}"
                 out = f"{bse}_{simid}_incc={inc[i]:d}_element={e:d}_ipush={istress:02d}.h5"
-                ret["command"].append(" ".join(basecommand + [f"--element {e:d}", f"{out:s}"]))
+                ret["command"].append(" ".join(basecommand + [f"{out:s}"]))
                 ret["source"].append(filepath)
                 ret["dest"].append(out)
                 ret["inc"].append(j)
                 ret["incc"].append(inc[i])
                 ret["stress"].append(s)
+                ret["element"].append(e)
 
     ret = _write(ret, executable, **vars(args))
 
@@ -452,6 +473,7 @@ def cli_job_strain(cli_args=None):
         inc=[],
         incc=[],
         stress=[],
+        element=[],
     )
 
     basecommand = [executable]
@@ -478,12 +500,13 @@ def cli_job_strain(cli_args=None):
             for e in elements:
                 bse = f"strainpushes={args.pushes:02d}"
                 out = f"{bse}_{simid}_incc={inc[i]:d}_element={e:d}_ipush={istress:02d}.h5"
-                ret["command"].append(" ".join(basecommand + [f"--element {e:d}", f"{out:s}"]))
+                ret["command"].append(" ".join(basecommand + [f"{out:s}"]))
                 ret["source"].append(filepath)
                 ret["dest"].append(out)
                 ret["inc"].append(j)
                 ret["incc"].append(inc[i])
                 ret["stress"].append(s)
+                ret["element"].append(e)
 
     ret = _write(ret, executable, **vars(args))
 
