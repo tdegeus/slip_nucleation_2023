@@ -9,7 +9,6 @@ import os
 import textwrap
 
 import click
-import FrictionQPotFEM.UniformSingleLayer2d as model
 import h5py
 import numpy as np
 import tqdm
@@ -17,7 +16,6 @@ import tqdm
 from . import slurm
 from . import storage
 from . import System
-from . import tag
 from . import tools
 from ._version import version
 
@@ -44,18 +42,12 @@ def replace_ep(doc: str) -> str:
 
 def cli_run(cli_args=None):
     """
-    Trigger event. The protocol is as follows:
+    Trigger event and minimise energy.
 
-    1.  Restore system at a given increment (using `--inc``) or
-        at fixed stress after a system-spanning event (using ``--incc`` and ``--stress``).
-    2.  Store the displacement field (`/disp/0``).
-    3.  Push a specific element and minimise energy.
-    4.  Store the new displacement field (`/disp/1``).
-
-    An option is provided to truncate the simulation for example when an event is system-spanning.
-    In that case the ``truncated`` meta-attribute will be ``True``,
-    The displacement field will not correspond to a mechanical equilibrium and the state of
-    the system will be stored under ``restart``.
+    An option is provided to truncate the simulation when an event is system-spanning.
+    In that case the ``truncated`` meta-attribute will be ``True``.
+    The displacement field will not correspond to a mechanical equilibrium, while the state
+    at truncation will be stored under ``restart``.
     """
 
     class MyFmt(
@@ -79,15 +71,16 @@ def cli_run(cli_args=None):
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)
-    assert args.develop or not tag.has_uncommitted(version)
 
     pbar = tqdm.tqdm(total=1, disable=args.silent)
     pbar.set_description(args.file)
 
     with h5py.File(args.file, "a") as file:
 
-        system = System.init(file)
         inc = int(file["/stored"][-1])
+        system = System.init(file)
+        meta = System.create_check_meta(file, f"/meta/{progname}/{inc + 1:d}", dev=args.develop)
+
         deps = file["/run/epsd/kick"][...]
         System._restore_inc(file, system, inc)
         idx_n = system.plastic_CurrentIndex()[:, 0]
@@ -104,7 +97,6 @@ def cli_run(cli_args=None):
         storage.dset_extend1d(file, "/t", inc, system.t())
         storage.dset_extend1d(file, "/kick", inc, True)
         file[f"/disp/{inc:d}"] = system.u()
-        file.flush()
 
         # in case that the event was truncated at a given "A":
         # store state from which a restart from the moment of truncation is possible
@@ -121,7 +113,6 @@ def cli_run(cli_args=None):
             pbar.n = niter
             pbar.refresh()
 
-        meta = System.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
         meta.attrs["truncated"] = niter == 0
         meta.attrs["niter"] = niter
         meta.attrs["element"] = args.element
@@ -157,7 +148,6 @@ def cli_ensembleinfo(cli_args=None):
     args = tools._parse(parser, cli_args)
     assert len(args.files) > 0
     assert all([os.path.isfile(file) for file in args.files])
-    assert args.develop or not tag.has_uncommitted(version)
     tools._check_overwrite_file(args.output, args.force)
 
     ret = dict(
@@ -188,8 +178,9 @@ def cli_ensembleinfo(cli_args=None):
                 system.reset_epsy(System.read_epsy(file))
 
             out = System.basic_output(system, file, verbose=False)
+            assert len(out["S"]) == 2
 
-            meta = file[f"/meta/{entry_points['cli_run']}"]
+            meta = file[f"/meta/{entry_points['cli_run']}/1"]
             assert out["S"][1] == meta.attrs["S"]
             assert out["A"][1] == meta.attrs["A"]
 
@@ -213,25 +204,29 @@ def cli_ensembleinfo(cli_args=None):
 
     with h5py.File(args.output, "w") as output:
 
-        for key in ["file", "version", "dependencies"]:
-            value, index = np.unique(ret.pop(key), return_inverse=True)
-            if key == "dependencies":
-                value = [str(i).split(";") for i in value]
-            else:
-                value = [str(i) for i in value]
+        for key in ["file", "version"]:
+            tools.h5py_save_unique(data=ret.pop(key), file=output, path=f"/{key}", asstr=True)
 
-            output[f"/{key}/index"] = index
-            output[f"/{key}/value"] = value
+        for key in ["dependencies"]:
+            tools.h5py_save_unique(data=ret.pop(key), file=output, path=f"/{key}", split=";")
 
         for key in ret:
             output[key] = ret[key]
 
-        meta = output.create_group(f"/meta/{progname}")
-        meta.attrs["version"] = version
-        meta.attrs["dependencies"] = System.dependencies(model)
+        System.create_check_meta(output, f"/meta/{progname}", dev=args.develop)
 
 
 def _write(ret: dict, basename: str, **kwargs):
+    """
+    Write jobs:
+    *   Branch at a given increment or fixed stress.
+    *   Write slurm scripts.
+    """
+
+    if kwargs["nmax"] is not None:
+        n = kwargs["nmax"]
+        for key in ret:
+            ret[key] = ret[key][:n]
 
     if not kwargs["force"]:
         if any([os.path.isfile(i) for i in ret["dest"]]):
@@ -272,6 +267,8 @@ def _write(ret: dict, basename: str, **kwargs):
         sbatch={"time": kwargs["time"]},
     )
 
+    return ret
+
 
 def cli_job_deltasigma(cli_args=None):
     """
@@ -295,6 +292,7 @@ def cli_job_deltasigma(cli_args=None):
     h = "#elements triggered per configuration"
     parser.add_argument("--conda", type=str, default=slurm.default_condabase, help="Env-basename")
     parser.add_argument("--develop", action="store_true", help="Development mode")
+    parser.add_argument("--nmax", type=int, help="Keep first nmax jobs (mostly for testing)")
     parser.add_argument("--pushes-per-config", type=int, default=3, help=h)
     parser.add_argument("--truncate-system-spanning", action="store_true", help="Stop large events")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
@@ -361,33 +359,27 @@ def cli_job_deltasigma(cli_args=None):
         stress = sigd[i] + delta_sig * np.arange(100, dtype=float)
         stress = stress[stress < sigd_loading[i + 1]]
 
-        # directly after system-spanning events
-        for e in elements:
-            bse = f"deltasigma=00_pushes={args.pushes:02d}"
-            out = f"{bse}_{simid}_incc={inc[i]:d}_element={e:d}.h5"
-            ret["command"].append(" ".join(basecommand + [f"--element {e:d}", f"{out:s}"]))
-            ret["source"].append(filepath)
-            ret["dest"].append(out)
-            ret["inc"].append(inc[i])
-            ret["incc"].append(inc[i])
-            ret["stress"].append(stress[0])
+        for istress, s in enumerate(stress):
 
-        # intermediate stresses
-        for istress, s in enumerate(stress[1:]):
+            if istress == 0:
+                j = inc[i] # directly after system-spanning events
+            else:
+                j = None # at fixed stress
+
             for e in elements:
-                bse = f"deltasigma={istress + 1:02d}_pushes={args.pushes:02d}"
-                out = f"{bse}_{simid}_incc={inc[i]:d}_element={e:d}.h5"
+                bse = f"deltasigmapushes={args.pushes:02d}"
+                out = f"{bse}_{simid}_incc={inc[i]:d}_element={e:d}_ipush={istress:02d}.h5"
                 ret["command"].append(" ".join(basecommand + [f"--element {e:d}", f"{out:s}"]))
                 ret["source"].append(filepath)
                 ret["dest"].append(out)
-                ret["inc"].append(None)
+                ret["inc"].append(j)
                 ret["incc"].append(inc[i])
                 ret["stress"].append(s)
 
-    if cli_args is not None:
-        return ret, vars(args)
+    ret = _write(ret, executable, **vars(args))
 
-    _write(ret, executable, vars(args))
+    if cli_args is not None:
+        return ret
 
 
 def cli_job_strain(cli_args=None):
@@ -413,6 +405,7 @@ def cli_job_strain(cli_args=None):
     h = "#elements triggered per configuration"
     parser.add_argument("--conda", type=str, default=slurm.default_condabase, help="Env-basename")
     parser.add_argument("--develop", action="store_true", help="Development mode")
+    parser.add_argument("--nmax", type=int, help="Keep first nmax jobs (mostly for testing)")
     parser.add_argument("--pushes-per-config", type=int, default=3, help=h)
     parser.add_argument("--truncate-system-spanning", action="store_true", help="Stop large events")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
@@ -473,32 +466,26 @@ def cli_job_strain(cli_args=None):
         filepath = files[ifile[i]]
         simid = os.path.basename(os.path.splitext(filepath)[0])
         assert sigd_loading[i + 1] > sigd[i]
-        stress = np.linspace(sigd[i], sigd_loading[i + 1], args.pushes + 1)
+        stress = np.linspace(sigd[i], sigd_loading[i + 1], args.pushes + 1)[:-1]
 
-        # directly after system-spanning events
-        for e in elements:
-            bse = f"strain=00_pushes={args.pushes:02d}"
-            out = f"{bse}_{simid}_incc={inc[i]:d}_element={e:d}.h5"
-            ret["command"].append(" ".join(basecommand + [f"--element {e:d}", f"{out:s}"]))
-            ret["source"].append(filepath)
-            ret["dest"].append(out)
-            ret["inc"].append(inc[i])
-            ret["incc"].append(inc[i])
-            ret["stress"].append(stress[0])
+        for istress, s in enumerate(stress):
 
-        # intermediate stresses
-        for istress, s in enumerate(stress[1:-1]):
+            if istress == 0:
+                j = inc[i] # directly after system-spanning events
+            else:
+                j = None # at fixed stress
+
             for e in elements:
-                bse = f"strain={istress + 1:02d}_pushes={args.pushes:02d}"
-                out = f"{bse}_{simid}_incc={inc[i]:d}_element={e:d}.h5"
+                bse = f"strainpushes={args.pushes:02d}"
+                out = f"{bse}_{simid}_incc={inc[i]:d}_element={e:d}_ipush={istress:02d}.h5"
                 ret["command"].append(" ".join(basecommand + [f"--element {e:d}", f"{out:s}"]))
                 ret["source"].append(filepath)
                 ret["dest"].append(out)
-                ret["inc"].append(None)
+                ret["inc"].append(j)
                 ret["incc"].append(inc[i])
                 ret["stress"].append(s)
 
-    if cli_args is not None:
-        return ret, vars(args)
+    ret = _write(ret, executable, **vars(args))
 
-    _write(ret, executable, vars(args))
+    if cli_args is not None:
+        return ret
