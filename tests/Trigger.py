@@ -29,7 +29,7 @@ class MyTests(unittest.TestCase):
             os.makedirs(dirname)
 
         N = 9
-        my.System.generate(filename, N=N, test_mode=True, classic=False)
+        my.System.generate(filename, N=N, test_mode=True, classic=False, dev=True)
         my.System.cli_run(["--dev", filename])
         my.System.cli_ensembleinfo(["--dev", filename, "--output", infoname])
 
