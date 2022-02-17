@@ -362,9 +362,9 @@ def cli_job_deltasigma(cli_args=None):
         for istress, s in enumerate(stress):
 
             if istress == 0:
-                j = inc[i] # directly after system-spanning events
+                j = inc[i]  # directly after system-spanning events
             else:
-                j = None # at fixed stress
+                j = None  # at fixed stress
 
             for e in elements:
                 bse = f"deltasigmapushes={args.pushes:02d}"
@@ -471,9 +471,9 @@ def cli_job_strain(cli_args=None):
         for istress, s in enumerate(stress):
 
             if istress == 0:
-                j = inc[i] # directly after system-spanning events
+                j = inc[i]  # directly after system-spanning events
             else:
-                j = None # at fixed stress
+                j = None  # at fixed stress
 
             for e in elements:
                 bse = f"strainpushes={args.pushes:02d}"
