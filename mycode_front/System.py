@@ -949,6 +949,7 @@ def basic_output(system: model.System, file: h5py.File, verbose: bool = True) ->
         S: Number of times a block yielded [ninc].
         A: Number of blocks that yielded at least once [ninc].
         xi: Largest extension corresponding to A [ninc].
+        duration: Duration of the event [ninc].
         kick: Increment started with a kick (True), or contains only elastic loading (False) [ninc].
         inc: Increment numbers == np.arange(ninc).
         steadystate: Increment number where the steady state starts (int).
@@ -1034,6 +1035,7 @@ def basic_output(system: model.System, file: h5py.File, verbose: bool = True) ->
 
         idx_n = np.copy(idx)
 
+    ret["duration"] = np.diff(file["/t"][...], prepend=0) / ret["t0"]
     ret["steadystate"] = steadystate(**ret)
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function

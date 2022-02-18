@@ -153,6 +153,7 @@ def cli_ensembleinfo(cli_args=None):
         epsd0=[],
         sigd=[],
         sigd0=[],
+        duration=[],
         truncated=[],
         element=[],
         version=[],
@@ -187,6 +188,7 @@ def cli_ensembleinfo(cli_args=None):
             ret["epsd0"].append(out["epsd"][0])
             ret["sigd"].append(out["epsd"][1])
             ret["sigd0"].append(out["epsd"][0])
+            ret["duration"].append(out["duration"][1])
             ret["truncated"].append(file["/trigger/truncated"][1])
             ret["element"].append(file["/trigger/element"][1])
             ret["version"].append(meta.attrs["version"])
