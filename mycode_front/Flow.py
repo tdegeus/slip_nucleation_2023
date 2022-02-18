@@ -11,7 +11,9 @@ from collections import defaultdict
 
 import click
 import enstat
+import FrictionQPotFEM  # noqa: F401
 import GMatElastoPlasticQPot.Cartesian2d as GMat
+import GooseFEM  # noqa: F401
 import GooseHDF5 as g5
 import h5py
 import matplotlib.pyplot as plt
@@ -238,6 +240,7 @@ def cli_generate(cli_args=None):
                 N=args.size,
                 seed=i * args.size,
                 test_mode=args.develop,
+                dev=args.develop,
             )
 
             # warning: Gammadot hard-coded here, check that yield strains did not change
@@ -918,7 +921,7 @@ def cli_branch_velocityjump(cli_args=None):
                 source,
                 dest,
                 ["/meta/{:s}".format(entry_points["cli_run"])],
-                np.array(["/meta/{:s}_source".format(entry_points["cli_run"])]),
+                ["/meta/{:s}_source".format(entry_points["cli_run"])],
             )
             if tag.greater(g5.version, "0.14.0"):
                 warnings.warn("Remove np.array conversion in previous command", FutureWarning)
