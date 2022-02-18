@@ -731,19 +731,19 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
         meta = create_check_meta(file, f"/meta/{progname}", dev=dev)
 
         if "completed" in meta:
-            print(f'"{basename}": marked completed, skipping')
+            print(f"{basename}: marked completed, skipping")
             return 1
 
         inc = int(file["/stored"][-1])
         kick = file["/kick"][inc]
         deps = file["/run/epsd/kick"][...]
         _restore_inc(file, system, inc)
-        print(f'"{basename}": loading, inc = {inc:d}')
 
         system.initEventDrivenSimpleShear()
 
         nchunk = epsy_nchunk(file) - 5
         pbar = tqdm.tqdm(total=nchunk, disable=not progress)
+        pbar.set_description(f"{basename}: inc = {inc:8d}, niter = {'-':8s}")
 
         for inc in range(inc + 1, sys.maxsize):
 
@@ -759,7 +759,7 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
 
                 if progress:
                     pbar.n = np.max(system.plastic_CurrentIndex())
-                    pbar.set_description(f"inc = {inc:8d}, niter = {niter:8d}")
+                    pbar.set_description(f"{basename}: inc = {inc:8d}, niter = {niter:8d}")
                     pbar.refresh()
 
             if not kick:
@@ -772,7 +772,7 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
             file[f"/disp/{inc:d}"] = system.u()
             file.flush()
 
-        print(f'"{basename}": completed')
+        pbar.set_description(f"{basename}: inc = {inc:8d}, {'completed':16s}")
         meta.attrs["completed"] = 1
 
 
