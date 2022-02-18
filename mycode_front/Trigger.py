@@ -212,7 +212,78 @@ def cli_ensembleinfo(cli_args=None):
         System.create_check_meta(output, f"/meta/{progname}", dev=args.develop)
 
 
-def _write(ret: dict, basename: str, **kwargs):
+def restore_from_ensembleinfo(
+    ensembleinfo: h5py.File, index: int, destpath: str, sourcedir: str = None, dev: bool = False
+):
+    """
+    Restore the begin state of a specific push.
+
+    :param ensembleinfo: Opened Trigger-EnsembleInfo, see :py:func:`cli_ensembleinfo`.
+    :param index: Item from ``ensembleinfo``.
+    :param destpath: Path where to write restored state.
+    :param dev: Allow uncommitted changes.
+    """
+
+    sourcepath = tools.h5py_read_unique(ensembleinfo, "file", asstr=True)[index]
+
+    if sourcedir is not None:
+        sourcepath = os.path.join(sourcedir, sourcepath)
+    elif not os.path.isfile(sourcepath):
+        sourcedir = os.path.dirname(ensembleinfo.filename)
+        sourcepath = os.path.join(sourcedir, sourcepath)
+
+    assert os.path.isfile(sourcepath)
+
+    with h5py.File(sourcepath, "r") as source, h5py.File(destpath, "w") as dest:
+
+        System.branch_fixed_stress(
+            source=source,
+            dest=dest,
+            inc=ensembleinfo["inc"][index],
+            incc=ensembleinfo["incc"][index],
+            stress=ensembleinfo["stress"][index],
+            normalised=True,
+            system=System.init(source),
+            initialise=True,
+            dev=dev,
+        )
+
+        _writeinitbranch(dest, ensembleinfo["element"][index])
+        storage.dset_extend1d(dest, "/t", 1, ensembleinfo["duration"][index])
+
+
+def _writeinitbranch(dest: h5py.File, element: int):
+    """
+    Write :py:mod:`Trigger` specific fields.
+    """
+
+    storage.create_extendible(
+        dest,
+        "/trigger/element",
+        np.uint64,
+        desc="Plastic element to trigger",
+    )
+
+    storage.create_extendible(
+        dest,
+        "/trigger/truncated",
+        bool,
+        desc="Flag if run was truncated before equilibrium",
+    )
+
+    storage.create_extendible(
+        dest,
+        "/trigger/branched",
+        bool,
+        desc="Flag if configuration followed from a branch",
+    )
+
+    storage.dset_extend1d(dest, "/trigger/element", 0, element)
+    storage.dset_extend1d(dest, "/trigger/truncated", 0, False)
+    storage.dset_extend1d(dest, "/trigger/branched", 0, True)
+
+
+def _write_job(ret: dict, basename: str, **kwargs):
     """
     Write jobs:
     *   Branch at a given increment or fixed stress.
@@ -254,30 +325,7 @@ def _write(ret: dict, basename: str, **kwargs):
                 dev=kwargs["develop"],
             )
 
-            storage.create_extendible(
-                dest,
-                "/trigger/element",
-                np.uint64,
-                desc="Plastic element to trigger",
-            )
-
-            storage.create_extendible(
-                dest,
-                "/trigger/truncated",
-                bool,
-                desc="Flag if run was truncated before equilibrium",
-            )
-
-            storage.create_extendible(
-                dest,
-                "/trigger/branched",
-                bool,
-                desc="Flag if configuration followed from a branch",
-            )
-
-            storage.dset_extend1d(dest, "/trigger/element", 0, ret["element"][i])
-            storage.dset_extend1d(dest, "/trigger/truncated", 0, False)
-            storage.dset_extend1d(dest, "/trigger/branched", 0, True)
+            _writeinitbranch(dest, ret["element"][i])
 
     slurm.serial_group(
         ret["command"],
@@ -399,7 +447,7 @@ def cli_job_deltasigma(cli_args=None):
                 ret["stress"].append(s)
                 ret["element"].append(e)
 
-    ret = _write(ret, executable, **vars(args))
+    ret = _write_job(ret, executable, **vars(args))
 
     if cli_args is not None:
         return ret
@@ -510,7 +558,7 @@ def cli_job_strain(cli_args=None):
                 ret["stress"].append(s)
                 ret["element"].append(e)
 
-    ret = _write(ret, executable, **vars(args))
+    ret = _write_job(ret, executable, **vars(args))
 
     if cli_args is not None:
         return ret
