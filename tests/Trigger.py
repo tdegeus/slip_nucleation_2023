@@ -18,29 +18,34 @@ filename = os.path.join(dirname, idname)
 infoname = os.path.join(dirname, "EnsembleInfo.h5")
 
 
-def generate():
-
-    for file in [filename, infoname]:
-        if os.path.isfile(file):
-            os.remove(file)
-
-    if not os.path.isdir(dirname):
-        os.makedirs(dirname)
-
-    N = 9
-    my.System.generate(filename, N=N, test_mode=True, classic=False, dev=True)
-    my.System.cli_run(["--dev", filename])
-    my.System.cli_ensembleinfo(["--dev", filename, "--output", infoname])
-
-
 class MyTests(unittest.TestCase):
     """ """
+
+    @classmethod
+    def setUpClass(self):
+
+        for file in [filename, infoname]:
+            if os.path.isfile(file):
+                os.remove(file)
+
+        if not os.path.isdir(dirname):
+            os.makedirs(dirname)
+
+        N = 9
+        my.System.generate(filename, N=N, test_mode=True, classic=False, dev=True)
+        my.System.cli_run(["--dev", filename])
+        my.System.cli_ensembleinfo(["--dev", filename, "--output", infoname])
+
+    @classmethod
+    def tearDownClass(self):
+
+        shutil.rmtree(dirname)
 
     def test_strain(self):
 
         n = 6
         ret = my.Trigger.cli_job_strain(
-            ["--dev", "-f", infoname, "-p", 4, "--pushes-per-config", 1, "-o", dirname, "--nmax", n]
+            ["--dev", "-f", infoname, "-s", 4, "-p", 1, "-o", dirname, "--nmax", n]
         )
 
         output = []
@@ -56,7 +61,7 @@ class MyTests(unittest.TestCase):
 
         n = 5
         ret = my.Trigger.cli_job_deltasigma(
-            ["--dev", "-f", infoname, "-p", 4, "--pushes-per-config", 1, "-o", dirname, "--nmax", n]
+            ["--dev", "-f", infoname, "-d", 0.12, "-p", 1, "-o", dirname, "--nmax", n]
         )
 
         output = []
@@ -87,7 +92,4 @@ class MyTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-
-    generate()
     unittest.main()
-    shutil.rmtree(dirname)

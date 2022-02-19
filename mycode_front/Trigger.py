@@ -341,9 +341,9 @@ def _write_job(ret: dict, basename: str, **kwargs):
 
 def cli_job_deltasigma(cli_args=None):
     """
-    Create jobs to trigger at fixed stress increase after the last system-spanning event.
-    Thereby: ``delta_sigma = (sigma_top - sigma_bottom) / (pushes - 1)``, with pushes at
-    ``sigma_c[i] +  * delta_sigma`` with ``j = 0, 1, ...``
+    Create jobs to trigger at fixed stress increase ``delta_sigma``
+    after the last system-spanning event:
+    ``stress[i] = sigma_c[i] + j * delta_sigma`` with ``j = 0, 1, ...``.
     The highest stress is thereby always lower than that where the next system spanning event.
     """
 
@@ -358,16 +358,15 @@ def cli_job_deltasigma(cli_args=None):
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
 
-    h = "#elements triggered per configuration"
     parser.add_argument("--conda", type=str, default=slurm.default_condabase, help="Env-basename")
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("--nmax", type=int, help="Keep first nmax jobs (mostly for testing)")
-    parser.add_argument("--pushes-per-config", type=int, default=3, help=h)
     parser.add_argument("--truncate-system-spanning", action="store_true", help="Stop large events")
+    parser.add_argument("-d", "--delta-sigma", type=float, required=True, help="delta_sigma")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
-    parser.add_argument("-n", "--group", type=int, default=50, help="#pushes to group")
+    parser.add_argument("-n", "--group", type=int, default=50, help="#simulations to group")
     parser.add_argument("-o", "--outdir", type=str, default=".", help="Output directory")
-    parser.add_argument("-p", "--pushes", type=int, default=10, help="#pushes")
+    parser.add_argument("-p", "--pushes", type=int, default=3, help="#elements per configuration")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
     parser.add_argument("ensembleinfo", type=str, help="EnsembleInfo (read-only)")
@@ -390,9 +389,6 @@ def cli_job_deltasigma(cli_args=None):
         inc_loading = file["/loading/inc"][...]
         sigd_loading = file["/loading/sigd"][...]
         ifile_loading = file["/loading/file"][...]
-        sig_bot = file["/averages/sigd_bottom"][...]
-        sig_top = file["/averages/sigd_top"][...]
-        delta_sig = (sig_top - sig_bot) / (args.pushes - 1)
 
     keep = A == N
     inc = inc[keep]
@@ -402,7 +398,7 @@ def cli_job_deltasigma(cli_args=None):
     sigd_loading = sigd_loading[keep]
     ifile_loading = ifile_loading[keep]
     assert all(inc - 1 == inc_loading)
-    elements = np.linspace(0, N + 1, args.pushes_per_config + 1)[:-1].astype(int)
+    elements = np.linspace(0, N + 1, args.pushes + 1)[:-1].astype(int)
 
     ret = dict(
         command=[],
@@ -426,7 +422,7 @@ def cli_job_deltasigma(cli_args=None):
         filepath = files[ifile[i]]
         simid = os.path.basename(os.path.splitext(filepath)[0])
         assert sigd_loading[i + 1] > sigd[i]
-        stress = sigd[i] + delta_sig * np.arange(100, dtype=float)
+        stress = sigd[i] + args.delta_sigma * np.arange(100, dtype=float)
         stress = stress[stress < sigd_loading[i + 1]]
 
         for istress, s in enumerate(stress):
@@ -437,8 +433,8 @@ def cli_job_deltasigma(cli_args=None):
                 j = None  # at fixed stress
 
             for e in elements:
-                bse = f"deltasigmapushes={args.pushes:02d}"
-                out = f"{bse}_{simid}_incc={inc[i]:d}_element={e:d}_ipush={istress:02d}.h5"
+                bse = f"deltasigma={args.delta_sigma:.3f}"
+                out = f"{bse}_{simid}_incc={inc[i]:d}_element={e:d}_istep={istress:02d}.h5"
                 ret["command"].append(" ".join(basecommand + [f"{out:s}"]))
                 ret["source"].append(filepath)
                 ret["dest"].append(out)
@@ -457,8 +453,8 @@ def cli_job_strain(cli_args=None):
     """
     Create jobs to trigger at fixed intervals between system-spanning events.
     The stress interval between two system spanning events is
-    ``delta_sigma_i = (sigma_n[i] - sigma_c[i]) / (pushes + 1)``
-    with pushes at ``j * delta_sigma_i`` with ``j = 0, 1, ..., pushes``.
+    ``delta_sigma_i = (sigma_n[i] - sigma_c[i]) / (steps + 1)``
+    with triggers at ``j * delta_sigma_i`` with ``j = 0, 1, ..., steps``.
     This implies that there is no push that coincides with the next system-spanning event.
     """
 
@@ -473,16 +469,15 @@ def cli_job_strain(cli_args=None):
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
 
-    h = "#elements triggered per configuration"
     parser.add_argument("--conda", type=str, default=slurm.default_condabase, help="Env-basename")
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("--nmax", type=int, help="Keep first nmax jobs (mostly for testing)")
-    parser.add_argument("--pushes-per-config", type=int, default=3, help=h)
     parser.add_argument("--truncate-system-spanning", action="store_true", help="Stop large events")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
-    parser.add_argument("-n", "--group", type=int, default=50, help="#pushes to group")
+    parser.add_argument("-n", "--group", type=int, default=50, help="#simulations to group")
     parser.add_argument("-o", "--outdir", type=str, default=".", help="Output directory")
-    parser.add_argument("-p", "--pushes", type=int, default=10, help="#pushes")
+    parser.add_argument("-p", "--pushes", type=int, default=3, help="#elements per configuration")
+    parser.add_argument("-s", "--steps", type=int, default=10, help="#pushes between ss-events")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
     parser.add_argument("ensembleinfo", type=str, help="EnsembleInfo (read-only)")
@@ -514,7 +509,7 @@ def cli_job_strain(cli_args=None):
     sigd_loading = sigd_loading[keep]
     ifile_loading = ifile_loading[keep]
     assert all(inc - 1 == inc_loading)
-    elements = np.linspace(0, N + 1, args.pushes_per_config + 1)[:-1].astype(int)
+    elements = np.linspace(0, N + 1, args.pushes + 1)[:-1].astype(int)
 
     ret = dict(
         command=[],
@@ -538,7 +533,7 @@ def cli_job_strain(cli_args=None):
         filepath = files[ifile[i]]
         simid = os.path.basename(os.path.splitext(filepath)[0])
         assert sigd_loading[i + 1] > sigd[i]
-        stress = np.linspace(sigd[i], sigd_loading[i + 1], args.pushes + 1)[:-1]
+        stress = np.linspace(sigd[i], sigd_loading[i + 1], args.steps + 1)[:-1]
 
         for istress, s in enumerate(stress):
 
@@ -548,8 +543,8 @@ def cli_job_strain(cli_args=None):
                 j = None  # at fixed stress
 
             for e in elements:
-                bse = f"strainpushes={args.pushes:02d}"
-                out = f"{bse}_{simid}_incc={inc[i]:d}_element={e:d}_ipush={istress:02d}.h5"
+                bse = f"strainsteps={args.steps:02d}"
+                out = f"{bse}_{simid}_incc={inc[i]:d}_element={e:d}_istep={istress:02d}.h5"
                 ret["command"].append(" ".join(basecommand + [f"{out:s}"]))
                 ret["source"].append(filepath)
                 ret["dest"].append(out)
