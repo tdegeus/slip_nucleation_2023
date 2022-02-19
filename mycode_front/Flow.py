@@ -12,6 +12,7 @@ from collections import defaultdict
 import click
 import enstat
 import FrictionQPotFEM  # noqa: F401
+import GMatElastoPlasticQPot  # noqa: F401
 import GMatElastoPlasticQPot.Cartesian2d as GMat
 import GooseFEM  # noqa: F401
 import GooseHDF5 as g5
