@@ -12,7 +12,9 @@ from collections import defaultdict
 
 import click
 import enstat
+import FrictionQPotFEM  # noqa: F401
 import FrictionQPotFEM.UniformSingleLayer2d as model
+import GMatElastoPlasticQPot  # noqa: F401
 import GooseFEM  # noqa: F401
 import GooseHDF5 as g5
 import h5py

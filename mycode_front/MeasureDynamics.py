@@ -8,6 +8,8 @@ import inspect
 import os
 import textwrap
 
+import FrictionQPotFEM  # noqa: F401
+import GMatElastoPlasticQPot  # noqa: F401
 import GooseFEM
 import h5py
 import numpy as np

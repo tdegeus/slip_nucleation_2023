@@ -14,7 +14,9 @@ import sys
 import textwrap
 import uuid
 
+import FrictionQPotFEM  # noqa: F401
 import FrictionQPotFEM.UniformSingleLayer2d as model
+import GMatElastoPlasticQPot  # noqa: F401
 import GMatElastoPlasticQPot.Cartesian2d as GMat
 import GooseFEM
 import GooseHDF5 as g5

@@ -13,13 +13,24 @@ jobs:
 
     strategy:
       fail-fast: false
+      matrix:
+        code:
+        - Flow.py
+        - MeasureDynamics.py
+        - PinAndTrigger.py
+        - slurm.py
+        - storage.py
+        - System.py
+        - tag.py
+        - tools.py
+        - Trigger.py
 
     defaults:
       run:
         shell: bash -l {0}
 
     name: ${{ matrix.code }}
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
 
     steps:
 
@@ -43,13 +54,4 @@ jobs:
 
     - name: Run tests
       working-directory: tests
-      run: |
-        python Flow.py
-        python MeasureDynamics.py
-        python PinAndTrigger.py
-        python slurm.py
-        python storage.py
-        python System.py
-        python tag.py
-        python tools.py
-        python Trigger.py
+      run: python ${{ matrix.code }}
