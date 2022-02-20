@@ -13,44 +13,17 @@ if os.path.exists(os.path.join(root, "mycode_front", "_version.py")):
 
 import mycode_front as my  # noqa: E402
 
-
-def getfilebase(path):
-    """
-    Remove directory and extension.
-    """
-    return os.path.splitext(os.path.basename(path))[0]
+dirname = "mytest"
+idname = "id=0.h5"
+filename = os.path.join(dirname, idname)
+infoname = os.path.join(dirname, "EnsembleInfo.h5")
 
 
 class MyTests(unittest.TestCase):
     """ """
 
-    def test_generate(self):
-        """
-        Generate a simulation (no real test)
-        """
-
-        dirname = "mytest"
-
-        if not os.path.isdir(dirname):
-            os.makedirs(dirname)
-
-        my.System.cli_generate(["--dev", dirname])
-
-        shutil.rmtree(dirname)
-
-    def test_small(self):
-        """
-        Generate + run + check historic output
-        """
-
-        historic = shelephant.yaml.read(
-            os.path.join(os.path.dirname(__file__), "data_System_small.yaml")
-        )
-
-        dirname = "mytest"
-        idname = "id=0.h5"
-        filename = os.path.join(dirname, idname)
-        infoname = os.path.join(dirname, "EnsembleInfo.h5")
+    @classmethod
+    def setUpClass(self):
 
         for file in [filename, infoname]:
             if os.path.isfile(file):
@@ -63,6 +36,32 @@ class MyTests(unittest.TestCase):
         my.System.generate(filename, N=N, test_mode=True, dev=True)
         my.System.cli_run(["--develop", filename])
         my.System.cli_ensembleinfo([filename, "--output", infoname, "--dev"])
+
+    @classmethod
+    def tearDownClass(self):
+
+        shutil.rmtree(dirname)
+
+    def test_generate(self):
+        """
+        Generate a simulation (no real test)
+        """
+
+        mygendir = os.path.join(dirname, "mygen")
+
+        if not os.path.isdir(mygendir):
+            os.makedirs(mygendir)
+
+        my.System.cli_generate(["--dev", mygendir])
+
+    def test_small(self):
+        """
+        Generate + run + check historic output
+        """
+
+        historic = shelephant.yaml.read(
+            os.path.join(os.path.dirname(__file__), "data_System_small.yaml")
+        )
 
         with h5py.File(infoname, "r") as file:
             epsd = file[f"/full/{idname}/epsd"][...]
@@ -76,23 +75,6 @@ class MyTests(unittest.TestCase):
         my.System.interface_state({filename: incs[-2:]})
 
     def test_rerun(self):
-
-        dirname = "mytest"
-        idname = "id=0.h5"
-        filename = os.path.join(dirname, idname)
-        infoname = os.path.join(dirname, "EnsembleInfo.h5")
-
-        for file in [filename, infoname]:
-            if os.path.isfile(file):
-                os.remove(file)
-
-        if not os.path.isdir(dirname):
-            os.makedirs(dirname)
-
-        N = 9
-        my.System.generate(filename, N=N, test_mode=True, dev=True)
-        my.System.cli_run(["--develop", filename])
-        my.System.cli_ensembleinfo([filename, "--output", infoname, "--dev"])
 
         with h5py.File(infoname, "r") as file:
             S = file[f"/full/{idname}/S"][...]
