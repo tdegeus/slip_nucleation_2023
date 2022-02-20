@@ -27,6 +27,7 @@ import prrng
 import tqdm
 from numpy.typing import ArrayLike
 
+from . import MeasureDynamics
 from . import slurm
 from . import storage
 from . import tag
@@ -44,6 +45,7 @@ entry_points = dict(
     cli_rerun_event="RunEventMap",
     cli_rerun_event_job_systemspanning="RunEventMap_JobAllSystemSpanning",
     cli_rerun_event_collect="EventMapInfo",
+    cli_rerun_dynamics_job_systemspanning="RunDynamics_JobAllSystemSpanning",
 )
 
 
@@ -52,6 +54,7 @@ file_defaults = dict(
     cli_rerun_event="EventMap.h5",
     cli_rerun_event_job_systemspanning="EventMap_SystemSpanning",
     cli_rerun_event_collect="EventMapInfo.h5",
+    cli_rerun_dynamics_job_systemspanning="RunDynamics_SystemSpanning",
 )
 
 
@@ -1467,6 +1470,66 @@ def cli_rerun_event_job_systemspanning(cli_args=None):
         cmd = [executable, "-o", f"{basename}_inc={i:d}.h5", "-i", f"{i:d}"]
         if args.truncate:
             cmd += ["-s", f"{s:d}"]
+        cmd += [os.path.join(relpath, fname)]
+        commands.append(" ".join(cmd))
+
+    slurm.serial_group(
+        commands,
+        basename=executable,
+        group=args.group,
+        outdir=args.outdir,
+        sbatch={"time": args.time},
+    )
+
+    if cli_args is not None:
+        return commands
+
+
+def cli_rerun_dynamics_job_systemspanning(cli_args=None):
+    """
+    Generate a job to rerun all system-spanning events and measure the dynamics.
+    """
+
+    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    output = file_defaults[funcname]
+
+    parser.add_argument("-f", "--force", action="store_true", help="Force clean output directory")
+    parser.add_argument("-n", "--group", type=int, default=20, help="#increments to group")
+    parser.add_argument("-o", "--outdir", type=str, default=output, help="Output directory")
+    parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
+    parser.add_argument("EnsembleInfo", type=str, help="EnsembleInfo")
+
+    args = tools._parse(parser, cli_args)
+    assert os.path.isfile(args.EnsembleInfo)
+    tools._create_or_clear_directory(args.outdir, args.force)
+
+    with h5py.File(args.EnsembleInfo, "r") as file:
+        N = file["/normalisation/N"][...]
+        A = file["/avalanche/A"][...]
+        inc = file["/avalanche/inc"][...]
+        ifile = file["/avalanche/file"][...]
+        files = file["/files"].asstr()[...]
+
+    keep = A == N
+    inc = inc[keep]
+    ifile = ifile[keep]
+
+    commands = []
+    executable = MeasureDynamics.entry_points["cli_run"]
+    basedir = os.path.dirname(args.EnsembleInfo)
+    basedir = basedir if basedir else "."
+    relpath = os.path.relpath(basedir, args.outdir)
+
+    for i, f in zip(inc, ifile):
+        fname = files[f]
+        basename = os.path.splitext(os.path.basename(fname))[0]
+        cmd = [executable, "-o", f"{basename}_inc={i:d}.h5", "-i", f"{i:d}"]
         cmd += [os.path.join(relpath, fname)]
         commands.append(" ".join(cmd))
 

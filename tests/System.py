@@ -116,6 +116,10 @@ class MyTests(unittest.TestCase):
             ["-f", "-o", os.path.join(dirname, "eventmap"), infoname]
         )
 
+        my.System.cli_rerun_dynamics_job_systemspanning(
+            ["-f", "-o", os.path.join(dirname, "rerundynamics"), infoname]
+        )
+
 
 if __name__ == "__main__":
 
