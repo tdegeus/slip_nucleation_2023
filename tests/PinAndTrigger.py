@@ -12,16 +12,17 @@ if os.path.exists(os.path.join(root, "mycode_front", "_version.py")):
 
 import mycode_front as my  # noqa: E402
 
+dirname = "mytest"
+idname = "id=0.h5"
+filename = os.path.join(dirname, idname)
+infoname = os.path.join(dirname, "EnsembleInfo.h5")
+
 
 class MyTests(unittest.TestCase):
-    def test_small(self):
+    """ """
 
-        # Basic run / Get output
-
-        dirname = "mytest"
-        idname = "id=0.h5"
-        filename = os.path.join(dirname, idname)
-        infoname = os.path.join(dirname, "EnsembleInfo.h5")
+    @classmethod
+    def setUpClass(self):
 
         for file in [filename, infoname]:
             if os.path.isfile(file):
@@ -35,10 +36,20 @@ class MyTests(unittest.TestCase):
         my.System.cli_run(["--develop", filename])
         my.System.cli_ensembleinfo([filename, "--output", infoname, "--dev"])
 
+    @classmethod
+    def tearDownClass(self):
+
+        shutil.rmtree(dirname)
+
+    def test_small(self):
+
+        # Basic run / Get output
+
         with h5py.File(infoname, "r") as file:
             sigd = file[f"/full/{idname}/sigd"][...]
             A = file[f"/full/{idname}/A"][...]
             sig0 = file["/normalisation/sig0"][...]
+            N = int(file["/normalisation/N"][...])
 
         # PinAndTrigger : full run + collection (try running only, not really test)
 
@@ -123,11 +134,11 @@ class MyTests(unittest.TestCase):
         )
 
         for path in paths:
-            dirname = os.path.dirname(path)
-            filename = os.path.basename(path)
+            d = os.path.dirname(path)
+            f = os.path.basename(path)
             pwd = os.getcwd()
-            os.chdir(dirname)
-            my.PinAndTrigger.cli_getdynamics_sync_A([filename])
+            os.chdir(d)
+            my.PinAndTrigger.cli_getdynamics_sync_A([f])
             os.chdir(pwd)
 
         my.PinAndTrigger.cli_getdynamics_sync_A_combine(
@@ -146,16 +157,10 @@ class MyTests(unittest.TestCase):
             + paths
         )
 
-        shutil.rmtree(dirname)
-
     def PinAndTrigger_cli_job(self):
         """
         Tries running only, not really a test
         """
-        return
-
-        dirname = "mytest"
-        infoname = os.path.join(dirname, "EnsembleInfo.h5")
 
         my.PinAndTrigger.cli_job(["-a", 4, infoname, "-o", dirname, "-n", int(1e9)])
 
@@ -165,8 +170,6 @@ class MyTests(unittest.TestCase):
             cmd = file.read().split("\n")[-3].split("stdbuf -o0 -e0 PinAndTrigger ")[1].split(" ")
             my.PinAndTrigger.cli_run(cmd)
         os.chdir(pwd)
-
-        shutil.rmtree(dirname)
 
 
 if __name__ == "__main__":
