@@ -395,7 +395,9 @@ def cli_job_deltasigma(cli_args=None):
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.ensembleinfo)
-    assert os.path.isdir(args.outdir)
+
+    if not os.path.isdir(args.outdir):
+        os.makedirs(args.outdir)
 
     basedir = os.path.dirname(args.ensembleinfo)
     executable = entry_points["cli_run"]
@@ -509,7 +511,9 @@ def cli_job_strain(cli_args=None):
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.ensembleinfo)
-    assert os.path.isdir(args.outdir)
+
+    if not os.path.isdir(args.outdir):
+        os.makedirs(args.outdir)
 
     basedir = os.path.dirname(args.ensembleinfo)
     executable = entry_points["cli_run"]
