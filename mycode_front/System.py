@@ -166,7 +166,7 @@ def init(file: h5py.File) -> model.System:
     return system
 
 
-def clone(source: h5py.File, dest: h5py.File) -> list[str]:
+def clone(source: h5py.File, dest: h5py.File, skip: list[str] = None) -> list[str]:
     """
     Clone a configuration. This clone does not include::
 
@@ -177,6 +177,7 @@ def clone(source: h5py.File, dest: h5py.File) -> list[str]:
 
     :param source: Source file.
     :param dest: Destination file.
+    :parma skip: List with additional dataset to skip.
     :return: List of copied datasets.
     """
 
@@ -184,6 +185,10 @@ def clone(source: h5py.File, dest: h5py.File) -> list[str]:
 
     for key in ["/stored", "/t", "/kick", "/disp/..."]:
         datasets.remove(key)
+
+    if skip:
+        for key in skip:
+            datasets.remove(key)
 
     g5.copy(source, dest, datasets)
 
@@ -209,6 +214,9 @@ def _init_run_state(file: h5py.File):
     storage.dset_extend1d(file, "/t", 0, 0.0)
     storage.dset_extend1d(file, "/kick", 0, False)
 
+    if "disp" not in file:
+        file.create_group("/disp")
+
     file["/disp"].attrs["desc"] = f"Displacement {desc}"
 
 
@@ -220,7 +228,8 @@ def branch_fixed_stress(
     stress: float = None,
     normalised: bool = False,
     system: model.System = None,
-    initialise: bool = True,
+    init_system: bool = False,
+    output: ArrayLike = None,
     dev: bool = False,
 ):
     """
@@ -237,7 +246,8 @@ def branch_fixed_stress(
     :param stress: Branch at fixed stress.
     :param normalised: Assume ``stress`` to be normalised (see ``sig0`` in :py:func:`basic_output`).
     :param system: The system (optional, specify to avoid reallocation).
-    :param initialise: Read yield strains (otherwise ``system`` is assumed fully initialised).
+    :param init_system: Read yield strains (otherwise ``system`` is assumed fully initialised).
+    :param output: Output of :py:func:`basic_output` (read if not specified).
     :param dev: Allow uncommitted changes.
     """
 
@@ -245,31 +255,33 @@ def branch_fixed_stress(
 
     if system is None:
         system = init(source)
-    elif initialise:
+    elif init_system:
         system.reset_epsy(read_epsy(source))
 
-    data = basic_output(system, source, verbose=False)
+    if output is None:
+        output = basic_output(system, source, verbose=False)
+
+    clone(source, dest)
+    _init_run_state(dest)
 
     if stress is None:
         real_stress = None
         stress = None
     elif normalised:
-        real_stress = stress * data["sig0"]
+        real_stress = stress * output["sig0"]
         stress = stress
     else:
         real_stress = stress
-        stress = stress / data["sig0"]
-
-    clone(source, dest)
+        stress = stress / output["sig0"]
 
     if inc is not None:
 
         dest["/disp/0"] = source[f"/disp/{inc:d}"][...]
 
         if stress is not None:
-            assert np.isclose(stress, data["sigd"][inc])
+            assert np.isclose(stress, output["sigd"][inc])
         if incc is not None:
-            i = data["inc"][data["A"] == data["N"]]
+            i = output["inc"][output["A"] == output["N"]]
             assert i[i >= incc][1] > inc
 
     else:
@@ -278,7 +290,7 @@ def branch_fixed_stress(
 
         # determine at which increment a push could be applied
 
-        inc_system, inc_push = pushincrements(system, source, real_stress, data)
+        inc_system, inc_push = pushincrements(system, source, real_stress, output)
 
         # reload specific increment based on target stress and system-spanning increment
 
@@ -294,8 +306,6 @@ def branch_fixed_stress(
         assert np.all(idx == idx_n)
 
         dest["/disp/0"] = system.u()
-
-    _init_run_state(dest)
 
     assert f"/meta/{funcname}" not in dest
     meta = create_check_meta(dest, f"/meta/{funcname}", dev=dev)
