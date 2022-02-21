@@ -247,7 +247,6 @@ def restore_from_ensembleinfo(
             stress=ensembleinfo["stress"][index],
             normalised=True,
             system=System.init(source),
-            initialise=True,
             dev=dev,
         )
 
@@ -286,11 +285,19 @@ def _writeinitbranch(dest: h5py.File, element: int):
     storage.dset_extend1d(dest, "/trigger/branched", 0, True)
 
 
-def _write_job(ret: dict, basename: str, **kwargs):
+def _write_job(ret: dict, basename: str, info: h5py.File, **kwargs) -> dict:
     """
     Write jobs:
     *   Branch at a given increment or fixed stress.
     *   Write slurm scripts.
+
+    Note that the assumption is made that all jobs come from one ensemble.
+
+    :param ret: Generated in :py:func:`cli_job_strain` and :py:func:`cli_job_deltasigma`.
+    :param basename: Basename of the job-scripts.
+    :param info: Read data from file.
+    :param kwargs: CL-arguments of :py:func:`cli_job_strain` and :py:func:`cli_job_deltasigma`.
+    :return: `ret` (optionally shortened for testing).
     """
 
     if kwargs["nmax"] is not None:
@@ -303,7 +310,7 @@ def _write_job(ret: dict, basename: str, **kwargs):
             if not click.confirm("Overwrite output files?"):
                 raise OSError("Cancelled")
 
-    for i in tqdm.tqdm(range(len(ret["command"]))):
+    for i in tqdm.tqdm(np.argsort(ret["source"])):
 
         s = ret["source"][i]
         d = os.path.join(kwargs["outdir"], ret["dest"][i])
@@ -312,9 +319,20 @@ def _write_job(ret: dict, basename: str, **kwargs):
 
             if i == 0:
                 system = System.init(source)
-                initialise = False
+                output = {
+                    "N": int(info["/normalisation/N"][...]),
+                    "sig0": float(info["/normalisation/sig0"][...]),
+                }
+                init_system = True
             else:
-                initialise = ret["source"][i] != ret["source"][i - 1]
+                init_system = ret["source"][i] != ret["source"][i - 1]
+
+            if init_system:
+                p = f"/full/{os.path.split(s)[-1]:s}"
+                output["sigd"] = info[f"{p:s}/sigd"][...]
+                output["A"] = info[f"{p:s}/A"][...]
+                output["inc"] = info[f"{p:s}/inc"][...]
+                output["steadystate"] = int(info[f"{p:s}/steadystate"][...])
 
             System.branch_fixed_stress(
                 source=source,
@@ -324,7 +342,8 @@ def _write_job(ret: dict, basename: str, **kwargs):
                 stress=ret["stress"][i],
                 normalised=True,
                 system=system,
-                initialise=initialise,
+                init_system=init_system,
+                output=output,
                 dev=kwargs["develop"],
             )
 
@@ -401,6 +420,8 @@ def cli_job_deltasigma(cli_args=None):
     sigd_loading = sigd_loading[keep]
     ifile_loading = ifile_loading[keep]
     assert all(inc - 1 == inc_loading)
+    assert args.delta_sigma > 0
+    assert args.delta_sigma < np.max(sigd_loading - sigd)
     elements = np.linspace(0, N + 1, args.pushes + 1)[:-1].astype(int)
 
     ret = dict(
@@ -446,7 +467,8 @@ def cli_job_deltasigma(cli_args=None):
                 ret["stress"].append(s)
                 ret["element"].append(e)
 
-    ret = _write_job(ret, executable, **vars(args))
+    with h5py.File(args.ensembleinfo, "r") as file:
+        ret = _write_job(ret, executable, file, **vars(args))
 
     if cli_args is not None:
         return ret
@@ -556,7 +578,8 @@ def cli_job_strain(cli_args=None):
                 ret["stress"].append(s)
                 ret["element"].append(e)
 
-    ret = _write_job(ret, executable, **vars(args))
+    with h5py.File(args.ensembleinfo, "r") as file:
+        ret = _write_job(ret, executable, file, **vars(args))
 
     if cli_args is not None:
         return ret
