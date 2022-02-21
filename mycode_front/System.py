@@ -646,7 +646,8 @@ def cli_generate(cli_args=None):
 
     args = tools._parse(parser, cli_args)
 
-    assert os.path.isdir(args.outdir)
+    if not os.path.isdir(args.outdir):
+        os.makedirs(args.outdir)
 
     files = []
 
