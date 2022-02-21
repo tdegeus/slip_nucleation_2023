@@ -1452,6 +1452,7 @@ def cli_rerun_event_job_systemspanning(cli_args=None):
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
     output = file_defaults[funcname]
 
+    parser.add_argument("--conda", type=str, default=slurm.default_condabase, help="Env-basename")
     parser.add_argument("-f", "--force", action="store_true", help="Force clean output directory")
     parser.add_argument("-n", "--group", type=int, default=20, help="#increments to group")
     parser.add_argument("-o", "--outdir", type=str, default=output, help="Output directory")
@@ -1497,6 +1498,7 @@ def cli_rerun_event_job_systemspanning(cli_args=None):
         basename=executable,
         group=args.group,
         outdir=args.outdir,
+        conda=dict(condabase=args.conda),
         sbatch={"time": args.time},
     )
 
@@ -1517,6 +1519,7 @@ def cli_rerun_dynamics_job_systemspanning(cli_args=None):
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
     output = file_defaults[funcname]
 
+    parser.add_argument("--conda", type=str, default=slurm.default_condabase, help="Env-basename")
     parser.add_argument("-f", "--force", action="store_true", help="Force clean output directory")
     parser.add_argument("-n", "--group", type=int, default=20, help="#increments to group")
     parser.add_argument("-o", "--outdir", type=str, default=output, help="Output directory")
@@ -1557,6 +1560,7 @@ def cli_rerun_dynamics_job_systemspanning(cli_args=None):
         basename=executable,
         group=args.group,
         outdir=args.outdir,
+        conda=dict(condabase=args.conda),
         sbatch={"time": args.time},
     )
 

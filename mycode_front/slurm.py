@@ -253,6 +253,7 @@ def cli_serial_group(cli_args=None):
     )
 
     account = slurm_defaults["account"]
+    parser.add_argument("--conda", type=str, default=default_condabase, help="Env-basename")
     parser.add_argument("-a", "--account", type=str, default=account, help="Account")
     parser.add_argument("-b", "--basename", type=str, help="Basename for scripts. Default: command")
     parser.add_argument("-c", "--command", type=str, help="Command to use")
@@ -273,6 +274,7 @@ def cli_serial_group(cli_args=None):
         basename=args.basename if args.basename else args.command,
         group=args.group,
         outdir=args.outdir,
+        conda=dict(condabase=args.conda),
         sbatch={"time": args.time, "account": args.account},
     )
 
@@ -298,6 +300,7 @@ def cli_serial(cli_args=None):
     )
 
     account = slurm_defaults["account"]
+    parser.add_argument("--conda", type=str, default=default_condabase, help="Env-basename")
     parser.add_argument("-a", "--account", type=str, default=account, help="Account")
     parser.add_argument("-n", "--name", type=str, help="Job name (default: from command)")
     parser.add_argument("-o", "--outdir", type=str, default=".", help="Output dir")
@@ -316,5 +319,6 @@ def cli_serial(cli_args=None):
         args.command,
         basename=basename,
         outdir=args.outdir,
+        conda=dict(condabase=args.conda),
         sbatch={"time": args.time},
     )
