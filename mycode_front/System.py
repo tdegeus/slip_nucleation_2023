@@ -1096,9 +1096,17 @@ def cli_ensembleinfo(cli_args=None):
     file_load = []
     file_kick = []
 
+    fmt = "{:" + str(max(len(i) for i in info["filepath"])) + "s}"
+    pbar = tqdm.tqdm(total=len(info["filepath"]))
+    pbar.set_description(fmt.format(""))
+
     with h5py.File(args.output, "w") as output:
 
-        for i, (filename, filepath) in enumerate(zip(tqdm.tqdm(info["filepath"]), args.files)):
+        for i, (filename, filepath) in enumerate(zip(info["filepath"], args.files)):
+
+            pbar.n = i + 1
+            pbar.set_description(fmt.format(filename))
+            pbar.refresh()
 
             with h5py.File(filepath, "r") as file:
 
@@ -1117,6 +1125,7 @@ def cli_ensembleinfo(cli_args=None):
 
                 for key in fields_full:
                     output[f"/full/{filename}/{key}"] = out[key]
+                output.flush()
 
                 info["seed"].append(out["seed"])
 
