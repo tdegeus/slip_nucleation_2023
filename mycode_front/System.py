@@ -1008,7 +1008,7 @@ def normalisation(file: h5py.File):
         ret["rho"] = file["/meta/normalisation/rho"][...]
         ret["seed"] = file["/meta/seed_base"][...]
     else:
-        N = system.plastic().size
+        N = file["/cusp/epsy"].shape[0]
         G = 1.0
         eps0 = 1.0e-3 / 2.0
         sig0 = 2.0 * G * eps0
@@ -1036,7 +1036,9 @@ def normalisation(file: h5py.File):
     return ret
 
 
-def basic_output(system: model.System, file: h5py.File, norm: dict = None, verbose: bool = True) -> dict:
+def basic_output(
+    system: model.System, file: h5py.File, norm: dict = None, verbose: bool = True
+) -> dict:
     """
     Read basic output from simulation.
 
@@ -1157,7 +1159,6 @@ def cli_ensembleinfo(cli_args=None):
         dependencies=[],
     )
 
-    fields_norm = ["l0", "G", "K", "rho", "cs", "cd", "sig0", "eps0", "N", "t0", "dt"]
     fields_full = ["epsd", "sigd", "S", "A", "kick", "inc", "steadystate"]
     combine_load = {key: [] for key in ["epsd", "sigd", "S", "A", "kick", "inc"]}
     combine_kick = {key: [] for key in ["epsd", "sigd", "S", "A", "kick", "inc"]}
