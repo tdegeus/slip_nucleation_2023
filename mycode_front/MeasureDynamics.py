@@ -10,6 +10,7 @@ import textwrap
 
 import FrictionQPotFEM  # noqa: F401
 import GMatElastoPlasticQPot  # noqa: F401
+import GMatElastoPlasticQPot.Cartesian2d as GMat
 import GooseFEM
 import h5py
 import numpy as np
@@ -23,8 +24,12 @@ from ._version import version
 
 entry_points = dict(
     cli_run="MeasureDynamics_run",
+    cli_ensembleinfo="MeasureDynamics_EnsembleInfo",
 )
 
+file_defaults = dict(
+    cli_ensembleinfo="MeasureDynamics_EnsembleInfo.h5",
+)
 
 def replace_ep(doc: str) -> str:
     """
@@ -156,7 +161,8 @@ def cli_run(cli_args=None):
 
     with h5py.File(args.output, "w") as file:
 
-        System.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
+        meta = System.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
+        meta["file"] = os.path.basename(args.file)
 
         A = 0  # maximal A encountered so far
         A_next = 0  # next A at which to write output
@@ -238,3 +244,139 @@ def cli_run(cli_args=None):
                 storage.dset_extend1d(file, "/sync-t/stored", t_istore, iiter)
                 t_istore += 1
                 store = True
+
+
+def basic_output(system: model.System, file: h5py.File, norm: dict, verbose: bool = True) -> dict:
+    """
+    Read basic output from simulation.
+
+    :param system: The system (modified: all increments visited).
+    :param file: Open simulation HDF5 archive (read-only).
+    :param norm: Normalisation, see :py:func:`Sytem.normalisation`.
+    :param verbose: Print progress.
+
+    :return: Basic information as follows::
+        epsp: Plastic strain averaged on the interface [ninc].
+        eps: Strain averaged on the interface [ninc].
+        sig: Stress averaged on the interface [ninc].
+        S: Number of times a block yielded [ninc].
+        A: Number of blocks that yielded at least once [ninc].
+        t: Time [ninc].
+    """
+
+    if norm is None:
+        norm = normalisation(file)
+
+    doflist = file["/doflist"][...]
+    vector = system.vector()
+    partial = tools.PartialDisplacement(
+        conn=system.conn(),
+        dofs=system.dofs(),
+        dof_list=doflist,
+    )
+    udof = np.zeros(vector.shape_dofval())
+    dVs = system.quad().dV()[system.plastic(), ...]
+    dV = system.quad().AsTensor(2, dVs)
+
+    n = file["/stored"].size
+    ret = {}
+    ret["epsp"] = np.empty(n, dtype=float)
+    ret["eps"] = np.empty(n, dtype=float)
+    ret["sig"] = np.empty(n, dtype=float)
+    ret["S"] = np.empty(n, dtype=int)
+    ret["A"] = np.empty(n, dtype=int)
+
+    for i, iiter in enumerate(file["/stored"][...]):
+
+        udof[doflist] = file[f"/u/{iiter:d}"]
+        system.setU(vector.AsNode(udof))
+
+        if i == 0:
+            idx_n = system.plastic_CurrentIndex().astype(int)[:, 0]
+
+        idx = system.plastic_CurrentIndex().astype(int)[:, 0]
+        ret["epsp"][i] = np.average(system.plastic_Epsp(), weights=dVs, axis=(0, 1))
+        ret["eps"][i] = GMat.Epsd(np.average(system.plastic_Eps(), weights=dV, axis=(0, 1)))
+        ret["sig"][i] = GMat.Sigd(np.average(system.plastic_Sig(), weights=dV, axis=(0, 1)))
+        ret["S"][i] = np.sum(idx - idx_n)
+        ret["A"][i] = np.sum(idx != idx_n)
+
+    assert np.all(np.equal(ret["A"], file["/A"][...]))
+    ret["t"] = file["/t"][...] / norm["t0"]
+
+    ret["epsp"] /= norm["eps0"]
+    ret["eps"] /= norm["eps0"]
+    ret["sig"] /= norm["sig0"]
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    tools.check_docstring(doc, ret, ":return:")
+
+    return ret
+
+
+def cli_ensembleinfo(cli_args=None):
+    """
+    Read and store basic info from individual runs.
+    """
+
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    progname = entry_points[funcname]
+    output = file_defaults[funcname]
+
+    parser.add_argument("--develop", action="store_true", help="Development mode")
+    parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
+    parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
+    parser.add_argument("-p", "--sourcedir", type=str, default=".", help="Source directory")
+    parser.add_argument("files", nargs="*", type=str, help="Files to read")
+
+    args = tools._parse(parser, cli_args)
+    assert len(args.files) > 0
+    assert all([os.path.isfile(file) for file in args.files])
+    tools._check_overwrite_file(args.output, args.force)
+
+    fmt = "{:" + str(max(len(i) for i in args.files)) + "s}"
+    pbar = tqdm.tqdm(args.files)
+    pbar.set_description(fmt.format(""))
+
+    with h5py.File(args.output, "w") as output:
+
+        for filepath in pbar:
+
+            pbar.set_description(fmt.format(filepath), refresh=True)
+
+            with h5py.File(filepath, "r") as file:
+
+                meta = file[f"/meta/{entry_points['cli_run']}"]
+
+                if "file" in meta.attrs:
+                    sourcepath = os.path.join(args.sourcedir, meta.attrs["file"])
+                else:
+                    i = tools.read_parameters(filepath)["id"]
+                    sourcepath = os.path.join(args.sourcedir, "id={0:s}.h5".format(i))
+                    if not os.path.isfile(sourcepath):
+                        sourcepath = os.path.join(args.sourcedir, "id={0:s}.hdf5".format(i))
+
+                assert os.path.isfile(sourcepath)
+
+                with h5py.File(sourcepath, "r") as source:
+                    system = System.init(source)
+                    norm = System.normalisation(source)
+
+                out = basic_output(system, file, norm=norm, verbose=False)
+
+                for key in out:
+                    output[f"/full/{os.path.basename(filepath)}/{key}"] = out[key]
+
+        output["/stored"] = [os.path.basename(i) for i in args.files]
+
+
