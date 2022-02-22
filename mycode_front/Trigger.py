@@ -49,10 +49,16 @@ def cli_run(cli_args=None):
     """
     Trigger event and minimise energy.
 
+    This function will run ``--niter`` time steps to see if the trigger lead to any plastic event.
+    If that is not the case, it will retry the neighbouring element recursively until a plastic
+    event is found.
+    Due to this feature, the time of the event may be overestimated for very small events.
+    If ``--retry=0`` this functionality with be skipped.
+
     An option is provided to truncate the simulation when an event is system-spanning.
     In that case the ``truncated`` meta-attribute will be ``True``.
-    The displacement field will not correspond to a mechanical equilibrium, while the state
-    at truncation will be stored under ``restart``.
+    The displacement field will not correspond to a mechanical equilibrium,
+    while the state at truncation will be stored under ``restart``.
     """
 
     class MyFmt(
@@ -69,31 +75,44 @@ def cli_run(cli_args=None):
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("--truncate-system-spanning", action="store_true", help="Stop large events")
+    parser.add_argument("-r", "--retry", type=int, default=50, help="Maximum number of tries")
+    parser.add_argument("-t", "--niter", type=int, default=20000, help="Trial number of iterations")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("file", type=str, help="Input/output file")
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)
+    assert args.retry >= 0
+    assert args.niter > 0
 
     pbar = tqdm.tqdm(total=1)
-    pbar.set_description(args.file)
+    pbar.set_description(args.file, refresh=True)
 
     with h5py.File(args.file, "a") as file:
 
+        element = int(file["/trigger/element"][-1])
+        inc = int(file["/stored"][-1])
+        assert not file["/trigger/truncated"][inc]
+
         System.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
         system = System.init(file)
-
-        inc = int(file["/stored"][-1])
         System._restore_inc(file, system, inc)
         idx_n = system.plastic_CurrentIndex()[:, 0]
+        N = system.plastic().size
+        system.triggerElementWithLocalSimpleShear(file["/run/epsd/kick"][...], element)
 
-        assert not file["/trigger/truncated"][inc]
-        if file["/trigger/element"].size - 1 == inc:
-            storage.dset_extend1d(file, "/trigger/element", inc + 1, file["/trigger/element"][inc])
+        for trial in range(args.retry):
 
-        system.triggerElementWithLocalSimpleShear(
-            file["/run/epsd/kick"][...], file["/trigger/element"][inc + 1]
-        )
+            system.timeSteps(args.niter)
+
+            if np.sum(np.not_equal(system.plastic_CurrentIndex()[:, 0], idx_n)) > 0:
+                break
+            if element + 1 == N:
+                break
+
+            element += 1
+            System._restore_inc(file, system, inc)
+            system.triggerElementWithLocalSimpleShear(file["/run/epsd/kick"][...], element)
 
         if args.truncate_system_spanning:
             niter = system.minimise_truncate(idx_n=idx_n, A_truncate=system.plastic().size)
@@ -104,6 +123,7 @@ def cli_run(cli_args=None):
         storage.dset_extend1d(file, "/stored", inc, inc)
         storage.dset_extend1d(file, "/t", inc, system.t())
         storage.dset_extend1d(file, "/kick", inc, True)
+        storage.dset_extend1d(file, "/trigger/element", inc, element)
         storage.dset_extend1d(file, "/trigger/branched", inc, False)
         storage.dset_extend1d(file, "/trigger/truncated", inc, niter == 0)
         file[f"/disp/{inc:d}"] = system.u()
