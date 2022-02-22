@@ -501,7 +501,7 @@ def cli_job_deltasigma(cli_args=None):
 
     if args.nmax is not None:
         for key in ret:
-            ret[key] = ret[key][:args.nmax]
+            ret[key] = ret[key][: args.nmax]
 
     with h5py.File(args.ensembleinfo, "r") as file:
         _write_configurations(elements[0], file, args.force, args.develop, **ret)
@@ -635,7 +635,7 @@ def cli_job_strain(cli_args=None):
 
     if args.nmax is not None:
         for key in ret:
-            ret[key] = ret[key][:args.nmax]
+            ret[key] = ret[key][: args.nmax]
 
     with h5py.File(args.ensembleinfo, "r") as file:
         _write_configurations(elements[0], file, args.force, args.develop, **ret)

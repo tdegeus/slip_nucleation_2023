@@ -1,11 +1,11 @@
 import os
-import shutil
 import re
+import shutil
 import sys
 import unittest
 
-import h5py
 import GooseHDF5 as g5
+import h5py
 import numpy as np
 
 root = os.path.join(os.path.dirname(__file__), "..")
