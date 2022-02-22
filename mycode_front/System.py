@@ -235,9 +235,12 @@ def branch_fixed_stress(
     """
     Branch a configuration at a given:
     *   Increment (``inc``).
-        If ``incc`` and ``stress`` are supplied they ignored.
-        They are only checked to be consistent with the state at ``inc`` and stored as meta-data.
+        ``incc`` and ``stress`` are ignored if supplied, but are stored as meta-data in that case.
+        To ensure meta-data integrity,
+        they are only checked to be consistent with the state at ``inc``.
     *   Fixed stress after a system spanning event (``incc`` and ``stress``).
+        Note that ``stress`` is approximated as best as possible, and its actual value is stored
+        in the meta-data.
 
     :param source: Source file.
     :param dest: Destination file.
@@ -264,16 +267,34 @@ def branch_fixed_stress(
     clone(source, dest)
     _init_run_state(dest)
 
-    if stress is None:
-        real_stress = None
-        stress = None
-    elif normalised:
-        real_stress = stress * output["sig0"]
-        stress = stress
-    else:
-        real_stress = stress
-        stress = stress / output["sig0"]
+    if not normalised:
+        stress /= output["sig0"]
 
+    load_inc = None
+
+    # determine at which increment a push could be applied
+    if incc is not None:
+
+        assert stress is not None
+
+        jincc = incc + np.argwhere(output["A"][incc:] == output["N"]).ravel()[1]
+        assert (jincc - incc) % 2 == 0
+        i = output["inc"][incc: jincc].reshape(-1, 2)
+        s = output["sigd"][incc: jincc].reshape(-1, 2)
+        k = output["kick"][incc: jincc].reshape(-1, 2)
+        t = np.sum(s < stress, axis=1)
+        assert np.all(k[:, 0] == True)
+
+        if np.sum(t == 1) == 1:
+            load_inc = i[np.argmax(t == 1), 0]
+        elif np.sum(t == 2) > 0:
+            j = np.argmax(t == 0)
+            inc = i[j, 0]
+            stress = s[j, 0]
+        else:
+            load_inc = i[0, 0]
+
+    # restore specific increment
     if inc is not None:
 
         dest["/disp/0"] = source[f"/disp/{inc:d}"][...]
@@ -284,24 +305,12 @@ def branch_fixed_stress(
             i = output["inc"][output["A"] == output["N"]]
             assert i[i >= incc][1] > inc
 
-    else:
-
-        assert incc is not None and stress is not None
-
-        # determine at which increment a push could be applied
-
-        inc_system, inc_push = pushincrements(system, source, real_stress, output)
-
-        # reload specific increment based on target stress and system-spanning increment
-
-        assert incc in inc_system
-        i = np.argmax(np.logical_and(incc == inc_system, incc <= inc_push))
-        load_inc = inc_push[i]
-        assert incc == inc_system[i]
+    # apply elastic loading to reach a specific stress
+    if load_inc is not None:
 
         system.setU(source[f"/disp/{load_inc:d}"])
         idx_n = system.plastic_CurrentIndex()
-        system.addSimpleShearToFixedStress(real_stress)
+        system.addSimpleShearToFixedStress(stress * output["sig0"])
         idx = system.plastic_CurrentIndex()
         assert np.all(idx == idx_n)
 

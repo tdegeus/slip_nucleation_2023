@@ -310,10 +310,14 @@ def _write_job(ret: dict, basename: str, info: h5py.File, **kwargs) -> dict:
             if not click.confirm("Overwrite output files?"):
                 raise OSError("Cancelled")
 
-    for i in tqdm.tqdm(np.argsort(ret["source"])):
+    fmt = "{:" + str(max(len(i) for i in ret["source"])) + "s}"
+    pbar = tqdm.tqdm(np.argsort(ret["source"]))
+
+    for i in pbar:
 
         s = ret["source"][i]
         d = os.path.join(kwargs["outdir"], ret["dest"][i])
+        pbar.set_description(fmt.format(s), refresh=True)
 
         with h5py.File(s, "r") as source, h5py.File(d, "w") as dest:
 
@@ -329,6 +333,7 @@ def _write_job(ret: dict, basename: str, info: h5py.File, **kwargs) -> dict:
 
             if init_system:
                 p = f"/full/{os.path.split(s)[-1]:s}"
+                output["kick"] = info[f"{p:s}/kick"][...]
                 output["sigd"] = info[f"{p:s}/sigd"][...]
                 output["A"] = info[f"{p:s}/A"][...]
                 output["inc"] = info[f"{p:s}/inc"][...]
