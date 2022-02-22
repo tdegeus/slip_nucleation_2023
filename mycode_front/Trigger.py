@@ -311,12 +311,13 @@ def _write_job(ret: dict, basename: str, info: h5py.File, **kwargs) -> dict:
                 raise OSError("Cancelled")
 
     fmt = "{:" + str(max(len(i) for i in ret["source"])) + "s}"
-    pbar = tqdm.tqdm(np.argsort(ret["source"]))
+    index = np.argsort(ret["source"])
+    pbar = tqdm.tqdm(index)
 
-    for i in pbar:
+    for i, idx in enumerate(pbar):
 
-        s = ret["source"][i]
-        d = os.path.join(kwargs["outdir"], ret["dest"][i])
+        s = ret["source"][idx]
+        d = os.path.join(kwargs["outdir"], ret["dest"][idx])
         pbar.set_description(fmt.format(s), refresh=True)
 
         with h5py.File(s, "r") as source, h5py.File(d, "w") as dest:
@@ -329,7 +330,7 @@ def _write_job(ret: dict, basename: str, info: h5py.File, **kwargs) -> dict:
                 }
                 init_system = True
             else:
-                init_system = ret["source"][i] != ret["source"][i - 1]
+                init_system = ret["source"][idx] != ret["source"][index[i - 1]]
 
             if init_system:
                 p = f"/full/{os.path.split(s)[-1]:s}"
@@ -342,9 +343,9 @@ def _write_job(ret: dict, basename: str, info: h5py.File, **kwargs) -> dict:
             System.branch_fixed_stress(
                 source=source,
                 dest=dest,
-                inc=ret["inc"][i],
-                incc=ret["incc"][i],
-                stress=ret["stress"][i],
+                inc=ret["inc"][idx],
+                incc=ret["incc"][idx],
+                stress=ret["stress"][idx],
                 normalised=True,
                 system=system,
                 init_system=init_system,
@@ -352,7 +353,7 @@ def _write_job(ret: dict, basename: str, info: h5py.File, **kwargs) -> dict:
                 dev=kwargs["develop"],
             )
 
-            _writeinitbranch(dest, ret["element"][i])
+            _writeinitbranch(dest, ret["element"][idx])
 
     slurm.serial_group(
         ret["command"],
