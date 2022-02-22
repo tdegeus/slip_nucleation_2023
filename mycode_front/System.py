@@ -168,7 +168,8 @@ def init(file: h5py.File) -> model.System:
 
 def clone(source: h5py.File, dest: h5py.File, skip: list[str] = None) -> list[str]:
     """
-    Clone a configuration. This clone does not include::
+    Clone a configuration.
+    This clone does not include any groups without datasets (meta-data of runs), and::
 
         /stored
         /t
