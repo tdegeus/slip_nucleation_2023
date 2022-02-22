@@ -6,9 +6,9 @@ from __future__ import annotations
 import argparse
 import inspect
 import os
-import textwrap
-import tempfile
 import shutil
+import tempfile
+import textwrap
 
 import click
 import FrictionQPotFEM  # noqa: F401
