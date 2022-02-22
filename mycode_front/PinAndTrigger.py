@@ -8,6 +8,7 @@ import re
 import shutil
 import sys
 import textwrap
+import warnings
 from collections import defaultdict
 
 import click
@@ -107,6 +108,69 @@ def interpret_filename(filepath: str, convert: bool = False) -> dict:
 
     part = os.path.splitext(os.path.basename(filepath))[0]
     return _interpret(re.split("_|/", part), convert=convert)
+
+
+def pushincrements(
+    system: model.System,
+    file: h5py.File,
+    target_stress: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    r"""
+    Get a list of increment from which the stress can be reached by elastic loading only.
+
+    :param system: The system (modified: all increments visited).
+    :param file: Open simulation HDF5 archive (read-only).
+    :param target_stress: The stress at which to push (in real units).
+    :return:
+        ``inc_system`` List of system spanning avalanches.
+        ``inc_push`` List of increment from which the stress can be reached by elastic loading only.
+    """
+
+    warnings.warn("deprecated in favour if System.branch_fixed_stress", DeprecationWarning)
+
+    plastic = system.plastic()
+    N = plastic.size
+    kick = file["/kick"][...].astype(bool)
+    incs = file["/stored"][...].astype(int)
+    assert all(incs == np.arange(incs.size))
+    assert kick.shape == incs.shape
+    assert all(np.logical_not(kick[::2]))
+    assert all(kick[1::2])
+
+    output = System.basic_output(system, file, verbose=False)
+
+    Stress = output["sigd"] * output["sig0"]
+    A = output["A"]
+    A[: output["steadystate"]] = 0
+
+    inc_system = np.argwhere(A == N).ravel()
+    inc_push = []
+    inc_system_ret = []
+
+    for istart, istop in zip(inc_system[:-1], inc_system[1:]):
+
+        # state after elastic loading (before kick)
+        i = istart + 1
+        s = Stress[i:istop:2]
+        n = incs[i:istop:2]
+
+        if not any(s > target_stress) or Stress[istart] > target_stress:
+            continue
+
+        ipush = n[np.argmax(s > target_stress)] - 1
+
+        if Stress[ipush] > target_stress:
+            continue
+
+        assert not kick[ipush + 1]
+
+        inc_push += [ipush]
+        inc_system_ret += [n[0] - 1]
+
+    inc_push = np.array(inc_push)
+    inc_system_ret = np.array(inc_system_ret)
+
+    return inc_system_ret, inc_push
 
 
 def pinning(system: model.System, target_element: int, target_A: int) -> np.ndarray:
@@ -246,7 +310,7 @@ def cli_run(cli_args=None):
 
         # (*) Determine at which increment a push could be applied
 
-        inc_system, inc_push = System.pushincrements(system, file, target_stress)
+        inc_system, inc_push = pushincrements(system, file, target_stress)
 
         # (*) Reload specific increment based on target stress and system-spanning increment
 
@@ -646,7 +710,7 @@ def cli_job(cli_args=None):
                     else:
                         system.reset_epsy(System.read_epsy(file))
 
-                    trigger, _ = System.pushincrements(system, file, stress)
+                    trigger, _ = pushincrements(system, file, stress)
 
                 simid = os.path.basename(os.path.splitext(filename)[0])
                 filepath = os.path.relpath(filename, args.output)
