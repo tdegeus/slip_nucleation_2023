@@ -301,6 +301,9 @@ def branch_fixed_stress(
             if np.abs(s[j, 0] - stress) / s[j, 0] < 1e-4:
                 inc = i[j, 0]
                 stress = s[j, 0]
+            elif np.abs(s[j, 1] - stress) / s[j, 1] < 1e-4:
+                inc = i[j, 1]
+                stress = s[j, 1]
             else:
                 load_inc = int(i[j, 0])
         else:
