@@ -169,14 +169,26 @@ def cli_ensembleinfo(cli_args=None):
         stress=[],
     )
 
-    for i, filepath in enumerate(tqdm.tqdm(args.files)):
+    simid = [int(tools.read_parameters(i)["id"]) for i in args.files]
+    index = np.argsort(simid)
+    fmt = "{:" + str(max(len(i) for i in args.files)) + "s}"
+    pbar = tqdm.tqdm(index)
+    pbar.set_description(fmt.format(""))
+
+    for i, idx in enumerate(pbar):
+
+        filepath = args.files[idx]
+        pbar.set_description(fmt.format(filepath), refresh=True)
 
         with h5py.File(filepath, "r") as file:
 
             if i == 0:
                 system = System.init(file)
-            else:
+            elif simid[idx] != simid[index[i - 1]]:
                 system.reset_epsy(System.read_epsy(file))
+
+            if "/disp/1" not in file:
+                continue
 
             out = System.basic_output(system, file, verbose=False)
             assert len(out["S"]) == 2
