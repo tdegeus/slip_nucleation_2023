@@ -9,6 +9,7 @@ import os
 import textwrap
 
 import FrictionQPotFEM  # noqa: F401
+import FrictionQPotFEM.UniformSingleLayer2d as model
 import GMatElastoPlasticQPot  # noqa: F401
 import GMatElastoPlasticQPot.Cartesian2d as GMat
 import GooseFEM
@@ -30,6 +31,7 @@ entry_points = dict(
 file_defaults = dict(
     cli_ensembleinfo="MeasureDynamics_EnsembleInfo.h5",
 )
+
 
 def replace_ep(doc: str) -> str:
     """
@@ -265,15 +267,10 @@ def basic_output(system: model.System, file: h5py.File, norm: dict, verbose: boo
     """
 
     if norm is None:
-        norm = normalisation(file)
+        norm = System.normalisation(file)
 
     doflist = file["/doflist"][...]
     vector = system.vector()
-    partial = tools.PartialDisplacement(
-        conn=system.conn(),
-        dofs=system.dofs(),
-        dof_list=doflist,
-    )
     udof = np.zeros(vector.shape_dofval())
     dVs = system.quad().dV()[system.plastic(), ...]
     dV = system.quad().AsTensor(2, dVs)
@@ -330,7 +327,7 @@ def cli_ensembleinfo(cli_args=None):
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
-    progname = entry_points[funcname]
+    entry_points[funcname]
     output = file_defaults[funcname]
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
@@ -362,9 +359,9 @@ def cli_ensembleinfo(cli_args=None):
                     sourcepath = os.path.join(args.sourcedir, meta.attrs["file"])
                 else:
                     i = tools.read_parameters(filepath)["id"]
-                    sourcepath = os.path.join(args.sourcedir, "id={0:s}.h5".format(i))
+                    sourcepath = os.path.join(args.sourcedir, f"id={i:s}.h5")
                     if not os.path.isfile(sourcepath):
-                        sourcepath = os.path.join(args.sourcedir, "id={0:s}.hdf5".format(i))
+                        sourcepath = os.path.join(args.sourcedir, f"id={i:s}.hdf5")
 
                 assert os.path.isfile(sourcepath)
 
@@ -378,5 +375,3 @@ def cli_ensembleinfo(cli_args=None):
                     output[f"/full/{os.path.basename(filepath)}/{key}"] = out[key]
 
         output["/stored"] = [os.path.basename(i) for i in args.files]
-
-
