@@ -169,7 +169,7 @@ def init(file: h5py.File) -> model.System:
 def clone(source: h5py.File, dest: h5py.File, skip: list[str] = None) -> list[str]:
     """
     Clone a configuration.
-    This clone does not include any groups without datasets (meta-data of runs), and::
+    This clone does not include::
 
         /stored
         /t
@@ -183,17 +183,23 @@ def clone(source: h5py.File, dest: h5py.File, skip: list[str] = None) -> list[st
     """
 
     datasets = list(g5.getdatasets(source, fold="/disp"))
+    groups = list(g5.getgroups(source, has_attrs=True))
 
     for key in ["/stored", "/t", "/kick", "/disp/..."]:
         datasets.remove(key)
 
+    for key in ["/disp"]:
+        groups.remove("/disp")
+
+    ret = datasets + groups
+
     if skip:
         for key in skip:
-            datasets.remove(key)
+            ret.remove(key)
 
-    g5.copy(source, dest, datasets)
+    g5.copy(source, dest, ret)
 
-    return datasets
+    return ret
 
 
 def _init_run_state(file: h5py.File):
@@ -230,6 +236,7 @@ def branch_fixed_stress(
     normalised: bool = False,
     system: model.System = None,
     init_system: bool = False,
+    init_dest: bool = True,
     output: ArrayLike = None,
     dev: bool = False,
 ):
@@ -251,6 +258,7 @@ def branch_fixed_stress(
     :param normalised: Assume ``stress`` to be normalised (see ``sig0`` in :py:func:`basic_output`).
     :param system: The system (optional, specify to avoid reallocation).
     :param init_system: Read yield strains (otherwise ``system`` is assumed fully initialised).
+    :param init_dest: Initialise ``dest`` from ``source``.
     :param output: Output of :py:func:`basic_output` (read if not specified).
     :param dev: Allow uncommitted changes.
     """
@@ -265,8 +273,9 @@ def branch_fixed_stress(
     if output is None:
         output = basic_output(system, source, verbose=False)
 
-    clone(source, dest)
-    _init_run_state(dest)
+    if init_dest:
+        clone(source, dest)
+        _init_run_state(dest)
 
     if not normalised:
         stress /= output["sig0"]

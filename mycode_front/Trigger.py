@@ -7,6 +7,8 @@ import argparse
 import inspect
 import os
 import textwrap
+import tempfile
+import shutil
 
 import click
 import FrictionQPotFEM  # noqa: F401
@@ -305,22 +307,29 @@ def _write_job(ret: dict, basename: str, info: h5py.File, **kwargs) -> dict:
         for key in ret:
             ret[key] = ret[key][:n]
 
+    destpath = [os.path.join(kwargs["outdir"], i) for i in ret["dest"]]
+
     if not kwargs["force"]:
-        if any([os.path.isfile(i) for i in ret["dest"]]):
+        if any([os.path.isfile(i) for i in destpath]):
             if not click.confirm("Overwrite output files?"):
                 raise OSError("Cancelled")
+
+    for i in destpath:
+        if os.path.isfile(i):
+            os.remove(i)
 
     fmt = "{:" + str(max(len(i) for i in ret["source"])) + "s}"
     index = np.argsort(ret["source"])
     pbar = tqdm.tqdm(index)
+    tmp = tempfile.mkstemp(suffix=".h5", dir=kwargs["outdir"])[1]
 
     for i, idx in enumerate(pbar):
 
         s = ret["source"][idx]
-        d = os.path.join(kwargs["outdir"], ret["dest"][idx])
+        d = destpath[idx]
         pbar.set_description(fmt.format(s), refresh=True)
 
-        with h5py.File(s, "r") as source, h5py.File(d, "w") as dest:
+        with h5py.File(s, "r") as source:
 
             if i == 0:
                 system = System.init(source)
@@ -338,22 +347,29 @@ def _write_job(ret: dict, basename: str, info: h5py.File, **kwargs) -> dict:
                 output["sigd"] = info[f"{p:s}/sigd"][...]
                 output["A"] = info[f"{p:s}/A"][...]
                 output["inc"] = info[f"{p:s}/inc"][...]
-                output["steadystate"] = int(info[f"{p:s}/steadystate"][...])
+                with h5py.File(tmp, "w") as dest:
+                    System.clone(source, dest)
+                    System._init_run_state(dest)
+                    _writeinitbranch(dest, 0)
 
-            System.branch_fixed_stress(
-                source=source,
-                dest=dest,
-                inc=ret["inc"][idx],
-                incc=ret["incc"][idx],
-                stress=ret["stress"][idx],
-                normalised=True,
-                system=system,
-                init_system=init_system,
-                output=output,
-                dev=kwargs["develop"],
-            )
+            shutil.copy(tmp, d)
 
-            _writeinitbranch(dest, ret["element"][idx])
+            with h5py.File(d, "a") as dest:
+
+                System.branch_fixed_stress(
+                    source=source,
+                    dest=dest,
+                    inc=ret["inc"][idx],
+                    incc=ret["incc"][idx],
+                    stress=ret["stress"][idx],
+                    normalised=True,
+                    system=system,
+                    init_system=init_system,
+                    init_dest=False,
+                    output=output,
+                    dev=kwargs["develop"],
+                )
+                dest["/trigger/element"][0] = int(ret["element"][idx])
 
     slurm.serial_group(
         ret["command"],
@@ -363,6 +379,8 @@ def _write_job(ret: dict, basename: str, info: h5py.File, **kwargs) -> dict:
         conda=dict(condabase=kwargs["conda"]),
         sbatch={"time": kwargs["time"]},
     )
+
+    os.remove(tmp)
 
     return ret
 
