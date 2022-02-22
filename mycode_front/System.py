@@ -279,11 +279,11 @@ def branch_fixed_stress(
 
         jncc = int(incc) + np.argwhere(output["A"][incc:] == output["N"]).ravel()[1]
         assert (jncc - incc) % 2 == 0
-        i = output["inc"][incc: jncc].reshape(-1, 2)
-        s = output["sigd"][incc: jncc].reshape(-1, 2)
-        k = output["kick"][incc: jncc].reshape(-1, 2)
+        i = output["inc"][incc:jncc].reshape(-1, 2)
+        s = output["sigd"][incc:jncc].reshape(-1, 2)
+        k = output["kick"][incc:jncc].reshape(-1, 2)
         t = np.sum(s < stress, axis=1)
-        assert np.all(k[:, 0] == True)
+        assert np.all(k[:, 0])
         assert np.sum(t) > 0
 
         if np.sum(t == 1) >= 1:
