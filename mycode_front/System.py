@@ -239,8 +239,8 @@ def branch_fixed_stress(
         To ensure meta-data integrity,
         they are only checked to be consistent with the state at ``inc``.
     *   Fixed stress after a system spanning event (``incc`` and ``stress``).
-        Note that ``stress`` is approximated as best as possible, and its actual value is stored
-        in the meta-data.
+        Note that ``stress`` is approximated as best as possible,
+        and its actual value is stored in the meta-data.
 
     :param source: Source file.
     :param dest: Destination file.
@@ -273,26 +273,25 @@ def branch_fixed_stress(
     load_inc = None
 
     # determine at which increment a push could be applied
-    if incc is not None:
+    if inc is None:
 
-        assert stress is not None
+        assert incc is not None and stress is not None
 
-        jincc = incc + np.argwhere(output["A"][incc:] == output["N"]).ravel()[1]
-        assert (jincc - incc) % 2 == 0
-        i = output["inc"][incc: jincc].reshape(-1, 2)
-        s = output["sigd"][incc: jincc].reshape(-1, 2)
-        k = output["kick"][incc: jincc].reshape(-1, 2)
+        jncc = int(incc) + np.argwhere(output["A"][incc:] == output["N"]).ravel()[1]
+        assert (jncc - incc) % 2 == 0
+        i = output["inc"][incc: jncc].reshape(-1, 2)
+        s = output["sigd"][incc: jncc].reshape(-1, 2)
+        k = output["kick"][incc: jncc].reshape(-1, 2)
         t = np.sum(s < stress, axis=1)
         assert np.all(k[:, 0] == True)
+        assert np.sum(t) > 0
 
-        if np.sum(t == 1) == 1:
+        if np.sum(t == 1) >= 1:
             load_inc = i[np.argmax(t == 1), 0]
-        elif np.sum(t == 2) > 0:
+        else:
             j = np.argmax(t == 0)
             inc = i[j, 0]
             stress = s[j, 0]
-        else:
-            load_inc = i[0, 0]
 
     # restore specific increment
     if inc is not None:
