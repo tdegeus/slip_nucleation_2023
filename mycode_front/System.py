@@ -748,6 +748,7 @@ def _restore_inc(file: h5py.File, system: model.System, inc: int):
     :param inc: Increment number.
     """
 
+    system.quench()
     system.setT(file["/t"][inc])
     system.setU(file[f"/disp/{inc:d}"][...])
 
