@@ -1,8 +1,10 @@
 import os
+import re
 import shutil
 import sys
 import unittest
 
+import GooseHDF5 as g5
 import h5py
 import numpy as np
 
@@ -44,15 +46,13 @@ class MyTests(unittest.TestCase):
     def test_strain(self):
 
         n = 6
-        ret = my.Trigger.cli_job_strain(
-            ["--dev", "-f", infoname, "-s", 4, "-p", 1, "-o", dirname, "--nmax", n]
+        commands = my.Trigger.cli_job_strain(
+            ["--dev", "-f", infoname, "-s", 4, "-p", 2, "-o", dirname, "--nmax", n]
         )
 
         output = []
         for i in range(n):
-            c = ret["command"][i].split(" ")[1:]
-            c[-1] = os.path.join(dirname, c[-1])
-            output.append(my.Trigger.cli_run(["--dev"] + c))
+            output.append(my.Trigger.cli_run(commands[i].split(" ")[1:]))
 
         triggerinfo = os.path.join(dirname, "TriggerInfo.h5")
         my.Trigger.cli_ensembleinfo(["--dev", "-f", "-o", triggerinfo] + output)
@@ -60,15 +60,35 @@ class MyTests(unittest.TestCase):
     def test_deltasigma(self):
 
         n = 5
-        ret = my.Trigger.cli_job_deltasigma(
-            ["--dev", "-f", infoname, "-d", 0.12, "-p", 1, "-o", dirname, "--nmax", n]
+        commands = my.Trigger.cli_job_deltasigma(
+            ["--dev", "-f", infoname, "-d", 0.12, "-p", 2, "-o", dirname, "--nmax", n]
         )
+
+        # check that copying worked
+
+        elem = [int(i.split(" ")[-1].split("element=")[1].split("_")[0]) for i in commands]
+        elem = np.unique(elem)
+        o = [i.split(" ")[-1] for i in commands]
+        uni = [re.sub(r"(.*)(element)(=[0-9]*)(.*)", r"\1\2=" + str(elem[0]) + r"\4", i) for i in o]
+        uni = [str(i) for i in np.unique(uni)]
+
+        for e in elem[1:]:
+            for src in uni:
+                dst = re.sub(r"(.*)(element)(=[0-9]*)(.*)", r"\1\2=" + str(e) + r"\4", src)
+                res = g5.compare(src, dst)
+                self.assertEqual(res["!="], ["/trigger/element"])
+                self.assertEqual(res["->"], [])
+                self.assertEqual(res["<-"], [])
+                with h5py.File(src, "r") as file:
+                    self.assertEqual(elem[0], file["/trigger/element"][0])
+                with h5py.File(dst, "r") as file:
+                    self.assertEqual(e, file["/trigger/element"][0])
+
+        # run ensemble
 
         output = []
         for i in range(n):
-            c = ret["command"][i].split(" ")[1:]
-            c[-1] = os.path.join(dirname, c[-1])
-            output.append(my.Trigger.cli_run(["--dev"] + c))
+            output.append(my.Trigger.cli_run(commands[i].split(" ")[1:]))
 
         triggerinfo = os.path.join(dirname, "TriggerInfo.h5")
         my.Trigger.cli_ensembleinfo(["--dev", "-f", "-o", triggerinfo] + output)

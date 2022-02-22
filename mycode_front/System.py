@@ -168,7 +168,8 @@ def init(file: h5py.File) -> model.System:
 
 def clone(source: h5py.File, dest: h5py.File, skip: list[str] = None) -> list[str]:
     """
-    Clone a configuration. This clone does not include::
+    Clone a configuration.
+    This clone does not include::
 
         /stored
         /t
@@ -182,17 +183,23 @@ def clone(source: h5py.File, dest: h5py.File, skip: list[str] = None) -> list[st
     """
 
     datasets = list(g5.getdatasets(source, fold="/disp"))
+    groups = list(g5.getgroups(source, has_attrs=True))
 
     for key in ["/stored", "/t", "/kick", "/disp/..."]:
         datasets.remove(key)
 
+    for key in ["/disp"]:
+        groups.remove("/disp")
+
+    ret = datasets + groups
+
     if skip:
         for key in skip:
-            datasets.remove(key)
+            ret.remove(key)
 
-    g5.copy(source, dest, datasets)
+    g5.copy(source, dest, ret)
 
-    return datasets
+    return ret
 
 
 def _init_run_state(file: h5py.File):
@@ -229,15 +236,19 @@ def branch_fixed_stress(
     normalised: bool = False,
     system: model.System = None,
     init_system: bool = False,
+    init_dest: bool = True,
     output: ArrayLike = None,
     dev: bool = False,
 ):
     """
     Branch a configuration at a given:
     *   Increment (``inc``).
-        If ``incc`` and ``stress`` are supplied they ignored.
-        They are only checked to be consistent with the state at ``inc`` and stored as meta-data.
+        ``incc`` and ``stress`` are ignored if supplied, but are stored as meta-data in that case.
+        To ensure meta-data integrity,
+        they are only checked to be consistent with the state at ``inc``.
     *   Fixed stress after a system spanning event (``incc`` and ``stress``).
+        Note that ``stress`` is approximated as best as possible,
+        and its actual value is stored in the meta-data.
 
     :param source: Source file.
     :param dest: Destination file.
@@ -247,6 +258,7 @@ def branch_fixed_stress(
     :param normalised: Assume ``stress`` to be normalised (see ``sig0`` in :py:func:`basic_output`).
     :param system: The system (optional, specify to avoid reallocation).
     :param init_system: Read yield strains (otherwise ``system`` is assumed fully initialised).
+    :param init_dest: Initialise ``dest`` from ``source``.
     :param output: Output of :py:func:`basic_output` (read if not specified).
     :param dev: Allow uncommitted changes.
     """
@@ -261,19 +273,42 @@ def branch_fixed_stress(
     if output is None:
         output = basic_output(system, source, verbose=False)
 
-    clone(source, dest)
-    _init_run_state(dest)
+    if init_dest:
+        clone(source, dest)
+        _init_run_state(dest)
 
-    if stress is None:
-        real_stress = None
-        stress = None
-    elif normalised:
-        real_stress = stress * output["sig0"]
-        stress = stress
-    else:
-        real_stress = stress
-        stress = stress / output["sig0"]
+    if not normalised:
+        stress /= output["sig0"]
 
+    load_inc = None
+
+    # determine at which increment a push could be applied
+    if inc is None:
+
+        assert incc is not None and stress is not None
+
+        jncc = int(incc) + np.argwhere(output["A"][incc:] == output["N"]).ravel()[1]
+        assert (jncc - incc) % 2 == 0
+        i = output["inc"][incc:jncc].reshape(-1, 2)
+        s = output["sigd"][incc:jncc].reshape(-1, 2)
+        k = output["kick"][incc:jncc].reshape(-1, 2)
+        t = np.sum(s < stress, axis=1)
+        assert np.all(k[:, 0])
+        assert np.sum(t) > 0
+
+        if np.sum(t == 1) >= 1:
+            j = np.argmax(t == 1)
+            if np.abs(s[j, 0] - stress) / s[j, 0] < 1e-4:
+                inc = i[j, 0]
+                stress = s[j, 0]
+            else:
+                load_inc = int(i[j, 0])
+        else:
+            j = np.argmax(t == 0)
+            inc = i[j, 0]
+            stress = s[j, 0]
+
+    # restore specific increment
     if inc is not None:
 
         dest["/disp/0"] = source[f"/disp/{inc:d}"][...]
@@ -284,26 +319,15 @@ def branch_fixed_stress(
             i = output["inc"][output["A"] == output["N"]]
             assert i[i >= incc][1] > inc
 
-    else:
-
-        assert incc is not None and stress is not None
-
-        # determine at which increment a push could be applied
-
-        inc_system, inc_push = pushincrements(system, source, real_stress, output)
-
-        # reload specific increment based on target stress and system-spanning increment
-
-        assert incc in inc_system
-        i = np.argmax(np.logical_and(incc == inc_system, incc <= inc_push))
-        load_inc = inc_push[i]
-        assert incc == inc_system[i]
+    # apply elastic loading to reach a specific stress
+    if load_inc is not None:
 
         system.setU(source[f"/disp/{load_inc:d}"])
         idx_n = system.plastic_CurrentIndex()
-        system.addSimpleShearToFixedStress(real_stress)
+        d = system.addSimpleShearToFixedStress(stress * output["sig0"])
         idx = system.plastic_CurrentIndex()
         assert np.all(idx == idx_n)
+        assert d >= 0.0
 
         dest["/disp/0"] = system.u()
 
@@ -1218,70 +1242,6 @@ def cli_ensembleinfo(cli_args=None):
         # metadata for this program
 
         meta = create_check_meta(output, f"/meta/{progname}", dev=args.develop)
-
-
-def pushincrements(
-    system: model.System,
-    file: h5py.File,
-    target_stress: float,
-    output: dict = None,
-) -> tuple[np.ndarray, np.ndarray]:
-    r"""
-    Get a list of increment from which the stress can be reached by elastic loading only.
-
-    :param system: The system (modified: all increments visited).
-    :param file: Open simulation HDF5 archive (read-only).
-    :param target_stress: The stress at which to push (in real units).
-    :param output: Output of :py:func:`basic_output` (read if not specified).
-    :return:
-        ``inc_system`` List of system spanning avalanches.
-        ``inc_push`` List of increment from which the stress can be reached by elastic loading only.
-    """
-
-    plastic = system.plastic()
-    N = plastic.size
-    kick = file["/kick"][...].astype(bool)
-    incs = file["/stored"][...].astype(int)
-    assert all(incs == np.arange(incs.size))
-    assert kick.shape == incs.shape
-    assert all(np.logical_not(kick[::2]))
-    assert all(kick[1::2])
-
-    if output is None:
-        output = basic_output(system, file, verbose=False)
-
-    Stress = output["sigd"] * output["sig0"]
-    A = output["A"]
-    A[: output["steadystate"]] = 0
-
-    inc_system = np.argwhere(A == N).ravel()
-    inc_push = []
-    inc_system_ret = []
-
-    for istart, istop in zip(inc_system[:-1], inc_system[1:]):
-
-        # state after elastic loading (before kick)
-        i = istart + 1
-        s = Stress[i:istop:2]
-        n = incs[i:istop:2]
-
-        if not any(s > target_stress) or Stress[istart] > target_stress:
-            continue
-
-        ipush = n[np.argmax(s > target_stress)] - 1
-
-        if Stress[ipush] > target_stress:
-            continue
-
-        assert not kick[ipush + 1]
-
-        inc_push += [ipush]
-        inc_system_ret += [n[0] - 1]
-
-    inc_push = np.array(inc_push)
-    inc_system_ret = np.array(inc_system_ret)
-
-    return inc_system_ret, inc_push
 
 
 def cli_plot(cli_args=None):
