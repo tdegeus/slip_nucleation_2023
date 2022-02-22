@@ -288,35 +288,25 @@ def _writeinitbranch(dest: h5py.File, element: int):
 
 
 def _write_configurations(
-    info: h5py.File,
     element: int,
-    outdir: str,
+    info: h5py.File,
     force: bool = False,
     dev: bool = False,
-    n: int = None,
     **kwargs,
 ):
     """
-    Write jobs:
-    *   Branch at a given increment or fixed stress.
-    *   Write slurm scripts.
+    Branch at a given increment or fixed stress.
 
-    Note that the assumption is made that all jobs come from one ensemble.
-
-    :param info: EnsembleInfo to read configuration data from.
     :param element: Element to trigger.
-    :param outdir: Output-directory.
+    :param info: EnsembleInfo to read configuration data from.
     :param force: Force overwrite of existing files.
     :param dev: Allow uncommitted changes.
-    :param n: Write maximum ``n`` configurations.
-    :param source: List with source paths.
-    :param dest: List with destination filenames (``outdir`` will be prepended).
+    :param source: List with source file-paths.
+    :param dest: List with destination file-paths.
     :param inc: List with fixed increment at which to push (entries can be ``None``).
     :param incc: List with system spanning events after which to load (entries can be ``None``).
     :param stress: List with stress at which to load (entries can be ``None``).
     """
-
-    kwargs["dest"] = [os.path.join(outdir, i) for i in kwargs["dest"]]
 
     if not force:
         if any([os.path.isfile(i) for i in kwargs["dest"]]):
@@ -328,12 +318,9 @@ def _write_configurations(
             os.remove(i)
 
     fmt = "{:" + str(max(len(i) for i in kwargs["source"])) + "s}"
-    if n is None:
-        index = np.argsort(kwargs["source"])
-    else:
-        index = np.argsort(kwargs["source"][:n])
+    index = np.argsort(kwargs["source"])
     pbar = tqdm.tqdm(index)
-    tmp = tempfile.mkstemp(suffix=".h5", dir=outdir)[1]
+    tmp = tempfile.mkstemp(suffix=".h5", dir=os.path.dirname(kwargs["dest"][0]))[1]
 
     for i, idx in enumerate(pbar):
 
@@ -383,6 +370,30 @@ def _write_configurations(
                 )
 
     os.remove(tmp)
+
+
+def _copy_configurations(element: int, source: list[str], dest: list[str], force: bool = False):
+    """
+    Copy configurations written by :py:func:`_write_configurations` and
+    overwrite the triggered element.
+
+    :param element: Element to trigger.
+    :param source: List with source file-paths.
+    :param dest: List with destination file-paths.
+    :param force: Force overwrite of existing files.
+    """
+
+    if not force:
+        if any([os.path.isfile(i) for i in dest]):
+            if not click.confirm("Overwrite output files?"):
+                raise OSError("Cancelled")
+
+    for s, d in zip(source, dest):
+
+        shutil.copy(s, d)
+
+        with h5py.File(d, "a") as dest:
+            dest["/trigger/element"][0] = element
 
 
 def cli_job_deltasigma(cli_args=None):
@@ -451,7 +462,6 @@ def cli_job_deltasigma(cli_args=None):
     elements = np.linspace(0, N + 1, args.pushes + 1)[:-1].astype(int)
 
     ret = dict(
-        command=[],
         source=[],
         dest=[],
         inc=[],
@@ -481,22 +491,45 @@ def cli_job_deltasigma(cli_args=None):
             else:
                 j = None  # at fixed stress
 
-            bse = f"deltasigma={args.delta_sigma:.3f}"
+            bse = f"{args.outdir}/deltasigma={args.delta_sigma:.3f}"
             out = f"{bse}_{simid}_incc={inc[i]:d}_element={elements[0]:d}_istep={istress:02d}.h5"
-            ret["command"].append(" ".join(basecommand + [f"{out:s}"]))
             ret["source"].append(filepath)
             ret["dest"].append(out)
             ret["inc"].append(j)
             ret["incc"].append(inc[i])
             ret["stress"].append(s)
 
+    if args.nmax is not None:
+        for key in ret:
+            ret[key] = ret[key][:args.nmax]
+
     with h5py.File(args.ensembleinfo, "r") as file:
-        _write_configurations(
-            file, elements[0], args.outdir, args.force, args.develop, args.nmax, **ret
-        )
+        _write_configurations(elements[0], file, args.force, args.develop, **ret)
+        outfiles = [i for i in ret["dest"]]
+
+    for e in elements[1:]:
+        d = [i.replace(f"_element={elements[0]}_", f"_element={e:d}_") for i in ret["dest"]]
+        _copy_configurations(e, ret["dest"], d, args.force)
+        outfiles += d
+
+    cmd = []
+    if args.truncate_system_spanning:
+        cmd.append("--truncate-system-spanning")
+    if args.develop:
+        cmd.append("--develop")
+
+    slurm.serial_group(
+        [" ".join(cmd + [os.path.basename(i)]) for i in outfiles],
+        basename=executable,
+        group=args.group,
+        outdir=args.outdir,
+        conda=dict(condabase=args.conda),
+        sbatch={"time": args.time},
+    )
 
     if cli_args is not None:
-        return ret
+        cmd = [executable] + cmd
+        return [" ".join(cmd + [i]) for i in outfiles]
 
 
 def cli_job_strain(cli_args=None):
@@ -564,7 +597,6 @@ def cli_job_strain(cli_args=None):
     elements = np.linspace(0, N + 1, args.pushes + 1)[:-1].astype(int)
 
     ret = dict(
-        command=[],
         source=[],
         dest=[],
         inc=[],
@@ -593,19 +625,42 @@ def cli_job_strain(cli_args=None):
             else:
                 j = None  # at fixed stress
 
-            bse = f"strainsteps={args.steps:02d}"
+            bse = f"{args.outdir}/strainsteps={args.steps:02d}"
             out = f"{bse}_{simid}_incc={inc[i]:d}_element={elements[0]:d}_istep={istress:02d}.h5"
-            ret["command"].append(" ".join(basecommand + [f"{out:s}"]))
             ret["source"].append(filepath)
             ret["dest"].append(out)
             ret["inc"].append(j)
             ret["incc"].append(inc[i])
             ret["stress"].append(s)
 
+    if args.nmax is not None:
+        for key in ret:
+            ret[key] = ret[key][:args.nmax]
+
     with h5py.File(args.ensembleinfo, "r") as file:
-        _write_configurations(
-            file, elements[0], args.outdir, args.force, args.develop, args.nmax, **ret
-        )
+        _write_configurations(elements[0], file, args.force, args.develop, **ret)
+        outfiles = [i for i in ret["dest"]]
+
+    for e in elements[1:]:
+        d = [i.replace(f"_element={elements[0]}_", f"_element={e:d}_") for i in ret["dest"]]
+        _copy_configurations(e, ret["dest"], d, args.force)
+        outfiles += d
+
+    cmd = []
+    if args.truncate_system_spanning:
+        cmd.append("--truncate-system-spanning")
+    if args.develop:
+        cmd.append("--develop")
+
+    slurm.serial_group(
+        [" ".join(cmd + [os.path.basename(i)]) for i in outfiles],
+        basename=executable,
+        group=args.group,
+        outdir=args.outdir,
+        conda=dict(condabase=args.conda),
+        sbatch={"time": args.time},
+    )
 
     if cli_args is not None:
-        return ret
+        cmd = [executable] + cmd
+        return [" ".join(cmd + [i]) for i in outfiles]
