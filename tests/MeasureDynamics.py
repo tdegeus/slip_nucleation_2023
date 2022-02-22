@@ -103,12 +103,10 @@ class MyTests(unittest.TestCase):
     def test_trigger_run(self):
 
         d = dirname
-        ret = my.Trigger.cli_job_deltasigma(
+        commands = my.Trigger.cli_job_deltasigma(
             ["--dev", "-f", infoname, "-d", 0.12, "-p", 1, "-o", d, "--nmax", 10]
         )
-        c = ret["command"][-1].split(" ")[1:]
-        c[-1] = os.path.join(dirname, c[-1])
-        triggername = my.Trigger.cli_run(["--dev"] + c)
+        triggername = my.Trigger.cli_run(["--dev"] + commands[-1].split(" ")[1:])
         triggerinfo = os.path.join(dirname, "TriggerEnsembleInfo.h5")
         my.Trigger.cli_ensembleinfo(["--dev", "-f", "-o", triggerinfo, triggername])
 
