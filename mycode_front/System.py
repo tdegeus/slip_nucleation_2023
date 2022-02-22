@@ -287,7 +287,12 @@ def branch_fixed_stress(
         assert np.sum(t) > 0
 
         if np.sum(t == 1) >= 1:
-            load_inc = i[np.argmax(t == 1), 0]
+            j = np.argmax(t == 1)
+            if np.abs(s[j, 0] - stress) / s[j, 0] < 1e-4:
+                inc = i[j, 0]
+                stress = s[j, 0]
+            else:
+                load_inc = int(i[j, 0])
         else:
             j = np.argmax(t == 0)
             inc = i[j, 0]
@@ -309,9 +314,10 @@ def branch_fixed_stress(
 
         system.setU(source[f"/disp/{load_inc:d}"])
         idx_n = system.plastic_CurrentIndex()
-        system.addSimpleShearToFixedStress(stress * output["sig0"])
+        d = system.addSimpleShearToFixedStress(stress * output["sig0"])
         idx = system.plastic_CurrentIndex()
         assert np.all(idx == idx_n)
+        assert d >= 0.0
 
         dest["/disp/0"] = system.u()
 
