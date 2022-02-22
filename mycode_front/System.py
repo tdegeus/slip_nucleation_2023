@@ -1132,16 +1132,14 @@ def cli_ensembleinfo(cli_args=None):
     file_kick = []
 
     fmt = "{:" + str(max(len(i) for i in info["filepath"])) + "s}"
-    pbar = tqdm.tqdm(total=len(info["filepath"]))
+    pbar = tqdm.tqdm(info["filepath"])
     pbar.set_description(fmt.format(""))
 
     with h5py.File(args.output, "w") as output:
 
-        for i, (filename, filepath) in enumerate(zip(info["filepath"], args.files)):
+        for i, (filename, filepath) in enumerate(zip(pbar, args.files)):
 
-            pbar.n = i + 1
-            pbar.set_description(fmt.format(filename))
-            pbar.refresh()
+            pbar.set_description(fmt.format(filename), refresh=True)
 
             with h5py.File(filepath, "r") as file:
 
