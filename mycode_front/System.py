@@ -976,24 +976,12 @@ def interface_state(filepaths: dict[int], read_disp: dict[str] = None) -> dict[n
     return ret
 
 
-def basic_output(system: model.System, file: h5py.File, verbose: bool = True) -> dict:
+def normalisation(file: h5py.File):
     """
-    Read basic output from simulation.
+    Read normalisation from file (or use default value in "classic" mode).
 
-    :param system: The system (modified: all increments visited).
     :param file: Open simulation HDF5 archive (read-only).
-    :param verbose: Print progress.
-
     :return: Basic information as follows::
-        epsd: Macroscopic strain [ninc].
-        sigd: Macroscopic stress [ninc].
-        S: Number of times a block yielded [ninc].
-        A: Number of blocks that yielded at least once [ninc].
-        xi: Largest extension corresponding to A [ninc].
-        duration: Duration of the event [ninc].
-        kick: Increment started with a kick (True), or contains only elastic loading (False) [ninc].
-        inc: Increment numbers == np.arange(ninc).
-        steadystate: Increment number where the steady state starts (int).
         l0: Block size (float).
         G: Shear modulus (float).
         K: Bulk modulus (float).
@@ -1008,21 +996,8 @@ def basic_output(system: model.System, file: h5py.File, verbose: bool = True) ->
         dt: Time step of time discretisation.
     """
 
-    incs = file["/stored"][...]
-    ninc = incs.size
-    assert all(incs == np.arange(ninc))
+    ret = {}
 
-    ret = dict(
-        epsd=np.empty((ninc), dtype=float),
-        sigd=np.empty((ninc), dtype=float),
-        S=np.zeros((ninc), dtype=int),
-        A=np.zeros((ninc), dtype=int),
-        xi=np.zeros((ninc), dtype=int),
-        kick=file["/kick"][...].astype(bool),
-        inc=incs,
-    )
-
-    # read normalisation
     if "/meta/normalisation/N" in file:
         N = file["/meta/normalisation/N"][...]
         eps0 = file["/meta/normalisation/eps"][...]
@@ -1054,6 +1029,63 @@ def basic_output(system: model.System, file: h5py.File, verbose: bool = True) ->
     ret["t0"] = ret["l0"] / ret["cs"]
     ret["dt"] = file["/run/dt"][...]
 
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    tools.check_docstring(doc, ret, ":return:")
+
+    return ret
+
+
+def basic_output(system: model.System, file: h5py.File, norm: dict = None, verbose: bool = True) -> dict:
+    """
+    Read basic output from simulation.
+
+    :param system: The system (modified: all increments visited).
+    :param file: Open simulation HDF5 archive (read-only).
+    :param norm: Normalisation, see :py:func:`normalisation` (read if not specified).
+    :param verbose: Print progress.
+
+    :return: Basic information as follows::
+        epsd: Macroscopic strain [ninc].
+        sigd: Macroscopic stress [ninc].
+        S: Number of times a block yielded [ninc].
+        A: Number of blocks that yielded at least once [ninc].
+        xi: Largest extension corresponding to A [ninc].
+        duration: Duration of the event [ninc].
+        kick: Increment started with a kick (True), or contains only elastic loading (False) [ninc].
+        inc: Increment numbers == np.arange(ninc).
+        steadystate: Increment number where the steady state starts (int).
+        l0: Block size (float).
+        G: Shear modulus (float).
+        K: Bulk modulus (float).
+        rho: Mass density (float).
+        seed: Base seed (uint64) or uuid (str).
+        cs: Shear wave speed (float)
+        cd: Longitudinal wave speed (float).
+        eps0: Typical yield strain (float).
+        sig0: Typical yield stress (float).
+        N: Number of blocks (int).
+        t0: Unit of time == l0 / cs (float).
+        dt: Time step of time discretisation.
+    """
+
+    incs = file["/stored"][...]
+    ninc = incs.size
+    assert all(incs == np.arange(ninc))
+
+    if norm is None:
+        ret = normalisation(file)
+    else:
+        ret = dict(norm)
+
+    ret["epsd"] = np.empty((ninc), dtype=float)
+    ret["sigd"] = np.empty((ninc), dtype=float)
+    ret["S"] = np.zeros((ninc), dtype=int)
+    ret["A"] = np.zeros((ninc), dtype=int)
+    ret["xi"] = np.zeros((ninc), dtype=int)
+    ret["kick"] = file["/kick"][...].astype(bool)
+    ret["inc"] = incs
+
     dV = system.quad().AsTensor(2, system.quad().dV())
     idx_n = None
 
@@ -1064,8 +1096,8 @@ def basic_output(system: model.System, file: h5py.File, verbose: bool = True) ->
         if idx_n is None:
             idx_n = system.plastic_CurrentIndex().astype(int)[:, 0]
 
-        Sig = system.Sig() / sig0
-        Eps = system.Eps() / eps0
+        Sig = system.Sig() / ret["sig0"]
+        Eps = system.Eps() / ret["eps0"]
         idx = system.plastic_CurrentIndex().astype(int)[:, 0]
 
         ret["S"][inc] = np.sum(idx - idx_n)
@@ -1146,16 +1178,11 @@ def cli_ensembleinfo(cli_args=None):
 
                 if i == 0:
                     system = init(file)
+                    norm = normalisation(file)
                 else:
                     system.reset_epsy(read_epsy(file))
 
-                out = basic_output(system, file, verbose=False)
-
-                if i == 0:
-                    norm = {key: out[key] for key in fields_norm}
-                else:
-                    for key in fields_norm:
-                        assert np.isclose(norm[key], out[key])
+                out = basic_output(system, file, norm=norm, verbose=False)
 
                 for key in fields_full:
                     output[f"/full/{filename}/{key}"] = out[key]
