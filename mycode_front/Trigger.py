@@ -287,7 +287,7 @@ def _writeinitbranch(dest: h5py.File, element: int):
     storage.dset_extend1d(dest, "/trigger/branched", 0, True)
 
 
-def _write_job(ret: dict, basename: str, info: h5py.File, **kwargs) -> dict:
+def _write_configurations(info: h5py.File, element: int, outdir: str, force: bool = False, dev: bool = False, n: int = None, **kwargs):
     """
     Write jobs:
     *   Branch at a given increment or fixed stress.
@@ -295,38 +295,42 @@ def _write_job(ret: dict, basename: str, info: h5py.File, **kwargs) -> dict:
 
     Note that the assumption is made that all jobs come from one ensemble.
 
-    :param ret: Generated in :py:func:`cli_job_strain` and :py:func:`cli_job_deltasigma`.
-    :param basename: Basename of the job-scripts.
-    :param info: Read data from file.
-    :param kwargs: CL-arguments of :py:func:`cli_job_strain` and :py:func:`cli_job_deltasigma`.
-    :return: `ret` (optionally shortened for testing).
+    :param info: EnsembleInfo to read configuration data from.
+    :param element: Element to trigger.
+    :param outdir: Output-directory.
+    :param force: Force overwrite of existing files.
+    :param dev: Allow uncommitted changes.
+    :param n: Write maximum ``n`` configurations.
+    :param source: List with source paths.
+    :param dest: List with destination filenames (``outdir`` will be prepended).
+    :param inc: List with fixed increment at which to push (entries can be ``None``).
+    :param incc: List with system spanning events after which to load (entries can be ``None``).
+    :param stress: List with stress at which to load (entries can be ``None``).
     """
 
-    if kwargs["nmax"] is not None:
-        n = kwargs["nmax"]
-        for key in ret:
-            ret[key] = ret[key][:n]
+    kwargs["dest"] = [os.path.join(outdir, i) for i in kwargs["dest"]]
 
-    destpath = [os.path.join(kwargs["outdir"], i) for i in ret["dest"]]
-
-    if not kwargs["force"]:
-        if any([os.path.isfile(i) for i in destpath]):
+    if not force:
+        if any([os.path.isfile(i) for i in kwargs["dest"]]):
             if not click.confirm("Overwrite output files?"):
                 raise OSError("Cancelled")
 
-    for i in destpath:
+    for i in kwargs["dest"]:
         if os.path.isfile(i):
             os.remove(i)
 
-    fmt = "{:" + str(max(len(i) for i in ret["source"])) + "s}"
-    index = np.argsort(ret["source"])
+    fmt = "{:" + str(max(len(i) for i in kwargs["source"])) + "s}"
+    if n is None:
+        index = np.argsort(kwargs["source"])
+    else:
+        index = np.argsort(kwargs["source"][:n])
     pbar = tqdm.tqdm(index)
-    tmp = tempfile.mkstemp(suffix=".h5", dir=kwargs["outdir"])[1]
+    tmp = tempfile.mkstemp(suffix=".h5", dir=outdir)[1]
 
     for i, idx in enumerate(pbar):
 
-        s = ret["source"][idx]
-        d = destpath[idx]
+        s = kwargs["source"][idx]
+        d = kwargs["dest"][idx]
         pbar.set_description(fmt.format(s), refresh=True)
 
         with h5py.File(s, "r") as source:
@@ -339,7 +343,7 @@ def _write_job(ret: dict, basename: str, info: h5py.File, **kwargs) -> dict:
                 }
                 init_system = True
             else:
-                init_system = ret["source"][idx] != ret["source"][index[i - 1]]
+                init_system = kwargs["source"][idx] != kwargs["source"][index[i - 1]]
 
             if init_system:
                 p = f"/full/{os.path.split(s)[-1]:s}"
@@ -350,7 +354,7 @@ def _write_job(ret: dict, basename: str, info: h5py.File, **kwargs) -> dict:
                 with h5py.File(tmp, "w") as dest:
                     System.clone(source, dest)
                     System._init_run_state(dest)
-                    _writeinitbranch(dest, 0)
+                    _writeinitbranch(dest, element)
 
             shutil.copy(tmp, d)
 
@@ -359,31 +363,18 @@ def _write_job(ret: dict, basename: str, info: h5py.File, **kwargs) -> dict:
                 System.branch_fixed_stress(
                     source=source,
                     dest=dest,
-                    inc=ret["inc"][idx],
-                    incc=ret["incc"][idx],
-                    stress=ret["stress"][idx],
+                    inc=kwargs["inc"][idx],
+                    incc=kwargs["incc"][idx],
+                    stress=kwargs["stress"][idx],
                     normalised=True,
                     system=system,
                     init_system=init_system,
                     init_dest=False,
                     output=output,
-                    dev=kwargs["develop"],
+                    dev=dev,
                 )
-                dest["/trigger/element"][0] = int(ret["element"][idx])
-
-    slurm.serial_group(
-        ret["command"],
-        basename=basename,
-        group=kwargs["group"],
-        outdir=kwargs["outdir"],
-        conda=dict(condabase=kwargs["conda"]),
-        sbatch={"time": kwargs["time"]},
-    )
 
     os.remove(tmp)
-
-    return ret
-
 
 def cli_job_deltasigma(cli_args=None):
     """
@@ -457,7 +448,6 @@ def cli_job_deltasigma(cli_args=None):
         inc=[],
         incc=[],
         stress=[],
-        element=[],
     )
 
     basecommand = [executable]
@@ -482,19 +472,17 @@ def cli_job_deltasigma(cli_args=None):
             else:
                 j = None  # at fixed stress
 
-            for e in elements:
-                bse = f"deltasigma={args.delta_sigma:.3f}"
-                out = f"{bse}_{simid}_incc={inc[i]:d}_element={e:d}_istep={istress:02d}.h5"
-                ret["command"].append(" ".join(basecommand + [f"{out:s}"]))
-                ret["source"].append(filepath)
-                ret["dest"].append(out)
-                ret["inc"].append(j)
-                ret["incc"].append(inc[i])
-                ret["stress"].append(s)
-                ret["element"].append(e)
+            bse = f"deltasigma={args.delta_sigma:.3f}"
+            out = f"{bse}_{simid}_incc={inc[i]:d}_element={e:d}_istep={istress:02d}.h5"
+            ret["command"].append(" ".join(basecommand + [f"{out:s}"]))
+            ret["source"].append(filepath)
+            ret["dest"].append(out)
+            ret["inc"].append(j)
+            ret["incc"].append(inc[i])
+            ret["stress"].append(s)
 
     with h5py.File(args.ensembleinfo, "r") as file:
-        ret = _write_job(ret, executable, file, **vars(args))
+        _write_configurations(file, elements[0], args.outdir, args.force, args.develop, args.nmax, **ret)
 
     if cli_args is not None:
         return ret
@@ -571,7 +559,6 @@ def cli_job_strain(cli_args=None):
         inc=[],
         incc=[],
         stress=[],
-        element=[],
     )
 
     basecommand = [executable]
@@ -595,19 +582,17 @@ def cli_job_strain(cli_args=None):
             else:
                 j = None  # at fixed stress
 
-            for e in elements:
-                bse = f"strainsteps={args.steps:02d}"
-                out = f"{bse}_{simid}_incc={inc[i]:d}_element={e:d}_istep={istress:02d}.h5"
-                ret["command"].append(" ".join(basecommand + [f"{out:s}"]))
-                ret["source"].append(filepath)
-                ret["dest"].append(out)
-                ret["inc"].append(j)
-                ret["incc"].append(inc[i])
-                ret["stress"].append(s)
-                ret["element"].append(e)
+            bse = f"strainsteps={args.steps:02d}"
+            out = f"{bse}_{simid}_incc={inc[i]:d}_element={e:d}_istep={istress:02d}.h5"
+            ret["command"].append(" ".join(basecommand + [f"{out:s}"]))
+            ret["source"].append(filepath)
+            ret["dest"].append(out)
+            ret["inc"].append(j)
+            ret["incc"].append(inc[i])
+            ret["stress"].append(s)
 
     with h5py.File(args.ensembleinfo, "r") as file:
-        ret = _write_job(ret, executable, file, **vars(args))
+        _write_configurations(file, elements[0], args.outdir, args.force, args.develop, args.nmax, **ret)
 
     if cli_args is not None:
         return ret
