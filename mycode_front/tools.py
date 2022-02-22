@@ -74,7 +74,7 @@ class PartialDisplacement:
 
         if dof_is_stored is not None:
             dof_is_stored = np.array(dof_is_stored)
-            assert dof_is_stored.size == max(dofs) + 1
+            assert dof_is_stored.size == np.max(dofs) + 1
             assert dof_is_stored.ndim == 1
             self.m_s_dofs = np.copy(dof_is_stored).astype(bool)
 
