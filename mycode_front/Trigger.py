@@ -287,7 +287,15 @@ def _writeinitbranch(dest: h5py.File, element: int):
     storage.dset_extend1d(dest, "/trigger/branched", 0, True)
 
 
-def _write_configurations(info: h5py.File, element: int, outdir: str, force: bool = False, dev: bool = False, n: int = None, **kwargs):
+def _write_configurations(
+    info: h5py.File,
+    element: int,
+    outdir: str,
+    force: bool = False,
+    dev: bool = False,
+    n: int = None,
+    **kwargs,
+):
     """
     Write jobs:
     *   Branch at a given increment or fixed stress.
@@ -375,6 +383,7 @@ def _write_configurations(info: h5py.File, element: int, outdir: str, force: boo
                 )
 
     os.remove(tmp)
+
 
 def cli_job_deltasigma(cli_args=None):
     """
@@ -473,7 +482,7 @@ def cli_job_deltasigma(cli_args=None):
                 j = None  # at fixed stress
 
             bse = f"deltasigma={args.delta_sigma:.3f}"
-            out = f"{bse}_{simid}_incc={inc[i]:d}_element={e:d}_istep={istress:02d}.h5"
+            out = f"{bse}_{simid}_incc={inc[i]:d}_element={elements[0]:d}_istep={istress:02d}.h5"
             ret["command"].append(" ".join(basecommand + [f"{out:s}"]))
             ret["source"].append(filepath)
             ret["dest"].append(out)
@@ -482,7 +491,9 @@ def cli_job_deltasigma(cli_args=None):
             ret["stress"].append(s)
 
     with h5py.File(args.ensembleinfo, "r") as file:
-        _write_configurations(file, elements[0], args.outdir, args.force, args.develop, args.nmax, **ret)
+        _write_configurations(
+            file, elements[0], args.outdir, args.force, args.develop, args.nmax, **ret
+        )
 
     if cli_args is not None:
         return ret
@@ -583,7 +594,7 @@ def cli_job_strain(cli_args=None):
                 j = None  # at fixed stress
 
             bse = f"strainsteps={args.steps:02d}"
-            out = f"{bse}_{simid}_incc={inc[i]:d}_element={e:d}_istep={istress:02d}.h5"
+            out = f"{bse}_{simid}_incc={inc[i]:d}_element={elements[0]:d}_istep={istress:02d}.h5"
             ret["command"].append(" ".join(basecommand + [f"{out:s}"]))
             ret["source"].append(filepath)
             ret["dest"].append(out)
@@ -592,7 +603,9 @@ def cli_job_strain(cli_args=None):
             ret["stress"].append(s)
 
     with h5py.File(args.ensembleinfo, "r") as file:
-        _write_configurations(file, elements[0], args.outdir, args.force, args.develop, args.nmax, **ret)
+        _write_configurations(
+            file, elements[0], args.outdir, args.force, args.develop, args.nmax, **ret
+        )
 
     if cli_args is not None:
         return ret
