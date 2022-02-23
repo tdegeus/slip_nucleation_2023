@@ -85,8 +85,7 @@ def cli_run(cli_args=None):
     assert args.retry >= 0
     assert args.niter > 0
 
-    pbar = tqdm.tqdm(total=1)
-    pbar.set_description(args.file, refresh=True)
+    pbar = tqdm.tqdm(total=1, desc=args.file)
 
     with h5py.File(args.file, "a") as file:
 
@@ -136,7 +135,7 @@ def cli_run(cli_args=None):
             file["/restart/a"] = system.a()
             file["/restart/t"] = system.t()
 
-        pbar.n = niter
+        pbar.n = 1
         pbar.refresh()
 
     return args.file
