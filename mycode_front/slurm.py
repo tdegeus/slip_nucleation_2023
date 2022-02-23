@@ -213,6 +213,15 @@ def serial_group(
     devided = np.array_split(commands, chunks)
     njob = len(devided)
     fmt = str(int(np.ceil(np.log10(njob + 1))))
+    info = {}
+
+    if type(conda) == dict:
+        info["conda"] = conda["condabase"]
+    elif conda:
+        info["conda"] = default_condabase
+
+    if basename.format(index="foo", conda="") == basename.format(index="", conda=""):
+        basename = basename + "_{index:s}"
 
     for g, selection in enumerate(devided):
 
@@ -224,7 +233,11 @@ def serial_group(
             flush=False,
         )
 
-        jobname = ("{0:s}_{1:0" + fmt + "d}-of-{2:d}").format(basename, g + 1, njob)
+        if group > 1:
+            index = ("{0:0" + fmt + "d}-of-{1:d}").format(g + 1, njob)
+        else:
+            index = os.path.splitext(os.path.basename("".join(selection).split(" ")[-1]))[0]
+        jobname = basename.format(index=index, **info)
         sbatch["job-name"] = jobname
         sbatch["out"] = jobname + "_%j.out"
 
@@ -235,6 +248,16 @@ def serial_group(
 def cli_serial_group(cli_args=None):
     """
     Job-script to run commands.
+    Note that ``--basename`` can be a format. For example::
+
+        # postfix "_{index:s}", see below
+        "myname"
+
+        # index is counter, or basename of the file if ``--group=1``
+        "myname_{index:s}"
+
+        # conda == condabase
+        "myname_{index:s}_{conda:s}"
     """
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
