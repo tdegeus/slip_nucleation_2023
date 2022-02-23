@@ -47,7 +47,7 @@ class MyTests(unittest.TestCase):
 
         n = 6
         commands = my.Trigger.cli_job_strain(
-            ["--dev", "-f", infoname, "-s", 4, "-p", 2, "-o", dirname, "--nmax", n]
+            ["--dev", "-f", infoname, "-n", 4, "-p", 2, "-o", dirname, "--nmax", n, "-r"]
         )
 
         output = []

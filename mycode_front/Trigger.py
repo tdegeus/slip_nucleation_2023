@@ -454,7 +454,7 @@ def __write(elements, ret, args, executable, cli_args):
         cmd.append("--develop")
 
     slurm.serial_group(
-        [" ".join(cmd + [os.path.basename(i)]) for i in outfiles],
+        [" ".join(cmd + [os.path.relpath(i, args.outdir)]) for i in outfiles],
         basename=executable,
         group=args.group,
         outdir=args.outdir,
@@ -494,6 +494,7 @@ def cli_job_deltasigma(cli_args=None):
     parser.add_argument("-n", "--group", type=int, default=50, help="#simulations to group")
     parser.add_argument("-o", "--outdir", type=str, default=".", help="Output directory")
     parser.add_argument("-p", "--pushes", type=int, default=3, help="#elements per configuration")
+    parser.add_argument("-r", "--subdir", action="store_true", help="Separate in directories")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
     parser.add_argument("ensembleinfo", type=str, help="EnsembleInfo (read-only)")
@@ -561,7 +562,12 @@ def cli_job_deltasigma(cli_args=None):
             else:
                 j = None  # at fixed stress
 
-            bse = f"{args.outdir}/deltasigma={args.delta_sigma:.3f}"
+            if args.subdir:
+                bse = f"{args.outdir}/{simid}/deltasigma={args.delta_sigma:.3f}"
+                if not os.path.isdir(f"{args.outdir}/{simid}"):
+                    os.makedirs(f"{args.outdir}/{simid}")
+            else:
+                bse = f"{args.outdir}/deltasigma={args.delta_sigma:.3f}"
             out = f"{bse}_{simid}_incc={inc[i]:d}_element={elements[0]:d}_istep={istress:02d}.h5"
             ret["source"].append(filepath)
             ret["dest"].append(out)
@@ -600,6 +606,7 @@ def cli_job_strain(cli_args=None):
     parser.add_argument("-n", "--group", type=int, default=50, help="#simulations to group")
     parser.add_argument("-o", "--outdir", type=str, default=".", help="Output directory")
     parser.add_argument("-p", "--pushes", type=int, default=3, help="#elements per configuration")
+    parser.add_argument("-r", "--subdir", action="store_true", help="Separate in directories")
     parser.add_argument("-s", "--steps", type=int, default=10, help="#pushes between ss-events")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
@@ -665,7 +672,12 @@ def cli_job_strain(cli_args=None):
             else:
                 j = None  # at fixed stress
 
-            bse = f"{args.outdir}/strainsteps={args.steps:02d}"
+            if args.subdir:
+                bse = f"{args.outdir}/{simid}/strainsteps={args.steps:02d}"
+                if not os.path.isdir(f"{args.outdir}/{simid}"):
+                    os.makedirs(f"{args.outdir}/{simid}")
+            else:
+                bse = f"{args.outdir}/strainsteps={args.steps:02d}"
             out = f"{bse}_{simid}_incc={inc[i]:d}_element={elements[0]:d}_istep={istress:02d}.h5"
             ret["source"].append(filepath)
             ret["dest"].append(out)
