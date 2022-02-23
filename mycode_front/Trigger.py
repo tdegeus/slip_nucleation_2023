@@ -428,6 +428,44 @@ def _copy_configurations(element: int, source: list[str], dest: list[str], force
             dest["/trigger/element"][0] = element
 
 
+def __write(elements, ret, args, executable, cli_args):
+    """
+    Internal use only.
+    Just to avoid duplicate code.
+    """
+
+    if args.nmax is not None:
+        for key in ret:
+            ret[key] = ret[key][: args.nmax]
+
+    with h5py.File(args.ensembleinfo, "r") as file:
+        _write_configurations(elements[0], file, args.force, args.develop, **ret)
+        outfiles = [i for i in ret["dest"]]
+
+    for e in elements[1:]:
+        d = [i.replace(f"_element={elements[0]}_", f"_element={e:d}_") for i in ret["dest"]]
+        _copy_configurations(e, ret["dest"], d, args.force)
+        outfiles += d
+
+    cmd = [executable]
+    if args.truncate_system_spanning:
+        cmd.append("--truncate-system-spanning")
+    if args.develop:
+        cmd.append("--develop")
+
+    slurm.serial_group(
+        [" ".join(cmd + [os.path.basename(i)]) for i in outfiles],
+        basename=executable,
+        group=args.group,
+        outdir=args.outdir,
+        conda=dict(condabase=args.conda),
+        sbatch={"time": args.time},
+    )
+
+    if cli_args is not None:
+        return [" ".join(cmd + [i]) for i in outfiles]
+
+
 def cli_job_deltasigma(cli_args=None):
     """
     Create jobs to trigger at fixed stress increase ``delta_sigma``
@@ -531,36 +569,7 @@ def cli_job_deltasigma(cli_args=None):
             ret["incc"].append(inc[i])
             ret["stress"].append(s)
 
-    if args.nmax is not None:
-        for key in ret:
-            ret[key] = ret[key][: args.nmax]
-
-    with h5py.File(args.ensembleinfo, "r") as file:
-        _write_configurations(elements[0], file, args.force, args.develop, **ret)
-        outfiles = [i for i in ret["dest"]]
-
-    for e in elements[1:]:
-        d = [i.replace(f"_element={elements[0]}_", f"_element={e:d}_") for i in ret["dest"]]
-        _copy_configurations(e, ret["dest"], d, args.force)
-        outfiles += d
-
-    cmd = [executable]
-    if args.truncate_system_spanning:
-        cmd.append("--truncate-system-spanning")
-    if args.develop:
-        cmd.append("--develop")
-
-    slurm.serial_group(
-        [" ".join(cmd + [os.path.basename(i)]) for i in outfiles],
-        basename=executable,
-        group=args.group,
-        outdir=args.outdir,
-        conda=dict(condabase=args.conda),
-        sbatch={"time": args.time},
-    )
-
-    if cli_args is not None:
-        return [" ".join(cmd + [i]) for i in outfiles]
+    return __write(elements, ret, args, executable, cli_args)
 
 
 def cli_job_strain(cli_args=None):
@@ -664,33 +673,4 @@ def cli_job_strain(cli_args=None):
             ret["incc"].append(inc[i])
             ret["stress"].append(s)
 
-    if args.nmax is not None:
-        for key in ret:
-            ret[key] = ret[key][: args.nmax]
-
-    with h5py.File(args.ensembleinfo, "r") as file:
-        _write_configurations(elements[0], file, args.force, args.develop, **ret)
-        outfiles = [i for i in ret["dest"]]
-
-    for e in elements[1:]:
-        d = [i.replace(f"_element={elements[0]}_", f"_element={e:d}_") for i in ret["dest"]]
-        _copy_configurations(e, ret["dest"], d, args.force)
-        outfiles += d
-
-    cmd = [executable]
-    if args.truncate_system_spanning:
-        cmd.append("--truncate-system-spanning")
-    if args.develop:
-        cmd.append("--develop")
-
-    slurm.serial_group(
-        [" ".join(cmd + [os.path.basename(i)]) for i in outfiles],
-        basename=executable,
-        group=args.group,
-        outdir=args.outdir,
-        conda=dict(condabase=args.conda),
-        sbatch={"time": args.time},
-    )
-
-    if cli_args is not None:
-        return [" ".join(cmd + [i]) for i in outfiles]
+    return __write(elements, ret, args, executable, cli_args)
