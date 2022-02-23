@@ -185,6 +185,7 @@ def cli_ensembleinfo(cli_args=None):
         dependencies=[],
         file=[],
         inc=[],
+        inci=[],
         incc=[],
         stress=[],
     )
@@ -232,6 +233,7 @@ def cli_ensembleinfo(cli_args=None):
             ret["dependencies"].append(";".join(meta.attrs["dependencies"]))
             ret["file"].append(branch.attrs["file"])
             ret["inc"].append(branch.attrs["inc"] if "inc" in branch.attrs else int(-1))
+            ret["inci"].append(branch.attrs["inci"] if "inci" in branch.attrs else int(-1))
             ret["incc"].append(branch.attrs["incc"] if "incc" in branch.attrs else int(-1))
             ret["stress"].append(branch.attrs["stress"] if "stress" in branch.attrs else int(-1))
 
