@@ -786,7 +786,9 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
         system.initEventDrivenSimpleShear()
 
         nchunk = epsy_nchunk(file) - 5
-        pbar = tqdm.tqdm(total=nchunk, disable=not progress, desc=f"{basename}: inc = {inc:8d}, niter = {'-':8s}")
+        pbar = tqdm.tqdm(
+            total=nchunk, disable=not progress, desc=f"{basename}: inc = {inc:8d}, niter = {'-':8s}"
+        )
 
         for inc in range(inc + 1, sys.maxsize):
 
