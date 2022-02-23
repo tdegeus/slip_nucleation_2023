@@ -11,24 +11,32 @@ if os.path.exists(os.path.join(root, "mycode_front", "_version.py")):
 
 import mycode_front as my  # noqa: E402
 
+dirname = "mytest"
+
 
 class MyTests(unittest.TestCase):
     """
     Tests
     """
 
-    def test_small(self):
-        """
-        *   Run a small simulation, read output.
-        *   Branch of velocity-jump experiments and run one, and read output.
-        """
-
-        dirname = "mytest"
+    @classmethod
+    def setUpClass(self):
 
         if os.path.isdir(dirname):
             shutil.rmtree(dirname)
 
         os.makedirs(dirname)
+
+    @classmethod
+    def tearDownClass(self):
+
+        shutil.rmtree(dirname)
+
+    def test_small(self):
+        """
+        *   Run a small simulation, read output.
+        *   Branch of velocity-jump experiments and run one, and read output.
+        """
 
         N = 9
         files = my.Flow.cli_generate(["-N", N, "--dev", dirname])
@@ -37,13 +45,11 @@ class MyTests(unittest.TestCase):
             file["/boundcheck"][...] = 170
 
         my.Flow.cli_run(["--develop", files[-1]])
-        my.Flow.cli_ensembleinfo(["-o", os.path.join(dirname, "einfo.h5"), files[-1]])
+        # my.Flow.cli_ensembleinfo(["-o", os.path.join(dirname, "einfo.h5"), files[-1]])
 
-        branch = my.Flow.cli_branch_velocityjump(["--develop", "-o", dirname, files[-1]])
-        my.Flow.cli_run(["--develop", branch[-1]])
-        my.Flow.cli_ensembleinfo_velocityjump(["-o", os.path.join(dirname, "vinfo.h5"), branch[-1]])
-
-        shutil.rmtree(dirname)
+        # branch = my.Flow.cli_branch_velocityjump(["--develop", "-o", dirname, files[-1]])
+        # my.Flow.cli_run(["--develop", branch[-1]])
+        # my.Flow.cli_ensembleinfo_velocityjump(["-o", os.path.join(dirname, "vinfo.h5"), branch[-1]])
 
 
 if __name__ == "__main__":
