@@ -250,10 +250,11 @@ def cli_serial_group(cli_args=None):
     Job-script to run commands.
     Note that ``--basename`` can be a format. For example::
 
-        # postfix "_{index:s}", see below
+        # default: postfix by "_{index:s}", see below
         "myname"
 
-        # index is counter, or basename of the file if ``--group=1``
+        # index is counter (e.g. "1-of-4"), or
+        # (an approximated) basename of the file run if ``--group=1``
         "myname_{index:s}"
 
         # conda == condabase
