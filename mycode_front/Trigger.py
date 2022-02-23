@@ -544,7 +544,7 @@ def cli_job_deltasigma(cli_args=None):
         _copy_configurations(e, ret["dest"], d, args.force)
         outfiles += d
 
-    cmd = []
+    cmd = [executable]
     if args.truncate_system_spanning:
         cmd.append("--truncate-system-spanning")
     if args.develop:
@@ -560,7 +560,6 @@ def cli_job_deltasigma(cli_args=None):
     )
 
     if cli_args is not None:
-        cmd = [executable] + cmd
         return [" ".join(cmd + [i]) for i in outfiles]
 
 
@@ -678,7 +677,7 @@ def cli_job_strain(cli_args=None):
         _copy_configurations(e, ret["dest"], d, args.force)
         outfiles += d
 
-    cmd = []
+    cmd = [executable]
     if args.truncate_system_spanning:
         cmd.append("--truncate-system-spanning")
     if args.develop:
@@ -694,5 +693,4 @@ def cli_job_strain(cli_args=None):
     )
 
     if cli_args is not None:
-        cmd = [executable] + cmd
         return [" ".join(cmd + [i]) for i in outfiles]
