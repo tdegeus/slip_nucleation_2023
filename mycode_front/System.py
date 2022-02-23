@@ -280,7 +280,7 @@ def branch_fixed_stress(
     if not normalised:
         stress /= output["sig0"]
 
-    load_inc = None
+    inci = None
 
     # determine at which increment a push could be applied
     if inc is None:
@@ -305,7 +305,7 @@ def branch_fixed_stress(
                 inc = i[j, 1]
                 stress = s[j, 1]
             else:
-                load_inc = int(i[j, 0])
+                inci = int(i[j, 0])
         else:
             j = np.argmax(t == 0)
             inc = i[j, 0]
@@ -323,9 +323,9 @@ def branch_fixed_stress(
             assert i[i >= incc][1] > inc
 
     # apply elastic loading to reach a specific stress
-    if load_inc is not None:
+    if inci is not None:
 
-        system.setU(source[f"/disp/{load_inc:d}"])
+        system.setU(source[f"/disp/{inci:d}"])
         idx_n = system.plastic_CurrentIndex()
         d = system.addSimpleShearToFixedStress(stress * output["sig0"])
         idx = system.plastic_CurrentIndex()
@@ -343,6 +343,8 @@ def branch_fixed_stress(
         meta.attrs["incc"] = int(incc)
     if inc is not None:
         meta.attrs["inc"] = int(inc)
+    if inci is not None:
+        meta.attrs["inci"] = inci
 
 
 def generate(
