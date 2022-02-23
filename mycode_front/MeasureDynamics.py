@@ -11,7 +11,6 @@ import textwrap
 import FrictionQPotFEM  # noqa: F401
 import FrictionQPotFEM.UniformSingleLayer2d as model
 import GMatElastoPlasticQPot  # noqa: F401
-import GMatElastoPlasticQPot.Cartesian2d as GMat
 import GooseFEM
 import h5py
 import numpy as np
@@ -258,9 +257,14 @@ def basic_output(system: model.System, file: h5py.File, norm: dict, verbose: boo
     :param verbose: Print progress.
 
     :return: Basic information as follows::
-        epsp: Plastic strain averaged on the interface [ninc].
-        eps: Strain averaged on the interface [ninc].
-        sig: Stress averaged on the interface [ninc].
+        Epsbar: Macroscopic strain tensor [ninc].
+        Sigbar: Macroscopic stress tensor [ninc].
+        Eps: Strain tensor, averaged on the interface [ninc].
+        Sig: Stress tensor, averaged on the interface [ninc].
+        epsp: Plastic strain, averaged on the interface [ninc].
+        Eps_moving: Strain tensor, averaged on moving blocks [ninc].
+        Sig_moving: Stress tensor, averaged on moving blocks [ninc].
+        epsp_moving: Plastic strain, averaged on moving blocks [ninc].
         S: Number of times a block yielded [ninc].
         A: Number of blocks that yielded at least once [ninc].
         t: Time [ninc].
@@ -277,9 +281,14 @@ def basic_output(system: model.System, file: h5py.File, norm: dict, verbose: boo
 
     n = file["/stored"].size
     ret = {}
+    ret["Epsbar"] = np.empty((n, 2, 2), dtype=float)
+    ret["Eigbar"] = np.empty((n, 2, 2), dtype=float)
+    ret["Eps"] = np.empty((n, 2, 2), dtype=float)
+    ret["Eig"] = np.empty((n, 2, 2), dtype=float)
     ret["epsp"] = np.empty(n, dtype=float)
-    ret["eps"] = np.empty(n, dtype=float)
-    ret["sig"] = np.empty(n, dtype=float)
+    ret["Eps_moving"] = np.empty((n, 2, 2), dtype=float)
+    ret["Eig_moving"] = np.empty((n, 2, 2), dtype=float)
+    ret["epsp_moving"] = np.empty(n, dtype=float)
     ret["S"] = np.empty(n, dtype=int)
     ret["A"] = np.empty(n, dtype=int)
 
@@ -292,18 +301,34 @@ def basic_output(system: model.System, file: h5py.File, norm: dict, verbose: boo
             idx_n = system.plastic_CurrentIndex().astype(int)[:, 0]
 
         idx = system.plastic_CurrentIndex().astype(int)[:, 0]
-        ret["epsp"][i] = np.average(system.plastic_Epsp(), weights=dVs, axis=(0, 1))
-        ret["eps"][i] = GMat.Epsd(np.average(system.plastic_Eps(), weights=dV, axis=(0, 1)))
-        ret["sig"][i] = GMat.Sigd(np.average(system.plastic_Sig(), weights=dV, axis=(0, 1)))
+        c = idx != idx_n
+
+        Eps = system.plastic_Eps()
+        Sig = system.plastic_Sig()
+        Epsp = system.plastic_Epsp()
+
+        ret["Epsbar"][i, ...] = file[f"/Eps/{iiter:d}"][...]
+        ret["Sigbar"][i, ...] = file[f"/Sig/{iiter:d}"][...]
+        ret["Eps"][i, ...] = np.average(Eps, weights=dV, axis=(0, 1))
+        ret["Sig"][i, ...] = np.average(Sig, weights=dV, axis=(0, 1))
+        ret["epsp"][i] = np.average(Epsp, weights=dVs, axis=(0, 1))
+        ret["Eps_moving"][i, ...] = np.average(Eps[c], weights=dV[c], axis=(0, 1))
+        ret["Sig_moving"][i, ...] = np.average(Sig[c], weights=dV[c], axis=(0, 1))
+        ret["epsp_moving"][i] = np.average(Epsp[c], weights=dVs[c], axis=(0, 1))
         ret["S"][i] = np.sum(idx - idx_n)
         ret["A"][i] = np.sum(idx != idx_n)
 
     assert np.all(np.equal(ret["A"], file["/A"][...]))
     ret["t"] = file["/t"][...] / norm["t0"]
 
+    ret["Epsbar"] /= norm["eps0"]
+    ret["Sigbar"] /= norm["sig0"]
+    ret["Eps"] /= norm["eps0"]
+    ret["Sig"] /= norm["sig0"]
     ret["epsp"] /= norm["eps0"]
-    ret["eps"] /= norm["eps0"]
-    ret["sig"] /= norm["sig0"]
+    ret["Eps_moving"] /= norm["eps0"]
+    ret["Sig_moving"] /= norm["sig0"]
+    ret["epsp_moving"] /= norm["eps0"]
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
@@ -347,27 +372,28 @@ def cli_ensembleinfo(cli_args=None):
 
     with h5py.File(args.output, "w") as output:
 
-        for filepath in pbar:
+        for ifile, filepath in enumerate(pbar):
 
             pbar.set_description(fmt.format(filepath), refresh=True)
 
             with h5py.File(filepath, "r") as file:
 
                 meta = file[f"/meta/{entry_points['cli_run']}"]
-
-                if "file" in meta.attrs:
-                    sourcepath = os.path.join(args.sourcedir, meta.attrs["file"])
-                else:
-                    i = tools.read_parameters(filepath)["id"]
-                    sourcepath = os.path.join(args.sourcedir, f"id={i:s}.h5")
-                    if not os.path.isfile(sourcepath):
-                        sourcepath = os.path.join(args.sourcedir, f"id={i:s}.hdf5")
-
+                sourcepath = os.path.join(args.sourcedir, meta.attrs["file"])
                 assert os.path.isfile(sourcepath)
 
                 with h5py.File(sourcepath, "r") as source:
                     system = System.init(source)
                     norm = System.normalisation(source)
+
+                if ifile == 0:
+                    partial = tools.PartialDisplacement(
+                        conn=system.conn(),
+                        dofs=system.dofs(),
+                        dofs_list=file["/doflist"][...],
+                    )
+                    weaklayer = np.all(np.in1d(system.plastic(), partial.element_list()))
+                    assert weaklayer
 
                 out = basic_output(system, file, norm=norm, verbose=False)
 
