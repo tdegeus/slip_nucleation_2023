@@ -123,9 +123,9 @@ def generate(*args, **kwargs):
 
     kwargs.setdefault("init_run", False)
     gammadot = kwargs.pop("gammadot")
-    output = kwargs.pop("output", int(500))
-    restart = kwargs.pop("restart", int(5000))
-    snapshot = kwargs.pop("snapshot", int(500 * 500))
+    output = kwargs.pop("output")
+    restart = kwargs.pop("restart")
+    snapshot = kwargs.pop("snapshot")
 
     progname = entry_points["cli_generate"]
     System.generate(*args, **kwargs)
@@ -270,7 +270,6 @@ def run_create_extendible(file: h5py.File):
     )
 
     # reaction force
-    storage.create_extendible(file, "/output/fmaterial", np.float64)
     storage.create_extendible(file, "/output/fext", np.float64)
 
     # averaged on the weak layer
@@ -369,7 +368,7 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
 
                 i = int(inc / output)
 
-                for key in ["/output/inc", "/output/fmaterial", "/output/fext", "/output/epsp"]:
+                for key in ["/output/inc", "/output/fext", "/output/epsp"]:
                     file[key].resize((i + 1,))
 
                 for key in ["/output/sig", "/output/eps"]:
@@ -378,16 +377,11 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
                 Eps_weak = np.average(system.plastic_Eps(), weights=dV_plas, axis=(0, 1)) / eps0
                 Sig_weak = np.average(system.plastic_Sig(), weights=dV_plas, axis=(0, 1)) / sig0
 
-                fmaterial = system.fmaterial()[top, 0]
-                fmaterial[0] += fmaterial[-1]
-                fmaterial = np.mean(fmaterial[:-1]) / h / sig0
-
                 fext = system.fext()[top, 0]
                 fext[0] += fext[-1]
                 fext = np.mean(fext[:-1]) / h / sig0
 
                 file["/output/inc"][i] = inc
-                file["/output/fmaterial"][i] = fmaterial
                 file["/output/fext"][i] = fext
                 file["/output/epsp"][i] = np.mean(system.plastic_Epsp()) / eps0
                 file["/output/eps"][:, i] = Eps_weak.ravel()[[0, 1, 3]]
