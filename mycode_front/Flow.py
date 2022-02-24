@@ -313,7 +313,7 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
         output = file["/output/interval"][...]
         restart = file["/restart/interval"][...]
         snapshot = file["/snapshot/interval"][...] if "/snapshot/interval" in file else sys.maxsize
-        v = system.affineSimpleShearCentered(file["/gammadot"][...])
+        v = system.affineSimpleShear(file["/gammadot"][...])
 
         plastic = system.plastic()
         dV = system.quad().AsTensor(2, system.quad().dV())
