@@ -32,6 +32,19 @@ class MyTests(unittest.TestCase):
 
         shutil.rmtree(dirname)
 
+    def test_branch(self):
+
+        N = 9
+        filename = "id=0.h5"
+        my.System.generate(filename, N=N, test_mode=True, dev=True)
+        my.System.cli_run(["--develop", filename])
+        files = my.Flow.cli_generate(["--dev", filename])
+
+        with h5py.File(files[-1], "a") as file:
+            file["/boundcheck"][...] = 170
+
+        my.Flow.cli_run(["--develop", files[-1]])
+
     def test_small(self):
         """
         *   Run a small simulation, read output.
@@ -39,7 +52,7 @@ class MyTests(unittest.TestCase):
         """
 
         N = 9
-        files = my.Flow.cli_generate(["-N", N, "--dev", dirname])
+        files = my.Flow.cli_generate(["-n", 1, "-N", N, "--dev", "-o", dirname])
 
         with h5py.File(files[-1], "a") as file:
             file["/boundcheck"][...] = 170

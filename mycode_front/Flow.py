@@ -26,6 +26,7 @@ from . import slurm
 from . import storage
 from . import System
 from . import tag
+from . import tools
 from ._version import version
 
 plt.style.use(["goose", "goose-latex"])
@@ -110,65 +111,45 @@ def interpret_filename(filepath: str, convert: bool = False) -> dict:
     return _interpret(re.split("_|/", part), convert=convert)
 
 
-def generate(*args, **kwargs):
-    """
-    Generate input file.
-    See :py:func:`System.generate`. On top of that:
-
-    :param gammadot: The shear-rate to prescribe.
-    :param output: Output storage interval.
-    :param restart: Restart storage interval.
-    :param snapshot: Snapshot storage interval.
-    """
-
-    kwargs.setdefault("init_run", False)
-    gammadot = kwargs.pop("gammadot")
-    output = kwargs.pop("output", int(500))
-    restart = kwargs.pop("restart", int(5000))
-    snapshot = kwargs.pop("snapshot", int(500 * 500))
+def __add_flow_specific_fields(file: h5py.File, gammadot: float, output: int, restart: int, snapshot: int, dev: bool):
 
     progname = entry_points["cli_generate"]
-    System.generate(*args, **kwargs)
+    System.create_check_meta(file, f"/meta/{progname}", dev=dev)
 
-    with h5py.File(kwargs["filepath"], "a") as file:
+    storage.dump_with_atttrs(
+        file,
+        "/gammadot",
+        gammadot,
+        desc="Applied shear-rate",
+    )
 
-        meta = file.create_group(f"/meta/{progname}")
-        meta.attrs["version"] = version
+    storage.dump_with_atttrs(
+        file,
+        "/boundcheck",
+        10,
+        desc="Stop at n potentials before running out of bounds",
+    )
 
-        storage.dump_with_atttrs(
-            file,
-            "/gammadot",
-            gammadot,
-            desc="Applied shear-rate",
-        )
+    storage.dump_with_atttrs(
+        file,
+        "/restart/interval",
+        restart,
+        desc="Restart storage interval",
+    )
 
-        storage.dump_with_atttrs(
-            file,
-            "/boundcheck",
-            10,
-            desc="Stop at n potentials before running out of bounds",
-        )
+    storage.dump_with_atttrs(
+        file,
+        "/output/interval",
+        output,
+        desc="Output storage interval",
+    )
 
-        storage.dump_with_atttrs(
-            file,
-            "/restart/interval",
-            restart,
-            desc="Restart storage interval",
-        )
-
-        storage.dump_with_atttrs(
-            file,
-            "/output/interval",
-            output,
-            desc="Output storage interval",
-        )
-
-        storage.dump_with_atttrs(
-            file,
-            "/snapshot/interval",
-            snapshot,
-            desc="Snapshot storage interval",
-        )
+    storage.dump_with_atttrs(
+        file,
+        "/snapshot/interval",
+        snapshot,
+        desc="Snapshot storage interval",
+    )
 
 
 class DefaultEnsemble:
@@ -184,6 +165,13 @@ class DefaultEnsemble:
 def cli_generate(cli_args=None):
     """
     Generate IO files, including job-scripts to run simulations.
+    This script can:
+
+    *   Generate completely new configurations that are stress and strain free.
+        Use ``-N`` and ``-n`` to define the ensemble.
+
+    *   Branch quasi-static runs at their steady-state (may speed-up finding a steady state).
+        Use arguments to specify files to branch.
     """
 
     class MyFmt(
@@ -199,44 +187,73 @@ def cli_generate(cli_args=None):
 
     parser.add_argument("--conda", type=str, default=slurm.default_condabase, help="Env-basename")
     parser.add_argument("--develop", action="store_true", help="Development mode")
-    parser.add_argument("-n", "--nsim", type=int, default=1, help="#simulations")
-    parser.add_argument("-N", "--size", type=int, default=2 * (3**6), help="#blocks")
+    parser.add_argument("-n", "--nsim", type=int, help="#simulations")
+    parser.add_argument("-N", "--size", type=int, help="#blocks")
     parser.add_argument("-s", "--start", type=int, default=0, help="Start simulation")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
-    parser.add_argument("outdir", type=str, help="Output directory")
+    parser.add_argument("-o", "--outdir", type=str, default=".", help="Output directory")
+    parser.add_argument("files", nargs="*", type=str, help="Files to branch")
 
-    if cli_args is None:
-        args = parser.parse_args(sys.argv[1:])
-    else:
-        args = parser.parse_args([str(arg) for arg in cli_args])
+    args = tools._parse(parser, cli_args)
+    assert (args.nsim is None and args.size is None and len(args.files) > 0) or (args.nsim is not None and args.size is not None and len(args.files) == 0)
 
-    assert os.path.isdir(args.outdir)
+    if not os.path.isdir(args.outdir):
+        os.makedirs(args.outdir)
 
     Ensemble = DefaultEnsemble
     filenames = []
     filepaths = []
 
-    for i in tqdm.tqdm(range(args.start, args.start + args.nsim)):
+    if len(args.files) == 0:
+        rng = list(range(args.start, args.start + args.nsim))
+    else:
+        rnp = list(range(len(args.files)))
+
+    for i in tqdm.tqdm(rng):
 
         for j in range(Ensemble.n):
 
-            filename = f"id={i:03d}_gammadot={Ensemble.gammadot[j]:.2e}.h5"
+            if len(args.files) == 0:
+                filename = f"id={i:03d}_gammadot={Ensemble.gammadot[j]:.2e}.h5"
+            else:
+                sid = os.path.splitext(os.path.basename(args.files[i]))[0]
+                filepath = f"{sid:s}_gammadot={Ensemble.gammadot[j]:.2e}.h5"
+
             filepath = os.path.join(args.outdir, filename)
             filenames.append(filename)
             filepaths.append(filepath)
 
-            generate(
-                filepath=filepath,
+            if len(args.files) == 0:
+                System.generate(
+                    filepath=filepath,
+                    N=args.size,
+                    seed=i * args.size,
+                    test_mode=args.develop,
+                    dev=args.develop,
+                    init_run=False,
+                )
+                file = h5py.File(filepath, "a")
+            else:
+                file = h5py.File(filepath, "w")
+                with h5py.File(args.files[i], "r") as source:
+                    System.clone(source, file, skip=["/run/epsd/kick", "/stored", "/t", "/kick"])
+                    inc = System.basic_output(source, verbose=False)["steadystate"]
+                    u = source[f"/disp/{inc:d}"][...]
+                    file["/restart/u"] = u
+                    file["/restart/v"] = np.zeros_like(u)
+                    file["/restart/a"] = np.zeros_like(u)
+                    file["/restart/inc"] = int(0)
+
+            __add_flow_specific_fields(
+                file=file,
                 gammadot=Ensemble.gammadot[j],
                 output=Ensemble.output[j],
                 restart=Ensemble.restart[j],
                 snapshot=Ensemble.snapshot[j],
-                N=args.size,
-                seed=i * args.size,
-                test_mode=args.develop,
                 dev=args.develop,
             )
+            file.close()
 
             # warning: Gammadot hard-coded here, check that yield strains did not change
             with h5py.File(filepath, "r") as file:
