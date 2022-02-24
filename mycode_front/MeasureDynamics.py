@@ -195,6 +195,7 @@ def cli_run(cli_args=None):
                     storage.dset_extend1d(file, "/t", istore, system.t())
                     storage.dset_extend1d(file, "/A", istore, A)
                     storage.dset_extend1d(file, "/stored", istore, iiter)
+                    file.flush()
                     istore += 1
                     last_iiter = iiter
                 store = False
@@ -245,6 +246,8 @@ def cli_run(cli_args=None):
                 storage.dset_extend1d(file, "/sync-t/stored", t_istore, iiter)
                 t_istore += 1
                 store = True
+
+        meta["completed"] = 1
 
 
 def basic_output(system: model.System, file: h5py.File, norm: dict, verbose: bool = True) -> dict:
