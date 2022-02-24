@@ -93,7 +93,7 @@ def cli_run(cli_args=None):
         inc = int(file["/stored"][-1])
         assert not file["/trigger/truncated"][inc]
 
-        System.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
+        meta = System.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
         system = System.init(file)
         System._restore_inc(file, system, inc)
         idx_n = system.plastic_CurrentIndex()[:, 0]
@@ -135,6 +135,7 @@ def cli_run(cli_args=None):
             file["/restart/a"] = system.a()
             file["/restart/t"] = system.t()
 
+        meta["completed"] = 1
         pbar.n = 1
         pbar.refresh()
 

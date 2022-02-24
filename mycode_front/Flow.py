@@ -396,6 +396,8 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
                 storage.dump_overwrite(file, "/restart/inc", inc)
                 file.flush()
 
+        meta["completed"] = 1
+
 
 def cli_run(cli_args=None):
     """
