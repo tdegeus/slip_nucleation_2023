@@ -363,6 +363,7 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
                 file[f"/snapshot/u/{inc:d}"] = system.u()
                 file[f"/snapshot/v/{inc:d}"] = system.v()
                 file[f"/snapshot/a/{inc:d}"] = system.a()
+                file.flush()
 
             if inc % output == 0:
 
@@ -391,6 +392,7 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
                 file["/output/epsp"][i] = np.mean(system.plastic_Epsp()) / eps0
                 file["/output/eps"][:, i] = Eps_weak.ravel()[[0, 1, 3]]
                 file["/output/sig"][:, i] = Sig_weak.ravel()[[0, 1, 3]]
+                file.flush()
 
             if inc % restart == 0:
 
@@ -398,6 +400,7 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
                 storage.dump_overwrite(file, "/restart/v", system.v())
                 storage.dump_overwrite(file, "/restart/a", system.a())
                 storage.dump_overwrite(file, "/restart/inc", inc)
+                file.flush()
 
 
 def cli_run(cli_args=None):
