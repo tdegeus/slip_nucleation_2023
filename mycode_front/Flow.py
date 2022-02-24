@@ -26,6 +26,7 @@ from . import slurm
 from . import storage
 from . import System
 from . import tag
+from . import tools
 from ._version import version
 
 plt.style.use(["goose", "goose-latex"])
@@ -110,90 +111,67 @@ def interpret_filename(filepath: str, convert: bool = False) -> dict:
     return _interpret(re.split("_|/", part), convert=convert)
 
 
-def generate(*args, **kwargs):
-    """
-    Generate input file.
-    See :py:func:`System.generate`. On top of that:
-
-    :param gammadot: The shear-rate to prescribe.
-    :param output: Output storage interval.
-    :param restart: Restart storage interval.
-    :param snapshot: Snapshot storage interval.
-    """
-
-    kwargs.setdefault("init_run", False)
-    gammadot = kwargs.pop("gammadot")
-    output = kwargs.pop("output", int(500))
-    restart = kwargs.pop("restart", int(5000))
-    snapshot = kwargs.pop("snapshot", int(500 * 500))
+def __add_flow_specific_fields(file: h5py.File, gammadot: float, output: int, restart: int, snapshot: int, dev: bool):
 
     progname = entry_points["cli_generate"]
-    System.generate(*args, **kwargs)
+    System.create_check_meta(file, f"/meta/{progname}", dev=dev)
 
-    test_mode = kwargs.pop("test_mode", False)
-    assert test_mode or not tag.has_uncommitted(version)
+    storage.dump_with_atttrs(
+        file,
+        "/gammadot",
+        gammadot,
+        desc="Applied shear-rate",
+    )
 
-    with h5py.File(kwargs["filepath"], "a") as file:
+    storage.dump_with_atttrs(
+        file,
+        "/boundcheck",
+        10,
+        desc="Stop at n potentials before running out of bounds",
+    )
 
-        meta = file.create_group(f"/meta/{progname}")
-        meta.attrs["version"] = version
+    storage.dump_with_atttrs(
+        file,
+        "/restart/interval",
+        restart,
+        desc="Restart storage interval",
+    )
 
-        storage.dump_with_atttrs(
-            file,
-            "/gammadot",
-            gammadot,
-            desc="Applied shear-rate",
-        )
+    storage.dump_with_atttrs(
+        file,
+        "/output/interval",
+        output,
+        desc="Output storage interval",
+    )
 
-        storage.dump_with_atttrs(
-            file,
-            "/boundcheck",
-            10,
-            desc="Stop at n potentials before running out of bounds",
-        )
-
-        storage.dump_with_atttrs(
-            file,
-            "/restart/interval",
-            restart,
-            desc="Restart storage interval",
-        )
-
-        storage.dump_with_atttrs(
-            file,
-            "/output/interval",
-            output,
-            desc="Output storage interval",
-        )
-
-        storage.dump_with_atttrs(
-            file,
-            "/snapshot/interval",
-            snapshot,
-            desc="Snapshot storage interval",
-        )
+    storage.dump_with_atttrs(
+        file,
+        "/snapshot/interval",
+        snapshot,
+        desc="Snapshot storage interval",
+    )
 
 
-def default_gammadot():
-    """
-    Shear rates to simulate.
+class DefaultEnsemble:
 
-    :return: List of shear rates, and a typical shear rate.
-    """
-
-    eps0_new = 1.0e-3 / 2.0 / 10.0
-    # eps0_old = 5e-4 / 8.0
-    # Gammadot = np.linspace(1e-9, 20e-9, 20) / 8.0
-    # Gammadot = Gammadot
-    # Gammadot *= eps0_new / eps0_old
-    Gammadot = [1e-13, 5e-13, 1e-12, 5e-12, 1e-11, 5e-11] + np.linspace(1e-10, 2e-9, 20).tolist()
-
-    return np.array(Gammadot), eps0_new
+    gammadot = np.array([1e-11, 5e-11, 8e-11] + np.linspace(1e-10, 2e-9, 20).tolist())
+    eps0 = 1.0e-3 / 2.0 / 10.0
+    output = 500 * np.ones(gammadot.shape, dtype=int)
+    restart = 10000 * np.ones(gammadot.shape, dtype=int)
+    snapshot = 500 * 500 * np.ones(gammadot.shape, dtype=int)
+    n = gammadot.size
 
 
 def cli_generate(cli_args=None):
     """
     Generate IO files, including job-scripts to run simulations.
+    This script can:
+
+    *   Generate completely new configurations that are stress and strain free.
+        Use ``-N`` and ``-n`` to define the ensemble.
+
+    *   Branch quasi-static runs at their steady-state (may speed-up finding a steady state).
+        Use arguments to specify files to branch.
     """
 
     class MyFmt(
@@ -207,47 +185,80 @@ def cli_generate(cli_args=None):
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
 
+    parser.add_argument("--conda", type=str, default=slurm.default_condabase, help="Env-basename")
     parser.add_argument("--develop", action="store_true", help="Development mode")
-    parser.add_argument("-n", "--nsim", type=int, default=1, help="#simulations")
-    parser.add_argument("-N", "--size", type=int, default=2 * (3**6), help="#blocks")
+    parser.add_argument("-n", "--nsim", type=int, help="#simulations")
+    parser.add_argument("-N", "--size", type=int, help="#blocks")
     parser.add_argument("-s", "--start", type=int, default=0, help="Start simulation")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
-    parser.add_argument("outdir", type=str, help="Output directory")
+    parser.add_argument("-o", "--outdir", type=str, default=".", help="Output directory")
+    parser.add_argument("files", nargs="*", type=str, help="Files to branch")
 
-    if cli_args is None:
-        args = parser.parse_args(sys.argv[1:])
-    else:
-        args = parser.parse_args([str(arg) for arg in cli_args])
+    args = tools._parse(parser, cli_args)
+    assert (args.nsim is None and args.size is None and len(args.files) > 0) or (args.nsim is not None and args.size is not None and len(args.files) == 0)
 
-    assert os.path.isdir(args.outdir)
+    if not os.path.isdir(args.outdir):
+        os.makedirs(args.outdir)
 
-    Gammadot, _ = default_gammadot()
+    Ensemble = DefaultEnsemble
     filenames = []
     filepaths = []
 
-    for i in tqdm.tqdm(range(args.start, args.start + args.nsim)):
+    if len(args.files) == 0:
+        rng = list(range(args.start, args.start + args.nsim))
+    else:
+        rnp = list(range(len(args.files)))
 
-        for gammadot in Gammadot:
+    for i in tqdm.tqdm(rng):
 
-            filename = f"id={i:03d}_gammadot={gammadot:.2e}.h5"
+        for j in range(Ensemble.n):
+
+            if len(args.files) == 0:
+                filename = f"id={i:03d}_gammadot={Ensemble.gammadot[j]:.2e}.h5"
+            else:
+                sid = os.path.splitext(os.path.basename(args.files[i]))[0]
+                filepath = f"{sid:s}_gammadot={Ensemble.gammadot[j]:.2e}.h5"
+
             filepath = os.path.join(args.outdir, filename)
             filenames.append(filename)
             filepaths.append(filepath)
 
-            generate(
-                filepath=filepath,
-                gammadot=gammadot,
-                N=args.size,
-                seed=i * args.size,
-                test_mode=args.develop,
+            if len(args.files) == 0:
+                System.generate(
+                    filepath=filepath,
+                    N=args.size,
+                    seed=i * args.size,
+                    test_mode=args.develop,
+                    dev=args.develop,
+                    init_run=False,
+                )
+                file = h5py.File(filepath, "a")
+            else:
+                file = h5py.File(filepath, "w")
+                with h5py.File(args.files[i], "r") as source:
+                    System.clone(source, file, skip=["/run/epsd/kick", "/stored", "/t", "/kick"])
+                    inc = System.basic_output(source, verbose=False)["steadystate"]
+                    u = source[f"/disp/{inc:d}"][...]
+                    file["/restart/u"] = u
+                    file["/restart/v"] = np.zeros_like(u)
+                    file["/restart/a"] = np.zeros_like(u)
+                    file["/restart/inc"] = int(0)
+
+            __add_flow_specific_fields(
+                file=file,
+                gammadot=Ensemble.gammadot[j],
+                output=Ensemble.output[j],
+                restart=Ensemble.restart[j],
+                snapshot=Ensemble.snapshot[j],
                 dev=args.develop,
             )
+            file.close()
 
             # warning: Gammadot hard-coded here, check that yield strains did not change
             with h5py.File(filepath, "r") as file:
                 assert not isinstance(file["/cusp/epsy"], h5py.Dataset)
-                assert np.isclose(file["/cusp/epsy/eps0"][...], default_gammadot()[1])
+                assert np.isclose(file["/cusp/epsy/eps0"][...], Ensemble.eps0)
 
     executable = entry_points["cli_run"]
     commands = [f"{executable} {file}" for file in filenames]
@@ -256,83 +267,12 @@ def cli_generate(cli_args=None):
         basename=executable,
         group=1,
         outdir=args.outdir,
+        conda=dict(condabase=args.conda),
         sbatch={"time": args.time},
     )
 
     if cli_args is not None:
         return filepaths
-
-
-def cli_update_generate(cli_args=None):
-    """
-    Apply updates and bugfixes to old files:
-
-    *   <= 5.3 : remove :py:func:`System.run` specific files.
-    """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
-    funcname = inspect.getframeinfo(inspect.currentframe()).function
-    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
-    progname = entry_points["cli_generate"]
-
-    parser.add_argument("--develop", action="store_true", help="Development mode")
-    parser.add_argument("-o", "--outdir", type=str, required=True, help="Output directory")
-    parser.add_argument("files", nargs="*", type=str, help="Simulations to update")
-
-    if cli_args is None:
-        args = parser.parse_args(sys.argv[1:])
-    else:
-        args = parser.parse_args([str(arg) for arg in cli_args])
-
-    outpaths = [os.path.join(args.outdir, f) for f in args.files]
-    assert np.all([os.path.exists(f) for f in args.files])
-    assert not np.any([os.path.exists(f) for f in outpaths])
-    assert args.develop or not tag.has_uncommitted(version)
-
-    if not os.path.isdir(args.outdir):
-        os.makedirs(args.outdir)
-
-    for filepath, outpath in zip(tqdm.tqdm(args.files), outpaths):
-
-        with h5py.File(filepath, "r") as source, h5py.File(outpath, "w") as dest:
-
-            assert f"/meta/{progname}" in source
-            meta = source[f"/meta/{progname}"]
-            ver = meta.attrs["version"]
-            updated = [ver]
-            if "updated" in meta.attrs:
-                updated += list(meta.attrs["updated"])
-
-            if tag.less_equal(ver, "5.3"):
-
-                paths = g5.getdatapaths(source)
-                paths.remove("/run/epsd/kick")
-                paths.remove("/stored")
-                paths.remove("/t")
-                paths.remove("/kick")
-                paths.remove("/disp/0")
-                paths.remove("/disp")
-                paths.remove(f"/meta/{progname}")
-
-                g5.copy(source, dest, paths)
-
-                dest_meta = dest.create_group(f"/meta/{progname}")
-                dest_meta.attrs["version"] = version
-                dest_meta.attrs["updated"] = updated
-
-                for key in meta.attrs:
-                    if key not in ["version", "updated"]:
-                        dest_meta.attrs[key] = meta.attrs[key]
-
-    if cli_args is not None:
-        return outpaths
 
 
 def run_create_extendible(file: h5py.File):
@@ -346,12 +286,17 @@ def run_create_extendible(file: h5py.File):
         yy=2,
     )
 
+    # reaction force
+    storage.create_extendible(file, "/output/fmaterial", np.float64)
+    storage.create_extendible(file, "/output/fext", np.float64)
+
+    # averaged on the weak layer
+    storage.create_extendible(file, "/output/sig", np.float64, ndim=2, **flatindex)
+    storage.create_extendible(file, "/output/eps", np.float64, ndim=2, **flatindex)
     storage.create_extendible(file, "/output/epsp", np.float64)
-    storage.create_extendible(file, "/output/global/sig", np.float64, ndim=2, **flatindex)
+
+    # book-keeping
     storage.create_extendible(file, "/output/inc", np.uint32)
-    storage.create_extendible(file, "/output/S", np.int64)
-    storage.create_extendible(file, "/output/weak/sig", np.float64, ndim=2, **flatindex)
-    storage.create_extendible(file, "/restart/inc", np.uint32)
     storage.create_extendible(file, "/snapshot/inc", np.uint32)
 
 
@@ -370,6 +315,9 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
     with h5py.File(filepath, "a") as file:
 
         system = System.init(file)
+        norm = System.normalisation(file)
+        sig0 = norm["sig0"]
+        eps0 = norm["eps0"]
         meta = System.create_check_meta(file, f"/meta/{progname}", dev=dev)
 
         if "completed" in meta:
@@ -382,24 +330,27 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
         output = file["/output/interval"][...]
         restart = file["/restart/interval"][...]
         snapshot = file["/snapshot/interval"][...] if "/snapshot/interval" in file else sys.maxsize
-        v = system.affineSimpleShearCentered(file["/gammadot"][...])
+        v = system.affineSimpleShear(file["/gammadot"][...])
 
         plastic = system.plastic()
         dV = system.quad().AsTensor(2, system.quad().dV())
         dV_plas = dV[plastic, ...]
 
+        boundcheck = file["/boundcheck"][...]
+        nchunk = file["/cusp/epsy/nchunk"][...] - boundcheck
+        pbar = tqdm.tqdm(total=nchunk, disable=not progress, desc=filepath)
+
         if "/restart/u" in file:
             system.setU(file["/restart/u"][...])
             system.setV(file["/restart/v"][...])
             system.setA(file["/restart/a"][...])
-            inc = file["/restart/inc"][...]
-            print(f"{basename}: restarting, inc = {inc:d}")
-        else:
-            print(f"{basename}: starting")
+            inc = int(file["/restart/inc"][...])
+            pbar.n = np.max(system.plastic_CurrentIndex())
+            pbar.refresh()
 
-        boundcheck = file["/boundcheck"][...]
-        nchunk = file["/cusp/epsy/nchunk"][...] - boundcheck
-        pbar = tqdm.tqdm(total=nchunk, disable=not progress)
+        mesh = GooseFEM.Mesh.Quad4.FineLayer(system.coor(), system.conn())
+        top = mesh.nodesTopEdge()
+        h = system.coor()[top[1], 0] - system.coor()[top[0], 0]
 
         while True:
 
@@ -414,10 +365,8 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
             if not system.flowSteps_boundcheck(n, v, boundcheck):
                 break
 
-            if progress:
-                pbar.n = np.max(system.plastic_CurrentIndex())
-                pbar.refresh()
-
+            pbar.n = np.max(system.plastic_CurrentIndex())
+            pbar.refresh()
             inc += n
 
             if inc % snapshot == 0:
@@ -431,25 +380,36 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
                 file[f"/snapshot/u/{inc:d}"] = system.u()
                 file[f"/snapshot/v/{inc:d}"] = system.v()
                 file[f"/snapshot/a/{inc:d}"] = system.a()
+                file.flush()
 
             if inc % output == 0:
 
                 i = int(inc / output)
 
-                for key in ["/output/inc", "/output/S", "/output/epsp"]:
+                for key in ["/output/inc", "/output/fmaterial", "/output/fext", "/output/epsp"]:
                     file[key].resize((i + 1,))
 
-                for key in ["/output/global/sig", "/output/weak/sig"]:
+                for key in ["/output/sig", "/output/eps"]:
                     file[key].resize((3, i + 1))
 
-                Sig_bar = np.average(system.Sig(), weights=dV, axis=(0, 1))
-                Sig_weak = np.average(system.plastic_Sig(), weights=dV_plas, axis=(0, 1))
+                Eps_weak = np.average(system.plastic_Eps(), weights=dV_plas, axis=(0, 1)) / eps0
+                Sig_weak = np.average(system.plastic_Sig(), weights=dV_plas, axis=(0, 1)) / sig0
+
+                fmaterial = system.fmaterial()[top, 0]
+                fmaterial[0] += fmaterial[-1]
+                fmaterial = np.mean(fmaterial[:-1]) / h / sig0
+
+                fext = system.fext()[top, 0]
+                fext[0] += fext[-1]
+                fext = np.mean(fext[:-1]) / h / sig0
 
                 file["/output/inc"][i] = inc
-                file["/output/S"][i] = np.sum(system.plastic_CurrentIndex()[:, 0])
-                file["/output/epsp"][i] = np.mean(system.plastic_Epsp()[:, 0])
-                file["/output/global/sig"][:, i] = Sig_bar.ravel()[[0, 1, 3]]
-                file["/output/weak/sig"][:, i] = Sig_weak.ravel()[[0, 1, 3]]
+                file["/output/fmaterial"][i] = fmaterial
+                file["/output/fext"][i] = fext
+                file["/output/epsp"][i] = np.mean(system.plastic_Epsp()) / eps0
+                file["/output/eps"][:, i] = Eps_weak.ravel()[[0, 1, 3]]
+                file["/output/sig"][:, i] = Sig_weak.ravel()[[0, 1, 3]]
+                file.flush()
 
             if inc % restart == 0:
 
@@ -457,6 +417,7 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
                 storage.dump_overwrite(file, "/restart/v", system.v())
                 storage.dump_overwrite(file, "/restart/a", system.a())
                 storage.dump_overwrite(file, "/restart/inc", inc)
+                file.flush()
 
 
 def cli_run(cli_args=None):
@@ -487,75 +448,6 @@ def cli_run(cli_args=None):
 
     assert os.path.isfile(args.file)
     run(args.file, dev=args.develop, progress=not args.quiet)
-
-
-def cli_update_run(cli_args=None):
-    """
-    Apply updates and bugfixes to old files:
-
-    *   <= 5.3 : Fix "/output/epsp" which was not normalised by the number of blocs.
-    """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
-    funcname = inspect.getframeinfo(inspect.currentframe()).function
-    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
-    progname = entry_points["cli_run"]
-
-    parser.add_argument("--develop", action="store_true", help="Development mode")
-    parser.add_argument("-o", "--outdir", type=str, required=True, help="Output directory")
-    parser.add_argument("files", nargs="*", type=str, help="Simulations to update")
-
-    if cli_args is None:
-        args = parser.parse_args(sys.argv[1:])
-    else:
-        args = parser.parse_args([str(arg) for arg in cli_args])
-
-    outpaths = [os.path.join(args.outdir, f) for f in args.files]
-    assert np.all([os.path.exists(f) for f in args.files])
-    assert not np.any([os.path.exists(f) for f in outpaths])
-    assert args.develop or not tag.has_uncommitted(version)
-
-    if not os.path.isdir(args.outdir):
-        os.makedirs(args.outdir)
-
-    for filepath, outpath in zip(tqdm.tqdm(args.files), outpaths):
-
-        with h5py.File(filepath, "r") as source, h5py.File(outpath, "w") as dest:
-
-            assert f"/meta/{progname}" in source
-            meta = source[f"/meta/{progname}"]
-            ver = meta.attrs["version"]
-            updated = [ver]
-            if "updated" in meta.attrs:
-                updated += list(meta.attrs["updated"])
-
-            if tag.less_equal(ver, "5.3"):
-
-                paths = g5.getdatapaths(source)
-                paths.remove(f"/meta/{progname}")
-
-                g5.copy(source, dest, paths)
-
-                N = dest["/meta/normalisation/N"][...]
-                dest["/output/epsp"][...] /= float(N)
-
-                dest_meta = dest.create_group(f"/meta/{progname}")
-                dest_meta.attrs["version"] = version
-                dest_meta.attrs["updated"] = updated
-
-                for key in meta.attrs:
-                    if key not in ["version", "updated"]:
-                        dest_meta.attrs[key] = meta.attrs[key]
-
-    if cli_args is not None:
-        return outpaths
 
 
 def basic_output(file: h5py.File) -> dict:
@@ -872,7 +764,7 @@ def cli_branch_velocityjump(cli_args=None):
     assert np.all([os.path.exists(f) for f in args.files])
     assert args.develop or not tag.has_uncommitted(version)
 
-    Gammadot, scale = default_gammadot()
+    Gammadot = DefaultEnsemble.gammadot
     inp_paths = []
     out_names = []
     out_paths = []
