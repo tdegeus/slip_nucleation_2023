@@ -24,6 +24,7 @@ import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 import prrng
+import shelephant
 import tqdm
 from numpy.typing import ArrayLike
 
@@ -40,12 +41,13 @@ plt.style.use(["goose", "goose-latex"])
 entry_points = dict(
     cli_ensembleinfo="EnsembleInfo",
     cli_generate="Run_generate",
-    cli_run="Run",
     cli_plot="Run_plot",
-    cli_rerun_event="RunEventMap",
-    cli_rerun_event_job_systemspanning="RunEventMap_JobAllSystemSpanning",
-    cli_rerun_event_collect="EventMapInfo",
     cli_rerun_dynamics_job_systemspanning="RunDynamics_JobAllSystemSpanning",
+    cli_rerun_event="RunEventMap",
+    cli_rerun_event_collect="EventMapInfo",
+    cli_rerun_event_job_systemspanning="RunEventMap_JobAllSystemSpanning",
+    cli_run="Run",
+    cli_status="SimulationStatus",
 )
 
 
@@ -842,6 +844,73 @@ def cli_run(cli_args=None):
     parser.add_argument("file", type=str, help="Simulation file")
     args = tools._parse(parser, cli_args)
     run(args.file, dev=args.develop)
+
+
+def cli_status(cli_args=None):
+    """
+    Find status for files.
+
+    For an output YAML-file the structure is as follows::
+
+        completed:
+        - ...
+        - ...
+        new:
+        - ...
+        - ...
+        error:
+        - ...
+        - ...
+    """
+
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+
+    parser.add_argument("-c", "--completed", action="store_true", help="List completed simulations")
+    parser.add_argument("-e", "--error", action="store_true", help="List error simulations")
+    parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
+    parser.add_argument("-k", "--key", type=str, required=True, help="Key to read from file")
+    parser.add_argument("-n", "--new", action="store_true", help="List 'new' simulations")
+    parser.add_argument("-o", "--output", type=str, help="YAML-file")
+    parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("files", nargs="*", type=str, help="Simulation files")
+    args = tools._parse(parser, cli_args)
+    assert np.all([os.path.isfile(file) for file in args.files])
+
+    ret = {
+        "completed": [],
+        "new": [],
+        "error": [],
+    }
+
+    for filepath in tqdm.tqdm(args.files):
+        with h5py.File(filepath, "r") as file:
+            if args.key not in file:
+                ret["new"].append(filepath)
+            elif "completed" in file[args.key].attrs:
+                ret["completed"].append(filepath)
+            else:
+                ret["error"].append(filepath)
+
+    if args.output is not None:
+        shelephant.yaml.dump(args.output, ret, args.force)
+    elif args.completed:
+        print(" ".join(ret["completed"]))
+    elif args.new:
+        print(" ".join(ret["new"]))
+    elif args.error:
+        print(" ".join(ret["error"]))
+
+    if cli_args is not None:
+        return ret
 
 
 def steadystate(
