@@ -60,6 +60,41 @@ file_defaults = dict(
 )
 
 
+class System(model.System):
+    def __init__(self, file: h5py.File):
+        super().__init__(
+            file["coor"][...],
+            file["conn"][...],
+            file["dofs"][...],
+            file["dofsP"][...] if "dofsP" in file else file["iip"][...],
+            file["/elastic/elem"][...],
+            file["/cusp/elem"][...],
+        )
+
+        self.setMassMatrix(file["rho"][...])
+        self.setDampingMatrix(file["alpha"][...] if "alpha" in file else file["damping/alpha"][...])
+        self.setElastic(file["/elastic/K"][...], file["/elastic/G"][...])
+        self.setPlastic(file["/cusp/K"][...], file["/cusp/G"][...], read_epsy(file))
+        self.setDt(file["/run/dt"][...])
+
+        norm = normalisation(file)
+        self.N = norm["N"]
+        self.eps0 = norm["eps0"]
+        self.sig0 = norm["sig0"]
+        self.t0 = norm["t0"]
+
+    def restore_inc(self, file: h5py.File, inc: int):
+        self.quench()
+        self.setT(file["/t"][inc])
+        self.setU(file[f"/disp/{inc:d}"][...])
+
+    def plastic_Sig(self):
+        return model.System.plastic_Sig(self) / self.sig0
+
+    def Sig(self):
+        return model.System.Sig(self) / self.sig0
+
+
 def dependencies(system: model.System) -> list[str]:
     """
     Return list with version strings.
