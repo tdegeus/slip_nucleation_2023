@@ -54,6 +54,13 @@ class MyTests(unittest.TestCase):
 
         my.System.cli_generate(["--dev", mygendir])
 
+    def test_status(self):
+        """
+        Check that file was completed.
+        """
+        ret = my.System.cli_status(["-k", f"/meta/{my.System.entry_points['cli_run']}", filename])
+        self.assertEqual(ret, {"completed": [filename], "new": [], "error": []})
+
     def test_small(self):
         """
         Generate + run + check historic output

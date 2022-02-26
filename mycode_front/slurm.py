@@ -6,6 +6,7 @@ import textwrap
 
 import GooseSLURM
 import numpy as np
+import shelephant
 
 from ._version import version
 
@@ -281,13 +282,18 @@ def cli_serial_group(cli_args=None):
     parser.add_argument("-a", "--account", type=str, default=account, help="Account")
     parser.add_argument("-b", "--basename", type=str, help="Basename for scripts. Default: command")
     parser.add_argument("-c", "--command", type=str, help="Command to use")
+    parser.add_argument("-k", "--yaml-key", type=str, default="new", help="Key to read from file")
     parser.add_argument("-n", "--group", type=int, default=1, help="#commands to group")
     parser.add_argument("-o", "--outdir", type=str, default=".", help="Output dir")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
+    parser.add_argument("-y", "--yaml", type=str, help="Input files from YAML file")
     parser.add_argument("files", nargs="*", type=str, help="Files")
 
     args = parser.parse_args(cli_args)
+
+    if args.yaml is not None:
+        args.files += shelephant.yaml.read(args.yaml)[args.yaml_key]
 
     assert np.all([os.path.isfile(file) for file in args.files])
 
