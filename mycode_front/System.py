@@ -910,7 +910,7 @@ def cli_status(cli_args=None):
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
 
     parser.add_argument("-c", "--completed", action="store_true", help="List completed simulations")
-    parser.add_argument("-e", "--error", action="store_true", help="List error simulations")
+    parser.add_argument("-e", "--partial", action="store_true", help="List partial simulations")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument("-k", "--key", type=str, required=True, help="Key to read from file")
     parser.add_argument("-n", "--new", action="store_true", help="List 'new' simulations")
@@ -923,7 +923,7 @@ def cli_status(cli_args=None):
     ret = {
         "completed": [],
         "new": [],
-        "error": [],
+        "partial": [],
     }
 
     for filepath in tqdm.tqdm(args.files):
@@ -933,7 +933,7 @@ def cli_status(cli_args=None):
             elif "completed" in file[args.key].attrs:
                 ret["completed"].append(filepath)
             else:
-                ret["error"].append(filepath)
+                ret["partial"].append(filepath)
 
     if args.output is not None:
         shelephant.yaml.dump(args.output, ret, args.force)
@@ -941,8 +941,8 @@ def cli_status(cli_args=None):
         print(" ".join(ret["completed"]))
     elif args.new:
         print(" ".join(ret["new"]))
-    elif args.error:
-        print(" ".join(ret["error"]))
+    elif args.partial:
+        print(" ".join(ret["partial"]))
 
     if cli_args is not None:
         return ret
