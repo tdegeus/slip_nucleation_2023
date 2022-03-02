@@ -1267,7 +1267,7 @@ def cli_ensembleinfo(cli_args=None):
         dependencies=[],
     )
 
-    fields_full = ["epsd", "sigd", "S", "A", "kick", "inc", "steadystate"]
+    fields_full = ["epsd", "sigd", "S", "A", "kick", "inc"]
     combine_load = {key: [] for key in ["epsd", "sigd", "S", "A", "kick", "inc"]}
     combine_kick = {key: [] for key in ["epsd", "sigd", "S", "A", "kick", "inc"]}
     file_load = []
@@ -1295,6 +1295,8 @@ def cli_ensembleinfo(cli_args=None):
 
                 for key in fields_full:
                     output[f"/full/{filename}/{key}"] = out[key]
+                if out["steadystate"] is not None:
+                    output[f"/full/{filename}/steadystate"] = out["steadystate"]
                 output.flush()
 
                 info["seed"].append(out["seed"])
