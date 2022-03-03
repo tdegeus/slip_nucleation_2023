@@ -14,6 +14,7 @@ import click
 import FrictionQPotFEM  # noqa: F401
 import GMatElastoPlasticQPot  # noqa: F401
 import GooseFEM  # noqa: F401
+import GooseHDF5 as g5
 import h5py
 import numpy as np
 import tqdm
@@ -29,10 +30,12 @@ entry_points = dict(
     cli_job_strain="Trigger_JobStrain",
     cli_job_deltasigma="Trigger_JobDeltaSigma",
     cli_ensembleinfo="Trigger_EnsembleInfo",
+    cli_ensemblepack="Trigger_EnsemblePack",
 )
 
 file_defaults = dict(
     cli_ensembleinfo="Trigger_EnsembleInfo.h5",
+    cli_ensemblepack="Trigger_EnsemblePack.h5",
 )
 
 
@@ -140,6 +143,106 @@ def cli_run(cli_args=None):
         pbar.refresh()
 
     return args.file
+
+
+def cli_ensemblepack(cli_args=None):
+    """
+    Pack pushes into a single file with soft links.
+    The individual pushes are listed as::
+
+        /event/filename_of_trigger/...
+
+    Thereby ``...`` houses all fields that were present in the source file.
+    However, for common data this is only a soft-link, to::
+
+        /realisation/filename_of_realisation/...
+        /source/...
+    """
+
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    output = file_defaults[funcname]
+
+    parser.add_argument("--develop", action="store_true", help="Development mode")
+    parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
+    parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
+    parser.add_argument("files", nargs="*", type=str, help="Files to read")
+
+    args = tools._parse(parser, cli_args)
+    assert len(args.files) > 0
+    assert all([os.path.isfile(file) for file in args.files])
+    tools._check_overwrite_file(args.output, args.force)
+
+    fmt = "{:" + str(max(len(i) for i in args.files)) + "s}"
+    pbar = tqdm.tqdm(args.files)
+    pbar.set_description(fmt.format(""))
+
+    realisation = ["/cusp/epsy/initstate", "/meta/seed_base"]
+    event_meta = [
+        "/meta/branch_fixed_stress",
+        "/meta/Trigger_run",
+        "/trigger/branched",
+        "/trigger/element",
+        "/trigger/truncated",
+    ]
+    event_data = ["/disp", "/stored", "/t", "/kick"]
+
+    with h5py.File(args.output, "w") as output:
+
+        for ifile, filepath in enumerate(pbar):
+
+            pbar.set_description(fmt.format(filepath), refresh=True)
+
+            with h5py.File(filepath, "r") as file:
+
+                if ifile == 0:
+                    datasets = System.clone(
+                        file, output, skip=realisation + event_meta, root="/source"
+                    )
+
+                sid = file["/meta/branch_fixed_stress"].attrs["file"]
+                tid = os.path.basename(filepath)
+
+                if f"/realisation/{sid}" not in output:
+                    g5.copy(
+                        file,
+                        output,
+                        realisation,
+                        [g5.join(f"/realisation/{sid}", i) for i in realisation],
+                    )
+                else:
+                    g5.compare(
+                        file,
+                        output,
+                        realisation,
+                        [g5.join(f"/realisation/{sid}", i) for i in realisation],
+                    )
+
+                if "/disp/1" not in file:
+                    continue
+
+                g5.copy(
+                    file,
+                    output,
+                    event_data + event_meta,
+                    [g5.join(f"/event/{tid}", i) for i in event_data + event_meta],
+                )
+
+                for path in datasets:
+                    output[g5.join(f"/event/{tid}", path)] = h5py.SoftLink(g5.join("/source", path))
+
+                for path in realisation:
+                    output[g5.join(f"/event/{tid}", path)] = h5py.SoftLink(
+                        g5.join(f"/realisation/{sid}", path)
+                    )
 
 
 def cli_ensembleinfo(cli_args=None):
@@ -339,7 +442,7 @@ def _write_configurations(
     inc: list[int] = None,
     incc: list[int] = None,
     stress: list[float] = None,
-    meta: tuple[str, dict] = None
+    meta: tuple[str, dict] = None,
 ):
     """
     Branch at a given increment or fixed stress.
