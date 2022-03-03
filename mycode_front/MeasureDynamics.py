@@ -163,7 +163,7 @@ def cli_run(cli_args=None):
     with h5py.File(args.output, "w") as file:
 
         meta = System.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
-        meta["file"] = os.path.basename(args.file)
+        meta.attrs["file"] = os.path.basename(args.file)
 
         A = 0  # maximal A encountered so far
         A_next = 0  # next A at which to write output
@@ -247,7 +247,7 @@ def cli_run(cli_args=None):
                 t_istore += 1
                 store = True
 
-        meta["completed"] = 1
+        meta.attrs["completed"] = 1
 
 
 def basic_output(system: model.System, file: h5py.File, norm: dict, verbose: bool = True) -> dict:
