@@ -818,7 +818,7 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
         system = init(file)
         meta = create_check_meta(file, f"/meta/{progname}", dev=dev)
 
-        if "completed" in meta:
+        if "completed" in meta.attrs:
             print(f"{basename}: marked completed, skipping")
             return 1
 

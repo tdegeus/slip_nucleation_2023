@@ -302,7 +302,7 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
         eps0 = norm["eps0"]
         meta = System.create_check_meta(file, f"/meta/{progname}", dev=dev)
 
-        if "completed" in meta:
+        if "completed" in meta.attrs:
             print(f'"{basename}": marked completed, skipping')
             return 1
 
@@ -396,7 +396,7 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
                 storage.dump_overwrite(file, "/restart/inc", inc)
                 file.flush()
 
-        meta["completed"] = 1
+        meta.attrs["completed"] = 1
 
 
 def cli_run(cli_args=None):
