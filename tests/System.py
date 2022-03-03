@@ -59,7 +59,7 @@ class MyTests(unittest.TestCase):
         Check that file was completed.
         """
         ret = my.System.cli_status(["-k", f"/meta/{my.System.entry_points['cli_run']}", filename])
-        self.assertEqual(ret, {"completed": [filename], "new": [], "error": []})
+        self.assertEqual(ret, {"completed": [filename], "new": [], "partial": []})
 
     def test_small(self):
         """
