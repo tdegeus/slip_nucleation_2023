@@ -143,15 +143,17 @@ def read_epsy(file: h5py.File) -> np.ndarray:
     :param file: Opened simulation archive.
     """
 
-    if isinstance(file["/cusp/epsy"], h5py.Dataset):
-        return file["/cusp/epsy"][...]
+    alias = file["cusp"]["epsy"]
 
-    initstate = file["/cusp/epsy/initstate"][...]
-    initseq = file["/cusp/epsy/initseq"][...]
-    eps_offset = file["/cusp/epsy/eps_offset"][...]
-    eps0 = file["/cusp/epsy/eps0"][...]
-    k = file["/cusp/epsy/k"][...]
-    nchunk = file["/cusp/epsy/nchunk"][...]
+    if isinstance(alias, h5py.Dataset):
+        return alias[...]
+
+    initstate = alias["initstate"][...]
+    initseq = alias["initseq"][...]
+    eps_offset = alias["eps_offset"][...]
+    eps0 = alias["eps0"][...]
+    k = alias["k"][...]
+    nchunk = alias["nchunk"][...]
 
     generators = prrng.pcg32_array(initstate, initseq)
 
@@ -189,16 +191,16 @@ def init(file: h5py.File) -> model.System:
         file["conn"][...],
         file["dofs"][...],
         file["dofsP"][...] if "dofsP" in file else file["iip"][...],
-        file["/elastic/elem"][...],
-        file["/cusp/elem"][...],
+        file["elastic"]["elem"][...],
+        file["cusp"]["elem"][...],
     )
 
     system.setMassMatrix(file["rho"][...])
-    system.setDampingMatrix(file["alpha"][...] if "alpha" in file else file["damping/alpha"][...])
-    system.setElastic(file["/elastic/K"][...], file["/elastic/G"][...])
-    system.setPlastic(file["/cusp/K"][...], file["/cusp/G"][...], read_epsy(file))
+    system.setDampingMatrix(file["alpha"][...] if "alpha" in file else file["damping"]["alpha"][...])
+    system.setElastic(file["elastic"]["K"][...], file["elastic"]["G"][...])
+    system.setPlastic(file["cusp"]["K"][...], file["cusp"]["G"][...], read_epsy(file))
 
-    system.setDt(file["/run/dt"][...])
+    system.setDt(file["run"]["dt"][...])
 
     return system
 
@@ -1109,17 +1111,20 @@ def normalisation(file: h5py.File):
 
     ret = {}
 
-    if "/meta/normalisation/N" in file:
-        N = file["/meta/normalisation/N"][...]
-        eps0 = file["/meta/normalisation/eps"][...]
-        sig0 = file["/meta/normalisation/sig"][...]
-        ret["l0"] = file["/meta/normalisation/l"][...]
-        ret["G"] = file["/meta/normalisation/G"][...]
-        ret["K"] = file["/meta/normalisation/K"][...]
-        ret["rho"] = file["/meta/normalisation/rho"][...]
-        ret["seed"] = file["/meta/seed_base"][...]
-    else:
-        N = file["/cusp/epsy"].shape[0]
+    if "meta" in file:
+        if "normalisation" in file["meta"]:
+            alias = file["meta"]["normalisation"]
+            N = alias["N"][...]
+            eps0 = alias["eps"][...]
+            sig0 = alias["sig"][...]
+            ret["l0"] = alias["l"][...]
+            ret["G"] = alias["G"][...]
+            ret["K"] = alias["K"][...]
+            ret["rho"] = alias["rho"][...]
+            ret["seed"] = file["meta"]["seed_base"][...]
+
+    if len(ret) == 0:
+        N = file["cusp"]["epsy"].shape[0]
         G = 1.0
         eps0 = 1.0e-3 / 2.0
         sig0 = 2.0 * G * eps0
@@ -1127,7 +1132,7 @@ def normalisation(file: h5py.File):
         ret["G"] = G
         ret["K"] = 10.0 * G
         ret["rho"] = G / 1.0**2.0
-        ret["seed"] = str(file["/uuid"].asstr()[...])
+        ret["seed"] = str(file["uuid"].asstr()[...])
 
     # interpret / store additional normalisation
     kappa = ret["K"] / 3.0
@@ -1138,7 +1143,7 @@ def normalisation(file: h5py.File):
     ret["eps0"] = eps0
     ret["N"] = N
     ret["t0"] = ret["l0"] / ret["cs"]
-    ret["dt"] = file["/run/dt"][...]
+    ret["dt"] = file["run"]["dt"][...]
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
@@ -1182,7 +1187,7 @@ def basic_output(
         dt: Time step of time discretisation.
     """
 
-    incs = file["/stored"][...]
+    incs = file["stored"][...]
     ninc = incs.size
     assert all(incs == np.arange(ninc))
 
@@ -1196,7 +1201,7 @@ def basic_output(
     ret["S"] = np.zeros((ninc), dtype=int)
     ret["A"] = np.zeros((ninc), dtype=int)
     ret["xi"] = np.zeros((ninc), dtype=int)
-    ret["kick"] = file["/kick"][...].astype(bool)
+    ret["kick"] = file["kick"][...].astype(bool)
     ret["inc"] = incs
 
     dV = system.quad().AsTensor(2, system.quad().dV())
@@ -1204,7 +1209,7 @@ def basic_output(
 
     for inc in tqdm.tqdm(incs, disable=not verbose):
 
-        system.setU(file[f"/disp/{inc:d}"][...])
+        system.setU(file["disp"][str(inc)][...])
 
         if idx_n is None:
             idx_n = system.plastic_CurrentIndex().astype(int)[:, 0]
@@ -1221,7 +1226,7 @@ def basic_output(
 
         idx_n = np.copy(idx)
 
-    ret["duration"] = np.diff(file["/t"][...], prepend=0) / ret["t0"]
+    ret["duration"] = np.diff(file["t"][...], prepend=0) / ret["t0"]
     ret["steadystate"] = steadystate(**ret)
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function

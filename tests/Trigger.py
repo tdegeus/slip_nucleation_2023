@@ -54,8 +54,10 @@ class MyTests(unittest.TestCase):
         for i in range(n):
             output.append(my.Trigger.cli_run(commands[i].split(" ")[1:]))
 
+        triggerpack = os.path.join(dirname, "TriggerPack.h5")
         triggerinfo = os.path.join(dirname, "TriggerInfo.h5")
-        my.Trigger.cli_ensembleinfo(["--dev", "-f", "-o", triggerinfo] + output)
+        my.Trigger.cli_ensemblepack(["-f", "-o", triggerpack] + output)
+        my.Trigger.cli_ensembleinfo(["--dev", "-f", "-o", triggerinfo, triggerpack])
 
     def test_deltasigma(self):
 
@@ -90,8 +92,10 @@ class MyTests(unittest.TestCase):
         for i in range(n):
             output.append(my.Trigger.cli_run(commands[i].split(" ")[1:]))
 
+        triggerpack = os.path.join(dirname, "TriggerPack.h5")
         triggerinfo = os.path.join(dirname, "TriggerInfo.h5")
-        my.Trigger.cli_ensembleinfo(["--dev", "-f", "-o", triggerinfo] + output)
+        my.Trigger.cli_ensemblepack(["-f", "-o", triggerpack] + output)
+        my.Trigger.cli_ensembleinfo(["--dev", "-f", "-o", triggerinfo, triggerpack])
 
         # check if restoring works
 

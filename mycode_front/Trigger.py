@@ -22,6 +22,7 @@ import tqdm
 from . import slurm
 from . import storage
 from . import System
+from . import tag
 from . import tools
 from ._version import version
 
@@ -228,6 +229,11 @@ def cli_ensemblepack(cli_args=None):
 
                 if "/disp/1" not in file:
                     continue
+                if "/meta/Trigger_run" not in file:
+                    continue
+                if tag.greater_equal(file["/meta/Trigger_run"].attrs["version"], "7.4"):
+                    if "completed" not in file["/meta/Trigger_run"].attrs:
+                        continue
 
                 g5.copy(
                     file,
@@ -248,6 +254,7 @@ def cli_ensemblepack(cli_args=None):
 def cli_ensembleinfo(cli_args=None):
     """
     Read and store basic info from individual pushes.
+    Can only be read from output of :py:func:`cli_ensemblepack`.
     """
 
     class MyFmt(
@@ -266,11 +273,10 @@ def cli_ensembleinfo(cli_args=None):
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
-    parser.add_argument("files", nargs="*", type=str, help="Files to read")
+    parser.add_argument("ensemblepack", type=str, help="File to read")
 
     args = tools._parse(parser, cli_args)
-    assert len(args.files) > 0
-    assert all([os.path.isfile(file) for file in args.files])
+    assert os.path.isfile(args.ensemblepack)
     tools._check_overwrite_file(args.output, args.force)
 
     ret = dict(
@@ -293,34 +299,33 @@ def cli_ensembleinfo(cli_args=None):
         stress=[],
     )
 
-    simid = [int(tools.read_parameters(i)["id"]) for i in args.files]
-    index = np.argsort(simid)
-    fmt = "{:" + str(max(len(i) for i in args.files)) + "s}"
-    pbar = tqdm.tqdm(index)
-    pbar.set_description(fmt.format(""))
+    with h5py.File(args.ensemblepack, "r") as pack:
 
-    for i, idx in enumerate(pbar):
+        files = [i for i in pack["event"]]
+        simid = [int(tools.read_parameters(i)["id"]) for i in files]
+        index = np.argsort(simid)
+        fmt = "{:" + str(max(len(i) for i in files)) + "s}"
+        pbar = tqdm.tqdm(index)
+        pbar.set_description(fmt.format(""))
 
-        filepath = args.files[idx]
-        pbar.set_description(fmt.format(filepath), refresh=True)
+        for i, idx in enumerate(pbar):
 
-        with h5py.File(filepath, "r") as file:
+            filepath = files[idx]
+            pbar.set_description(fmt.format(filepath), refresh=True)
+            file = pack["event"][filepath]
 
             if i == 0:
                 system = System.init(file)
             elif simid[idx] != simid[index[i - 1]]:
                 system.reset_epsy(System.read_epsy(file))
 
-            if "/disp/1" not in file:
-                continue
-
             out = System.basic_output(system, file, verbose=False)
             assert len(out["S"]) == 2
-            assert file["/trigger/branched"][0]
-            assert not file["/trigger/branched"][1]
+            assert file["trigger"]["branched"][0]
+            assert not file["trigger"]["branched"][1]
 
-            meta = file[f"/meta/{entry_points['cli_run']}"]
-            branch = file["/meta/branch_fixed_stress"]
+            meta = file["meta"][entry_points['cli_run']]
+            branch = file["meta"]["branch_fixed_stress"]
 
             ret["S"].append(out["S"][1])
             ret["A"].append(out["A"][1])
@@ -330,8 +335,8 @@ def cli_ensembleinfo(cli_args=None):
             ret["sigd"].append(out["epsd"][1])
             ret["sigd0"].append(out["epsd"][0])
             ret["duration"].append(out["duration"][1])
-            ret["truncated"].append(file["/trigger/truncated"][1])
-            ret["element"].append(file["/trigger/element"][1])
+            ret["truncated"].append(file["trigger"]["truncated"][1])
+            ret["element"].append(file["trigger"]["element"][1])
             ret["run_version"].append(meta.attrs["version"])
             ret["run_dependencies"].append(";".join(meta.attrs["dependencies"]))
             ret["file"].append(branch.attrs["file"])
