@@ -203,7 +203,9 @@ def init(file: h5py.File) -> model.System:
     return system
 
 
-def clone(source: h5py.File, dest: h5py.File, skip: list[str] = None) -> list[str]:
+def clone(
+    source: h5py.File, dest: h5py.File, skip: list[str] = None, root: str = None
+) -> list[str]:
     """
     Clone a configuration.
     This clone does not include::
@@ -216,6 +218,7 @@ def clone(source: h5py.File, dest: h5py.File, skip: list[str] = None) -> list[st
     :param source: Source file.
     :param dest: Destination file.
     :parma skip: List with additional dataset to skip.
+    :parma root: Root in ``dest``.
     :return: List of copied datasets.
     """
 
@@ -234,7 +237,7 @@ def clone(source: h5py.File, dest: h5py.File, skip: list[str] = None) -> list[st
         for key in skip:
             ret.remove(key)
 
-    g5.copy(source, dest, ret)
+    g5.copy(source, dest, ret, root=root)
 
     return ret
 
