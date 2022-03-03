@@ -324,7 +324,7 @@ def cli_ensembleinfo(cli_args=None):
             assert file["trigger"]["branched"][0]
             assert not file["trigger"]["branched"][1]
 
-            meta = file["meta"][entry_points['cli_run']]
+            meta = file["meta"][entry_points["cli_run"]]
             branch = file["meta"]["branch_fixed_stress"]
 
             ret["S"].append(out["S"][1])
