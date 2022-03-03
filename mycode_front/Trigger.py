@@ -181,8 +181,8 @@ def cli_ensembleinfo(cli_args=None):
         duration=[],
         truncated=[],
         element=[],
-        version=[],
-        dependencies=[],
+        run_version=[],
+        run_dependencies=[],
         file=[],
         inc=[],
         inci=[],
@@ -229,8 +229,8 @@ def cli_ensembleinfo(cli_args=None):
             ret["duration"].append(out["duration"][1])
             ret["truncated"].append(file["/trigger/truncated"][1])
             ret["element"].append(file["/trigger/element"][1])
-            ret["version"].append(meta.attrs["version"])
-            ret["dependencies"].append(";".join(meta.attrs["dependencies"]))
+            ret["run_version"].append(meta.attrs["version"])
+            ret["run_dependencies"].append(";".join(meta.attrs["dependencies"]))
             ret["file"].append(branch.attrs["file"])
             ret["inc"].append(branch.attrs["inc"] if "inc" in branch.attrs else int(-1))
             ret["inci"].append(branch.attrs["inci"] if "inci" in branch.attrs else int(-1))
@@ -239,10 +239,10 @@ def cli_ensembleinfo(cli_args=None):
 
     with h5py.File(args.output, "w") as output:
 
-        for key in ["file", "version"]:
+        for key in ["file", "run_version"]:
             tools.h5py_save_unique(data=ret.pop(key), file=output, path=f"/{key}", asstr=True)
 
-        for key in ["dependencies"]:
+        for key in ["run_dependencies"]:
             tools.h5py_save_unique(data=ret.pop(key), file=output, path=f"/{key}", split=";")
 
         for key in ret:
