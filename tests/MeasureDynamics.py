@@ -107,8 +107,10 @@ class MyTests(unittest.TestCase):
             ["--dev", "-f", infoname, "-d", 0.12, "-p", 1, "-o", d, "--nmax", 10]
         )
         triggername = my.Trigger.cli_run(["--dev"] + commands[-1].split(" ")[1:])
+        triggerpack = os.path.join(dirname, "TriggerEnsemblePack.h5")
         triggerinfo = os.path.join(dirname, "TriggerEnsembleInfo.h5")
-        my.Trigger.cli_ensembleinfo(["--dev", "-f", "-o", triggerinfo, triggername])
+        my.Trigger.cli_ensemblepack(["-f", "-o", triggerpack, triggername])
+        my.Trigger.cli_ensembleinfo(["--dev", "-f", "-o", triggerinfo, triggerpack])
 
         with h5py.File(triggerinfo, "r") as file:
             A = file["A"][0]
