@@ -290,35 +290,43 @@ def restore_from_ensembleinfo(
         storage.dset_extend1d(dest, "/t", 1, ensembleinfo["duration"][index])
 
 
-def _writeinitbranch(dest: h5py.File, element: int):
+def _writeinitbranch(file: h5py.File, element: int, meta: tuple[str, dict] = None):
     """
     Write :py:mod:`Trigger` specific fields.
+
+    :oaram element: Element to trigger.
+    :param meta: Extra metadata to write ``("/path/to/group", {"mykey": myval, ...})``.
     """
 
     storage.create_extendible(
-        dest,
+        file,
         "/trigger/element",
         np.uint64,
         desc="Plastic element to trigger",
     )
 
     storage.create_extendible(
-        dest,
+        file,
         "/trigger/truncated",
         bool,
         desc="Flag if run was truncated before equilibrium",
     )
 
     storage.create_extendible(
-        dest,
+        file,
         "/trigger/branched",
         bool,
         desc="Flag if configuration followed from a branch",
     )
 
-    storage.dset_extend1d(dest, "/trigger/element", 0, element)
-    storage.dset_extend1d(dest, "/trigger/truncated", 0, False)
-    storage.dset_extend1d(dest, "/trigger/branched", 0, True)
+    storage.dset_extend1d(file, "/trigger/element", 0, element)
+    storage.dset_extend1d(file, "/trigger/truncated", 0, False)
+    storage.dset_extend1d(file, "/trigger/branched", 0, True)
+
+    if meta is not None:
+        g = file.create_group(meta[0])
+        for key in meta[1]:
+            g.attrs[key] = meta[1][key]
 
 
 def _write_configurations(
@@ -326,7 +334,12 @@ def _write_configurations(
     info: h5py.File,
     force: bool = False,
     dev: bool = False,
-    **kwargs,
+    source: list[str] = None,
+    dest: list[str] = None,
+    inc: list[int] = None,
+    incc: list[int] = None,
+    stress: list[float] = None,
+    meta: tuple[str, dict] = None
 ):
     """
     Branch at a given increment or fixed stress.
@@ -340,39 +353,40 @@ def _write_configurations(
     :param inc: List with fixed increment at which to push (entries can be ``None``).
     :param incc: List with system spanning events after which to load (entries can be ``None``).
     :param stress: List with stress at which to load (entries can be ``None``).
+    :param meta: Extra metadata to write ``("/path/to/group", {"mykey": myval, ...})``.
     """
 
     if not force:
-        if any([os.path.isfile(i) for i in kwargs["dest"]]):
+        if any([os.path.isfile(i) for i in dest]):
             if not click.confirm("Overwrite output files?"):
                 raise OSError("Cancelled")
 
-    for i in kwargs["dest"]:
+    for i in dest:
         if os.path.isfile(i):
             os.remove(i)
 
-    fmt = "{:" + str(max(len(i) for i in kwargs["source"])) + "s}"
-    index = np.argsort(kwargs["source"])
+    fmt = "{:" + str(max(len(i) for i in source)) + "s}"
+    index = np.argsort(source)
     pbar = tqdm.tqdm(index)
-    tmp = tempfile.mkstemp(suffix=".h5", dir=os.path.dirname(kwargs["dest"][0]))[1]
+    tmp = tempfile.mkstemp(suffix=".h5", dir=os.path.dirname(dest[0]))[1]
 
     for i, idx in enumerate(pbar):
 
-        s = kwargs["source"][idx]
-        d = kwargs["dest"][idx]
+        s = source[idx]
+        d = dest[idx]
         pbar.set_description(fmt.format(s), refresh=True)
 
-        with h5py.File(s, "r") as source:
+        with h5py.File(s, "r") as source_file:
 
             if i == 0:
-                system = System.init(source)
+                system = System.init(source_file)
                 output = {
                     "N": int(info["/normalisation/N"][...]),
                     "sig0": float(info["/normalisation/sig0"][...]),
                 }
                 init_system = True
             else:
-                init_system = kwargs["source"][idx] != kwargs["source"][index[i - 1]]
+                init_system = source[idx] != source[index[i - 1]]
 
             if init_system:
                 p = f"/full/{os.path.split(s)[-1]:s}"
@@ -380,21 +394,21 @@ def _write_configurations(
                 output["sigd"] = info[f"{p:s}/sigd"][...]
                 output["A"] = info[f"{p:s}/A"][...]
                 output["inc"] = info[f"{p:s}/inc"][...]
-                with h5py.File(tmp, "w") as dest:
-                    System.clone(source, dest)
-                    System._init_run_state(dest)
-                    _writeinitbranch(dest, element)
+                with h5py.File(tmp, "w") as dest_file:
+                    System.clone(source_file, dest_file)
+                    System._init_run_state(dest_file)
+                    _writeinitbranch(dest_file, element, meta)
 
             shutil.copy(tmp, d)
 
-            with h5py.File(d, "a") as dest:
+            with h5py.File(d, "a") as dest_file:
 
                 System.branch_fixed_stress(
-                    source=source,
-                    dest=dest,
-                    inc=kwargs["inc"][idx],
-                    incc=kwargs["incc"][idx],
-                    stress=kwargs["stress"][idx],
+                    source=source_file,
+                    dest=dest_file,
+                    inc=inc[idx],
+                    incc=incc[idx],
+                    stress=stress[idx],
                     normalised=True,
                     system=system,
                     init_system=init_system,
@@ -430,7 +444,7 @@ def _copy_configurations(element: int, source: list[str], dest: list[str], force
             dest["/trigger/element"][0] = element
 
 
-def __write(elements, ret, args, executable, cli_args):
+def __write(elements, ret, args, executable, cli_args, meta):
     """
     Internal use only.
     Just to avoid duplicate code.
@@ -441,7 +455,7 @@ def __write(elements, ret, args, executable, cli_args):
             ret[key] = ret[key][: args.nmax]
 
     with h5py.File(args.ensembleinfo, "r") as file:
-        _write_configurations(elements[0], file, args.force, args.develop, **ret)
+        _write_configurations(elements[0], file, args.force, args.develop, meta=meta, **ret)
         outfiles = [i for i in ret["dest"]]
 
     for e in elements[1:]:
@@ -486,6 +500,7 @@ def cli_job_deltasigma(cli_args=None):
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    progname = entry_points[funcname]
 
     parser.add_argument("--conda", type=str, default=slurm.default_condabase, help="Env-basename")
     parser.add_argument("--develop", action="store_true", help="Development mode")
@@ -542,6 +557,12 @@ def cli_job_deltasigma(cli_args=None):
         stress=[],
     )
 
+    meta = {
+        "deltasigma": args.delta_sigma,
+        "truncate": args.truncate_system_spanning,
+        "pushes": args.pushes,
+    }
+
     basecommand = [executable]
     if args.truncate_system_spanning:
         basecommand += ["--truncate-system-spanning"]
@@ -577,7 +598,7 @@ def cli_job_deltasigma(cli_args=None):
             ret["incc"].append(inc[i])
             ret["stress"].append(s)
 
-    return __write(elements, ret, args, executable, cli_args)
+    return __write(elements, ret, args, executable, cli_args, meta=(f"/meta/{progname}", meta))
 
 
 def cli_job_strain(cli_args=None):
@@ -599,6 +620,7 @@ def cli_job_strain(cli_args=None):
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    progname = entry_points[funcname]
 
     parser.add_argument("--conda", type=str, default=slurm.default_condabase, help="Env-basename")
     parser.add_argument("--develop", action="store_true", help="Development mode")
@@ -653,6 +675,12 @@ def cli_job_strain(cli_args=None):
         stress=[],
     )
 
+    meta = {
+        "strain_steps": args.steps,
+        "truncate": args.truncate_system_spanning,
+        "pushes": args.pushes,
+    }
+
     basecommand = [executable]
     if args.truncate_system_spanning:
         basecommand += ["--truncate-system-spanning"]
@@ -687,4 +715,4 @@ def cli_job_strain(cli_args=None):
             ret["incc"].append(inc[i])
             ret["stress"].append(s)
 
-    return __write(elements, ret, args, executable, cli_args)
+    return __write(elements, ret, args, executable, cli_args, meta=(f"/meta/{progname}", meta))
