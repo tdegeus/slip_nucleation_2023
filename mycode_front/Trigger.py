@@ -138,7 +138,7 @@ def cli_run(cli_args=None):
             file["/restart/a"] = system.a()
             file["/restart/t"] = system.t()
 
-        meta["completed"] = 1
+        meta.attrs["completed"] = 1
         pbar.n = 1
         pbar.refresh()
 
