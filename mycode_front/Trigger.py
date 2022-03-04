@@ -206,6 +206,8 @@ def cli_ensemblepack(cli_args=None):
     event_meta = [
         "/meta/branch_fixed_stress",
         f"/meta/{entry_points['cli_run']}",
+        f"/meta/{System.entry_points['cli_run']}",
+        f"/meta/{System.entry_points['cli_generate']}",
         "/trigger/branched",
         "/trigger/element",
         "/trigger/truncated",
@@ -246,6 +248,10 @@ def cli_ensemblepack(cli_args=None):
                     datasets = System.clone(file, output, skip=skip, root="/source", dry_run=True)
                     ensemble_meta = [i for i in ensemble_meta if i in file]
 
+                for path in datasets:
+                    if not g5.equal(file, output, path, root="/source"):
+                        print(path)
+
                 assert g5.allequal(file, output, datasets, root="/source")
                 assert g5.allequal(file, output, ensemble_meta, root="/ensemble")
 
@@ -277,7 +283,8 @@ def cli_ensemblepack(cli_args=None):
                     if "completed" not in file["/meta/Trigger_run"].attrs:
                         continue
 
-                g5.copy(file, output, event_data + event_meta, root=f"/event/{tid}")
+                g5.copy(file, output, event_data, root=f"/event/{tid}")
+                g5.copy(file, output, event_meta, root=f"/event/{tid}", skip=True)
 
                 for path in datasets:
                     output[g5.join(f"/event/{tid}", path)] = h5py.SoftLink(g5.join("/source", path))
