@@ -667,7 +667,6 @@ def cli_job_deltasigma(cli_args=None):
 
     meta = {
         "deltasigma": args.delta_sigma,
-        "truncate": args.truncate_system_spanning,
         "pushes": args.pushes,
     }
 
@@ -785,7 +784,6 @@ def cli_job_strain(cli_args=None):
 
     meta = {
         "strain_steps": args.steps,
-        "truncate": args.truncate_system_spanning,
         "pushes": args.pushes,
     }
 
