@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import argparse
 import inspect
+import itertools
 import os
+import re
 import shutil
 import tempfile
 import textwrap
@@ -186,15 +188,32 @@ def cli_ensemblepack(cli_args=None):
     pbar = tqdm.tqdm(args.files)
     pbar.set_description(fmt.format(""))
 
-    realisation = ["/cusp/epsy/initstate", "/meta/seed_base"]
+    # categorise datasets
+    # - copy/link on "/realisation/{sid}"
+    realisation = [
+        "/cusp/epsy/initstate",
+        "/meta/seed_base",
+    ]
+    # - copy on "/event/{tid}"
     event_meta = [
         "/meta/branch_fixed_stress",
-        "/meta/Trigger_run",
+        f"/meta/{entry_points['cli_run']}",
         "/trigger/branched",
         "/trigger/element",
         "/trigger/truncated",
     ]
-    event_data = ["/disp", "/stored", "/t", "/kick"]
+    # - copy on "/event/{tid}"
+    event_data = [
+        "/disp",
+        "/stored",
+        "/t",
+        "/kick",
+    ]
+    # - copy on "/ensemble"
+    ensemble_meta = [
+        f"/meta/{entry_points['cli_job_strain']}",
+        f"/meta/{entry_points['cli_job_deltasigma']}",
+    ]
 
     with h5py.File(args.output, "w") as output:
 
@@ -204,21 +223,28 @@ def cli_ensemblepack(cli_args=None):
 
             with h5py.File(filepath, "r") as file:
 
+                # copy/check global ensemble data
                 if ifile == 0:
                     datasets = System.clone(
                         file, output, skip=realisation + event_meta, root="/source"
                     )
+                    ensemble_meta = [i for i in ensemble_meta if i in file]
+                    g5.copy(file, output, ensemble_meta, root="/ensemble")
+                else:
+                    g5.allequal(file, output, datasets, root="/source")
+                    g5.allequal(file, output, ensemble_meta, root="/ensemble")
+
+                # test that all data is copied/linked
+                present = g5.getdatapaths(file)
+                present = list(itertools.filterfalse(re.compile("^/disp.*$").match, present))
+                copied = datasets + ensemble_meta + realisation + event_data + event_meta
+                assert np.all(np.in1d(present, copied))
 
                 sid = file["/meta/branch_fixed_stress"].attrs["file"]
                 tid = os.path.basename(filepath)
 
                 if f"/realisation/{sid}" not in output:
-                    g5.copy(
-                        file,
-                        output,
-                        realisation,
-                        [g5.join(f"/realisation/{sid}", i) for i in realisation],
-                    )
+                    g5.copy(file, output, realisation, root=f"/realisation/{sid}")
                 else:
                     g5.compare(
                         file,
@@ -235,12 +261,7 @@ def cli_ensemblepack(cli_args=None):
                     if "completed" not in file["/meta/Trigger_run"].attrs:
                         continue
 
-                g5.copy(
-                    file,
-                    output,
-                    event_data + event_meta,
-                    [g5.join(f"/event/{tid}", i) for i in event_data + event_meta],
-                )
+                g5.copy(file, output, event_data + event_meta, root=f"/event/{tid}")
 
                 for path in datasets:
                     output[g5.join(f"/event/{tid}", path)] = h5py.SoftLink(g5.join("/source", path))
