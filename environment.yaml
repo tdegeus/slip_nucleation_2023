@@ -10,7 +10,7 @@ dependencies:
 - frictionqpotfem
 - gmatelastoplasticqpot
 - goosefem
-- goosehdf5 >=0.16.0
+- goosehdf5 >=0.16.2
 - goosempl
 - gooseslurm
 - h5py
