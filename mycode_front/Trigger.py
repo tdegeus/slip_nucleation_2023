@@ -191,6 +191,12 @@ def cli_ensemblepack(cli_args=None):
     pbar.set_description(fmt.format(""))
 
     # categorise datasets
+    restart = [
+        "/restart/u",
+        "/restart/v",
+        "/restart/a",
+        "/restart/t",
+    ]
     # - copy/link on "/realisation/{sid}"
     realisation = [
         "/cusp/epsy/initstate",
@@ -216,6 +222,7 @@ def cli_ensemblepack(cli_args=None):
         f"/meta/{entry_points['cli_job_strain']}",
         f"/meta/{entry_points['cli_job_deltasigma']}",
     ]
+    skip = realisation + event_meta + restart
 
     if args.append:
         with h5py.File(args.output, "r") as output:
@@ -232,22 +239,20 @@ def cli_ensemblepack(cli_args=None):
 
                 # copy/check global ensemble data
                 if ifile == 0 and not args.append:
-                    datasets = System.clone(
-                        file, output, skip=realisation + event_meta, root="/source"
-                    )
+                    datasets = System.clone(file, output, skip=skip, root="/source")
                     ensemble_meta = [i for i in ensemble_meta if i in file]
                     g5.copy(file, output, ensemble_meta, root="/ensemble")
-                else:
-                    datasets = System.clone(
-                        file, output, skip=realisation + event_meta, root="/source", dry_run=True
-                    )
+                elif ifile == 0 and args.append:
+                    datasets = System.clone(file, output, skip=skip, root="/source", dry_run=True)
                     ensemble_meta = [i for i in ensemble_meta if i in file]
-                    assert g5.allequal(file, output, datasets, root="/source")
-                    assert g5.allequal(file, output, ensemble_meta, root="/ensemble")
+
+                assert g5.allequal(file, output, datasets, root="/source")
+                assert g5.allequal(file, output, ensemble_meta, root="/ensemble")
 
                 # test that all data is copied/linked
                 present = g5.getdatapaths(file)
                 present = list(itertools.filterfalse(re.compile("^/disp.*$").match, present))
+                present = list(itertools.filterfalse(re.compile("^/restart.*$").match, present))
                 copied = datasets + ensemble_meta + realisation + event_data + event_meta
                 assert np.all(np.in1d(present, copied))
 
