@@ -244,7 +244,8 @@ def clone(
 
     if skip:
         for key in skip:
-            ret.remove(key)
+            if key in ret:
+                ret.remove(key)
 
     if not dry_run:
         g5.copy(source, dest, ret, root=root)
