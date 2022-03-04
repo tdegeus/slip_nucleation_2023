@@ -14,16 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        code:
-        - Flow.py
-        - MeasureDynamics.py
-        - PinAndTrigger.py
-        - slurm.py
-        - storage.py
-        - System.py
-        - tag.py
-        - tools.py
-        - Trigger.py
+        runs-on: [ubuntu-latest]
 
     defaults:
       run:
@@ -42,6 +33,7 @@ jobs:
       with:
         environment-file: environment.yaml
         environment-name: myenv
+        cache-env: true
 
     - name: Install plot style
       run: python -c "import GooseMPL; GooseMPL.copy_style()"
@@ -54,4 +46,13 @@ jobs:
 
     - name: Run tests
       working-directory: tests
-      run: python ${{ matrix.code }}
+      run: |
+        python MeasureDynamics.py
+        python PinAndTrigger.py
+        python slurm.py
+        python storage.py
+        python System.py
+        python tag.py
+        python tools.py
+        python Trigger.py
+        python Flow.py
