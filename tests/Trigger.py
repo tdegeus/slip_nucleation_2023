@@ -45,26 +45,28 @@ class MyTests(unittest.TestCase):
 
     def test_strain(self):
 
-        n = 6
-        commands = my.Trigger.cli_job_strain(
-            ["--dev", "-f", infoname, "-n", 4, "-p", 2, "-o", dirname, "--nmax", n, "-r"]
-        )
+        n = 3
+        opts = ["--dev", "-f", infoname, "-n", 4, "-p", 2, "-o", dirname, "--nmax", n, "-r"]
+        commands = my.Trigger.cli_job_strain(opts)
 
         output = []
-        for i in range(n):
-            output.append(my.Trigger.cli_run(commands[i].split(" ")[1:]))
+        for command in commands:
+            output.append(my.Trigger.cli_run(command.split(" ")[1:]))
 
         triggerpack = os.path.join(dirname, "TriggerPack.h5")
         triggerinfo = os.path.join(dirname, "TriggerInfo.h5")
-        my.Trigger.cli_ensemblepack(["-f", "-o", triggerpack] + output)
+        my.Trigger.cli_ensemblepack(["-f", "-o", triggerpack] + output[:2])
+        my.Trigger.cli_ensemblepack(["-a", "-o", triggerpack] + output[2:])
         my.Trigger.cli_ensembleinfo(["--dev", "-f", "-o", triggerinfo, triggerpack])
+
+        extra = my.Trigger.cli_job_strain(opts + ["--filter", triggerpack])
+        self.assertFalse(np.any(np.in1d(extra, commands)))
 
     def test_deltasigma(self):
 
         n = 5
-        commands = my.Trigger.cli_job_deltasigma(
-            ["--dev", "-f", infoname, "-d", 0.12, "-p", 2, "-o", dirname, "--nmax", n]
-        )
+        opts = ["--dev", "-f", infoname, "-d", 0.12, "-p", 2, "-o", dirname, "--nmax", n]
+        commands = my.Trigger.cli_job_deltasigma(opts)
 
         # check that copying worked
 
@@ -89,13 +91,18 @@ class MyTests(unittest.TestCase):
         # run ensemble
 
         output = []
-        for i in range(n):
-            output.append(my.Trigger.cli_run(commands[i].split(" ")[1:]))
+        for command in commands:
+            output.append(my.Trigger.cli_run(command.split(" ")[1:]))
 
         triggerpack = os.path.join(dirname, "TriggerPack.h5")
         triggerinfo = os.path.join(dirname, "TriggerInfo.h5")
         my.Trigger.cli_ensemblepack(["-f", "-o", triggerpack] + output)
         my.Trigger.cli_ensembleinfo(["--dev", "-f", "-o", triggerinfo, triggerpack])
+
+        # check partial re-rendering
+
+        extra = my.Trigger.cli_job_deltasigma(opts + ["--filter", triggerpack])
+        self.assertFalse(np.any(np.in1d(extra, commands)))
 
         # check if restoring works
 

@@ -177,12 +177,14 @@ def cli_ensemblepack(cli_args=None):
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
+    parser.add_argument("-a", "--append", action="store_true", help="Append output file")
     parser.add_argument("files", nargs="*", type=str, help="Files to read")
 
     args = tools._parse(parser, cli_args)
     assert len(args.files) > 0
     assert all([os.path.isfile(file) for file in args.files])
-    tools._check_overwrite_file(args.output, args.force)
+    if not args.append:
+        tools._check_overwrite_file(args.output, args.force)
 
     fmt = "{:" + str(max(len(i) for i in args.files)) + "s}"
     pbar = tqdm.tqdm(args.files)
@@ -215,7 +217,12 @@ def cli_ensemblepack(cli_args=None):
         f"/meta/{entry_points['cli_job_deltasigma']}",
     ]
 
-    with h5py.File(args.output, "w") as output:
+    if args.append:
+        with h5py.File(args.output, "r") as output:
+            for filepath in args.files:
+                assert filepath not in output["event"]
+
+    with h5py.File(args.output, "a" if args.append else "w") as output:
 
         for ifile, filepath in enumerate(pbar):
 
@@ -224,15 +231,19 @@ def cli_ensemblepack(cli_args=None):
             with h5py.File(filepath, "r") as file:
 
                 # copy/check global ensemble data
-                if ifile == 0:
+                if ifile == 0 and not args.append:
                     datasets = System.clone(
                         file, output, skip=realisation + event_meta, root="/source"
                     )
                     ensemble_meta = [i for i in ensemble_meta if i in file]
                     g5.copy(file, output, ensemble_meta, root="/ensemble")
                 else:
-                    g5.allequal(file, output, datasets, root="/source")
-                    g5.allequal(file, output, ensemble_meta, root="/ensemble")
+                    datasets = System.clone(
+                        file, output, skip=realisation + event_meta, root="/source", dry_run=True
+                    )
+                    ensemble_meta = [i for i in ensemble_meta if i in file]
+                    assert g5.allequal(file, output, datasets, root="/source")
+                    assert g5.allequal(file, output, ensemble_meta, root="/ensemble")
 
                 # test that all data is copied/linked
                 present = g5.getdatapaths(file)
@@ -320,7 +331,7 @@ def cli_ensembleinfo(cli_args=None):
         stress=[],
     )
 
-    with h5py.File(args.ensemblepack, "r") as pack:
+    with h5py.File(args.ensemblepack, "r") as pack, h5py.File(args.output, "w") as output:
 
         files = [i for i in pack["event"]]
         simid = [int(tools.read_parameters(i)["id"]) for i in files]
@@ -366,7 +377,8 @@ def cli_ensembleinfo(cli_args=None):
             ret["incc"].append(branch.attrs["incc"] if "incc" in branch.attrs else int(-1))
             ret["stress"].append(branch.attrs["stress"] if "stress" in branch.attrs else int(-1))
 
-    with h5py.File(args.output, "w") as output:
+        if "ensemble" in pack:
+            g5.copy(pack, output, ["/ensemble"])
 
         for key in ["file", "run_version"]:
             tools.h5py_save_unique(data=ret.pop(key), file=output, path=f"/{key}", asstr=True)
@@ -611,6 +623,34 @@ def __write(elements, ret, args, executable, cli_args, meta):
         return [" ".join(cmd + [i]) for i in outfiles]
 
 
+def __filter(ret, sourcepath, meta):
+    """
+    Filter already run simulations.
+    """
+
+    assert os.path.isfile(sourcepath)
+
+    with h5py.File(sourcepath, "r") as file:
+        # cli_ensembleinfo
+        if "sigd0" in file:
+            raise OSError("Not yet implemented (not very hard though)")
+        # cli_ensemblepack
+        else:
+            if g5.join("/ensemble", meta[0]) in file:
+                m = file[g5.join("/ensemble", meta[0])]
+                for key in meta[1]:
+                    assert m.attrs[key] == meta[1][key]
+
+            groups = g5.getgroups(file, root="/event", max_depth=1)
+            groups = list(itertools.filterfalse(re.compile(".*/...$").match, groups))
+            groups = [i.split("/")[-1] for i in groups]
+            keep = ~np.in1d([os.path.basename(i) for i in ret["dest"]], groups)
+            for key in ret:
+                ret[key] = list(itertools.compress(ret[key], keep))
+
+    return ret
+
+
 def cli_job_deltasigma(cli_args=None):
     """
     Create jobs to trigger at fixed stress increase ``delta_sigma``
@@ -633,6 +673,7 @@ def cli_job_deltasigma(cli_args=None):
 
     parser.add_argument("--conda", type=str, default=slurm.default_condabase, help="Env-basename")
     parser.add_argument("--develop", action="store_true", help="Development mode")
+    parser.add_argument("--filter", type=str, help="Filter completed jobs")
     parser.add_argument("--nmax", type=int, help="Keep first nmax jobs (mostly for testing)")
     parser.add_argument("--truncate-system-spanning", action="store_true", help="Stop large events")
     parser.add_argument("-d", "--delta-sigma", type=float, required=True, help="delta_sigma")
@@ -726,6 +767,9 @@ def cli_job_deltasigma(cli_args=None):
             ret["incc"].append(inc[i])
             ret["stress"].append(s)
 
+    if args.filter:
+        ret = __filter(ret, args.filter, meta=(f"/meta/{progname}", meta))
+
     return __write(elements, ret, args, executable, cli_args, meta=(f"/meta/{progname}", meta))
 
 
@@ -752,6 +796,7 @@ def cli_job_strain(cli_args=None):
 
     parser.add_argument("--conda", type=str, default=slurm.default_condabase, help="Env-basename")
     parser.add_argument("--develop", action="store_true", help="Development mode")
+    parser.add_argument("--filter", type=str, help="Filter completed jobs")
     parser.add_argument("--nmax", type=int, help="Keep first nmax jobs (mostly for testing)")
     parser.add_argument("--truncate-system-spanning", action="store_true", help="Stop large events")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
@@ -841,5 +886,8 @@ def cli_job_strain(cli_args=None):
             ret["inc"].append(j)
             ret["incc"].append(inc[i])
             ret["stress"].append(s)
+
+    if args.filter:
+        ret = __filter(ret, args.filter, meta=(f"/meta/{progname}", meta))
 
     return __write(elements, ret, args, executable, cli_args, meta=(f"/meta/{progname}", meta))
