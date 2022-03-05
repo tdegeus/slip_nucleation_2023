@@ -299,6 +299,10 @@ def cli_ensembleinfo(cli_args=None):
     """
     Read and store basic info from individual pushes.
     Can only be read from output of :py:func:`cli_ensemblepack`.
+
+    .. warning::
+
+        This function currently just extracts the first push.
     """
 
     class MyFmt(
@@ -364,7 +368,7 @@ def cli_ensembleinfo(cli_args=None):
                 system.reset_epsy(System.read_epsy(file))
 
             out = System.basic_output(system, file, verbose=False)
-            assert len(out["S"]) == 2
+            assert len(out["S"]) >= 2
             assert file["trigger"]["branched"][0]
             assert not file["trigger"]["branched"][1]
 
@@ -607,14 +611,35 @@ def __write(elements, ret, args, executable, cli_args, meta):
         for key in ret:
             ret[key] = ret[key][: args.nmax]
 
-    with h5py.File(args.ensembleinfo, "r") as file:
-        _write_configurations(elements[0], file, args.force, args.develop, meta=meta, **ret)
-        outfiles = [i for i in ret["dest"]]
+    # when previously present data have to be filtered the trick of generating for one element
+    # and then copying cannot be used
+    # instead generate per element after filtering
+    # (this could be made more clever, but it would take some more coding)
+    if args.filter:
 
-    for e in elements[1:]:
-        d = [i.replace(f"_element={elements[0]}_", f"_element={e:d}_") for i in ret["dest"]]
-        _copy_configurations(e, ret["dest"], d, args.force)
-        outfiles += d
+        data = ret.copy()
+        e0 = elements[0]
+        outfiles = []
+
+        with h5py.File(args.ensembleinfo, "r") as file:
+            for e in elements:
+                r = data.copy()
+                r["dest"] = [i.replace(f"_element={e0}_", f"_element={e:d}_") for i in r["dest"]]
+                r = __filter(r, args.filter, meta)
+                _write_configurations(e, file, args.force, args.develop, meta=meta, **r)
+                outfiles += [i for i in ret["dest"]]
+
+    # if no filter is applied: generate for one element and copy + modify for all the other elements
+    else:
+
+        with h5py.File(args.ensembleinfo, "r") as file:
+            _write_configurations(elements[0], file, args.force, args.develop, meta=meta, **ret)
+            outfiles = [i for i in ret["dest"]]
+
+        for e in elements[1:]:
+            d = [i.replace(f"_element={elements[0]}_", f"_element={e:d}_") for i in ret["dest"]]
+            _copy_configurations(e, ret["dest"], d, args.force)
+            outfiles += d
 
     cmd = [executable]
     if args.truncate_system_spanning:
@@ -635,14 +660,14 @@ def __write(elements, ret, args, executable, cli_args, meta):
         return [" ".join(cmd + [i]) for i in outfiles]
 
 
-def __filter(ret, sourcepath, meta):
+def __filter(ret, filepath, meta):
     """
     Filter already run simulations.
     """
 
-    assert os.path.isfile(sourcepath)
+    assert os.path.isfile(filepath)
 
-    with h5py.File(sourcepath, "r") as file:
+    with h5py.File(filepath, "r") as file:
         # cli_ensembleinfo
         if "sigd0" in file:
             raise OSError("Not yet implemented (not very hard though)")
@@ -653,10 +678,9 @@ def __filter(ret, sourcepath, meta):
                 for key in meta[1]:
                     assert m.attrs[key] == meta[1][key]
 
-            groups = g5.getgroups(file, root="/event", max_depth=1)
-            groups = list(itertools.filterfalse(re.compile(".*/...$").match, groups))
-            groups = [i.split("/")[-1] for i in groups]
-            keep = ~np.in1d([os.path.basename(i) for i in ret["dest"]], groups)
+            present = sorted(i for i in file["event"])
+            ensemble = [os.path.basename(i) for i in ret["dest"]]
+            keep = ~np.in1d(ensemble, present)
             for key in ret:
                 ret[key] = list(itertools.compress(ret[key], keep))
 
@@ -779,9 +803,6 @@ def cli_job_deltasigma(cli_args=None):
             ret["incc"].append(inc[i])
             ret["stress"].append(s)
 
-    if args.filter:
-        ret = __filter(ret, args.filter, meta=(f"/meta/{progname}", meta))
-
     return __write(elements, ret, args, executable, cli_args, meta=(f"/meta/{progname}", meta))
 
 
@@ -898,8 +919,5 @@ def cli_job_strain(cli_args=None):
             ret["inc"].append(j)
             ret["incc"].append(inc[i])
             ret["stress"].append(s)
-
-    if args.filter:
-        ret = __filter(ret, args.filter, meta=(f"/meta/{progname}", meta))
 
     return __write(elements, ret, args, executable, cli_args, meta=(f"/meta/{progname}", meta))
