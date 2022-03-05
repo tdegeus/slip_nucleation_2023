@@ -285,13 +285,13 @@ def basic_output(system: model.System, file: h5py.File, norm: dict, verbose: boo
     n = file["/stored"].size
     ret = {}
     ret["Epsbar"] = np.empty((n, 2, 2), dtype=float)
-    ret["Eigbar"] = np.empty((n, 2, 2), dtype=float)
+    ret["Sigbar"] = np.empty((n, 2, 2), dtype=float)
     ret["Eps"] = np.empty((n, 2, 2), dtype=float)
-    ret["Eig"] = np.empty((n, 2, 2), dtype=float)
+    ret["Sig"] = np.empty((n, 2, 2), dtype=float)
     ret["epsp"] = np.empty(n, dtype=float)
-    ret["Eps_moving"] = np.empty((n, 2, 2), dtype=float)
-    ret["Eig_moving"] = np.empty((n, 2, 2), dtype=float)
-    ret["epsp_moving"] = np.empty(n, dtype=float)
+    ret["Eps_moving"] = np.zeros((n, 2, 2), dtype=float)
+    ret["Sig_moving"] = np.zeros((n, 2, 2), dtype=float)
+    ret["epsp_moving"] = np.zeros(n, dtype=float)
     ret["S"] = np.empty(n, dtype=int)
     ret["A"] = np.empty(n, dtype=int)
 
@@ -315,9 +315,10 @@ def basic_output(system: model.System, file: h5py.File, norm: dict, verbose: boo
         ret["Eps"][i, ...] = np.average(Eps, weights=dV, axis=(0, 1))
         ret["Sig"][i, ...] = np.average(Sig, weights=dV, axis=(0, 1))
         ret["epsp"][i] = np.average(Epsp, weights=dVs, axis=(0, 1))
-        ret["Eps_moving"][i, ...] = np.average(Eps[c], weights=dV[c], axis=(0, 1))
-        ret["Sig_moving"][i, ...] = np.average(Sig[c], weights=dV[c], axis=(0, 1))
-        ret["epsp_moving"][i] = np.average(Epsp[c], weights=dVs[c], axis=(0, 1))
+        if np.sum(c) > 0:
+            ret["Eps_moving"][i, ...] = np.average(Eps[c], weights=dV[c], axis=(0, 1))
+            ret["Sig_moving"][i, ...] = np.average(Sig[c], weights=dV[c], axis=(0, 1))
+            ret["epsp_moving"][i] = np.average(Epsp[c], weights=dVs[c], axis=(0, 1))
         ret["S"][i] = np.sum(idx - idx_n)
         ret["A"][i] = np.sum(idx != idx_n)
 
@@ -393,7 +394,7 @@ def cli_ensembleinfo(cli_args=None):
                     partial = tools.PartialDisplacement(
                         conn=system.conn(),
                         dofs=system.dofs(),
-                        dofs_list=file["/doflist"][...],
+                        dof_list=file["/doflist"][...],
                     )
                     weaklayer = np.all(np.in1d(system.plastic(), partial.element_list()))
                     assert weaklayer

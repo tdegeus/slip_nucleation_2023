@@ -98,7 +98,11 @@ class MyTests(unittest.TestCase):
         inc = np.argwhere(A == N).ravel()[-1]
 
         outname = os.path.join(dirname, f"id=0_reruninc={inc:d}.h5")
+        info = os.path.join(dirname, "MeasureDynamicsEnsembleInfo.h5")
         my.MeasureDynamics.cli_run(["--dev", "-f", "--inc", inc, "-o", outname, filename])
+        my.MeasureDynamics.cli_ensembleinfo(
+            ["--dev", "-f", "--source", os.path.abspath(dirname), "-o", info, outname]
+        )
 
     def test_trigger_run(self):
 
