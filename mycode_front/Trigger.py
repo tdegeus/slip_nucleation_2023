@@ -513,6 +513,9 @@ def _write_configurations(
     :param meta: Extra metadata to write ``("/path/to/group", {"mykey": myval, ...})``.
     """
 
+    if len(dest) == 0:
+        return
+
     if not force:
         if any([os.path.isfile(i) for i in dest]):
             if not click.confirm("Overwrite output files?"):
@@ -627,7 +630,7 @@ def __write(elements, ret, args, executable, cli_args, meta):
                 r["dest"] = [i.replace(f"_element={e0}_", f"_element={e:d}_") for i in r["dest"]]
                 r = __filter(r, args.filter, meta)
                 _write_configurations(e, file, args.force, args.develop, meta=meta, **r)
-                outfiles += [i for i in ret["dest"]]
+                outfiles += [i for i in r["dest"]]
 
     # if no filter is applied: generate for one element and copy + modify for all the other elements
     else:
