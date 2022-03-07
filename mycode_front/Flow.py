@@ -6,14 +6,9 @@ import os
 import re
 import sys
 import textwrap
-import warnings
-from collections import defaultdict
 
-import click
-import enstat
 import FrictionQPotFEM  # noqa: F401
 import GMatElastoPlasticQPot  # noqa: F401
-import GMatElastoPlasticQPot.Cartesian2d as GMat
 import GooseFEM  # noqa: F401
 import GooseHDF5 as g5
 import h5py
@@ -25,7 +20,7 @@ from numpy.typing import ArrayLike
 from . import slurm
 from . import storage
 from . import System
-from . import tag
+from . import tools
 from ._version import version
 
 plt.style.use(["goose", "goose-latex"])
@@ -173,7 +168,7 @@ def generate(*args, **kwargs):
 
 class DefaultEnsemble:
 
-    gammadot = np.array([1e-11, 5e-11, 8e-11] + np.linspace(1e-10, 2e-9, 20).tolist())
+    gammadot = np.array([5e-11, 8e-11] + np.linspace(1e-10, 2e-9, 20).tolist())
     eps0 = 1.0e-3 / 2.0 / 10.0
     output = 500 * np.ones(gammadot.shape, dtype=int)
     restart = 10000 * np.ones(gammadot.shape, dtype=int)
@@ -206,11 +201,7 @@ def cli_generate(cli_args=None):
     parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
     parser.add_argument("outdir", type=str, help="Output directory")
 
-    if cli_args is None:
-        args = parser.parse_args(sys.argv[1:])
-    else:
-        args = parser.parse_args([str(arg) for arg in cli_args])
-
+    args = tools._parse(parser, cli_args)
     assert os.path.isdir(args.outdir)
 
     Ensemble = DefaultEnsemble
@@ -420,156 +411,72 @@ def cli_run(cli_args=None):
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("file", type=str, help="Simulation file")
 
-    if cli_args is None:
-        args = parser.parse_args(sys.argv[1:])
-    else:
-        args = parser.parse_args([str(arg) for arg in cli_args])
-
+    args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)
     run(args.file, dev=args.develop, progress=not args.quiet)
 
 
-def basic_output(file: h5py.File) -> dict:
+def basic_output(file: h5py.File, interval=400) -> dict:
     """
-    Extract basic output.
+    Extract basic output averaged on a time interval.
+    Strain rate are obtained simply by taking the ratio of the differences in strain rate
+    and time interval of to subsequent stored states (interval controlled in ``/output/interval``).
 
     :param file: HDF5-archive.
-    :return: Basic output.
-    """
 
-    ret = defaultdict(lambda: defaultdict(dict))
+    :param interval:
+        Number of stored increment to average.
+        Note that the time window that will be averaged will depend on the interval at which
+        ``/output/interval``.
+
+    :return: Basic output as follows::
+        sig: Mean stress at the interface [n].
+        eps: Mean strain at the interface [n].
+        fext: External force [n].
+        epsdot: Strain rate [n].
+        epspdot: Plastic strain rate [n].
+        epsdot_remote: Strain rate imposed at the boundary [n].
+        fext_std: Standard deviation corresponding to time averaging ``fext`` [n].
+    """
 
     gammadot = file["/gammadot"][...]
-    dt = file["/run/dt"][...]
-    sig0 = file["/meta/normalisation/sig"][...] if "/meta/normalisation/sig" in file else 1.0
-    eps0 = file["/meta/normalisation/eps"][...] if "/meta/normalisation/eps" in file else 1.0
-    iout = file["/output/inc"][...]
-    isnap = file["/snapshot/inc"][...]
-    ret["meta"]["inc2eps"] = gammadot * dt / eps0
+    norm = System.normalisation(file)
 
-    ret["gammadot"] = gammadot
-    ret["dt"] = dt
+    dt = norm["dt"]
+    t0 = norm["t0"]
+    eps0 = norm["eps0"]
+    inc = file["/output/inc"][...]
 
-    if "/meta/normalisation" in file:
-        ret["normalisation"]["eps0"] = eps0
-        ret["normalisation"]["sig0"] = sig0
-        mu = file["/meta/normalisation/G"][...] / 2.0
-        rho = file["/meta/normalisation/rho"][...]
-        cs = np.sqrt(mu / rho)
-        l0 = file["/meta/normalisation/l"][...]
-        t0 = float(l0 / cs)
-        ret["normalisation"]["cs"] = cs
-        ret["normalisation"]["l0"] = l0
-        ret["normalisation"]["t0"] = t0
-        ret["normalisation"]["N"] = file["/meta/normalisation/N"][...]
-    else:
-        t0 = 1.0
+    data = {}
+    sig = file["/output/sig"][...]
+    eps = file["/output/eps"][...]
+    data["fext"] = file["/output/fext"][...]
+    data["epsp"] = file["/output/epsp"][...]
+    data["sig"] = tools.sigd(xx=sig[0, :], xy=sig[1, :], yy=sig[2, :]).ravel()
+    data["eps"] = tools.epsd(xx=eps[0, :], xy=eps[1, :], yy=eps[2, :]).ravel()
+    data["t"] = inc * dt / t0
+    data["epsdot"] = np.diff(data["eps"], prepend=0) / np.diff(data["t"], prepend=1)
+    data["epspdot"] = np.diff(data["epsp"], prepend=0) / np.diff(data["t"], prepend=1)
+    data["eps_remote"] = gammadot * dt * inc / eps0
+    data["epsdot_remote"] = np.diff(data["eps_remote"], prepend=0) / np.diff(data["t"], prepend=1)
 
-    n = file["/output/weak/sig"].shape[1]
-    xx = file["/output/weak/sig"].attrs["xx"]
-    xy = file["/output/weak/sig"].attrs["xy"]
-    yy = file["/output/weak/sig"].attrs["yy"]
+    dinc = np.diff(inc)
+    assert np.all(dinc == dinc[0])
+    dinc = dinc[0]
 
-    Sig = np.empty((n, 2, 2), dtype=float)
-    Sig[:, 0, 0] = file["/output/weak/sig"][xx, :]
-    Sig[:, 0, 1] = file["/output/weak/sig"][xy, :]
-    Sig[:, 1, 0] = Sig[:, 0, 1]
-    Sig[:, 1, 1] = file["/output/weak/sig"][yy, :]
-    sig = GMat.Sigd(Sig) / sig0
-    ret["weak"]["sig"] = sig
-    ret["weak"]["epsp"] = file["/output/epsp"][...] / eps0
-    ret["weak"]["inc"] = iout
-    ret["weak"]["t"] = iout * dt / t0
-    ret["weak"]["eps"] = gammadot * dt * iout / eps0
-    ret["snapshot"]["inc"] = isnap
-    ret["snapshot"]["eps"] = gammadot * dt * isnap / eps0
+    store = ["eps", "sig", "fext", "epsdot", "epspdot", "epsdot_remote"]
 
-    dout = np.diff(iout)
-    dsnap = np.diff(isnap)
+    n = int((inc.size - inc.size % interval) / interval)
+    ret = {}
+    for key in store:
+        ret[key] = np.zeros(n, dtype=float)
+        ret[f"{key}_std"] = np.zeros(n, dtype=float)
 
-    assert np.all(dout == dout[0])
-    assert np.all(dsnap == dsnap[0])
-
-    dout = dout[0]
-    dsnap = dsnap[0]
-
-    assert dsnap % dout == 0
-
-    d = int(dsnap / dout)
-    m = np.zeros(int(iout.size / d))
-    s = np.zeros(int(iout.size / d))
-
-    for i in range(0, iout.size, d):
-        u = i + d
-        m[int(i / d - 1)] = np.mean(sig[i:u])
-        s[int(i / d - 1)] = np.std(sig[i:u])
-
-    mtarget = np.mean(m[-3:])
-    starget = np.mean(s[-3:])
-    ss = np.argmax(np.isclose(m, mtarget, 1e-2, 1e-3 * starget)) + 2
-    assert ss < ret["snapshot"]["inc"].size
-
-    ret["snapshot"]["steadystate"] = ss
-    ret["weak"]["steadystate"] = int(ss * d)
-
-    return ret
-
-
-def steadystate_output(files: list[str], normalisation: bool = True) -> dict:
-    """
-    Extract relevant averages from the steady-state of the output read by :py:func:`basic_output`.
-
-    .. todo::
-
-        For now this simply takes an average on the last 400 steps, this could be made more cleaver.
-
-    :param files: List of files.
-    :param normalisation: Read/check normalisation.
-
-    :return:
-
-        .. code-block:: none
-
-            sigma_weak:
-                gammadot=XXX": [...],
-                gammadot=XXX": [...]
-
-            deps: ...
-
-            dt: ...
-
-            epspot: ...
-
-            normalisation:
-                t0: ...
-    """
-
-    ret = defaultdict(lambda: defaultdict(list))
-
-    for filepath in tqdm.tqdm(files):
-
-        info = interpret_filename(os.path.basename(filepath))
-        name = info["gammadot"]
-
-        with h5py.File(filepath, "r") as file:
-            data = basic_output(file)
-
-        if normalisation:
-            if "normalisation" not in ret:
-                for key in data["normalisation"]:
-                    ret["normalisation"][key] = data["normalisation"][key]
-            for key in data["normalisation"]:
-                assert np.isclose(ret["normalisation"][key], data["normalisation"][key])
-
-        ret["sigma_weak"][name].append(np.mean(data["weak"]["sig"][-400:]))
-        ret["depsp"][name].append(data["weak"]["epsp"][-1] - data["weak"]["epsp"][-400])
-        ret["dt"][name].append(data["weak"]["t"][-1] - data["weak"]["t"][-400])
-
-    for key in ret["depsp"]:
-        ret["sigma_weak"][key] = np.array(ret["sigma_weak"][key])
-        ret["depsp"][key] = np.array(ret["depsp"][key])
-        ret["dt"][key] = np.array(ret["dt"][key])
-        ret["epspdot"][key] = ret["depsp"][key] / ret["dt"][key]
+    for i in range(0, inc.size, interval):
+        u = i + interval
+        for key in store:
+            ret[key][int(i / interval - 1)] = np.mean(data[key][i:u])
+            ret[f"{key}_std"][int(i / interval - 1)] = np.std(data[key][i:u])
 
     return ret
 
@@ -597,117 +504,17 @@ def cli_ensembleinfo(cli_args=None):
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("files", nargs="*", type=str, help="Simulation output")
 
-    if cli_args is None:
-        args = parser.parse_args(sys.argv[1:])
-    else:
-        args = parser.parse_args([str(arg) for arg in cli_args])
-
+    args = tools._parse(parser, cli_args)
     assert len(args.files) > 0
-    assert np.all([os.path.exists(f) for f in args.files])
+    assert np.all([os.path.isfile(i) for i in args.files])
+    tools._check_overwrite_file(args.output, args.force)
 
-    if not args.force:
-        if os.path.isfile(args.output):
-            if not click.confirm(f'Overwrite "{args.output}"?'):
-                raise OSError("Cancelled")
-
-    data = steadystate_output(args.files)
-    avr = defaultdict(list)
-    std = defaultdict(list)
-    gammadot = []
-
-    for key in sorted(data["depsp"], key=lambda key: float(key)):
-        gammadot.append(key)
-        for field in [k for k in data.keys() if k not in ["normalisation"]]:
-            avr[field].append(np.mean(data[field][key]))
-            std[field].append(np.std(data[field][key]))
-
-    with h5py.File(args.output, "w") as file:
-        file["/gammadot"] = [float(i) for i in gammadot]
-        file["/gammadot"].attrs["keys"] = gammadot
-        for field in avr:
-            file[g5.join(field, "mean", root=True)] = avr[field]
-            file[g5.join(field, "std", root=True)] = std[field]
-        if "normalisation" in data:
-            for key in data["normalisation"]:
-                file[f"/normalisation/{key}"] = data["normalisation"][key]
-
-
-def cli_ensembleinfo_velocityjump(cli_args=None):
-    """
-    Collect ensemble info for velocity jumpy experiments.
-    """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
-    funcname = inspect.getframeinfo(inspect.currentframe()).function
-    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
-    output = file_defaults[funcname]
-
-    parser.add_argument("--develop", action="store_true", help="Development mode")
-    parser.add_argument("-f", "--force", action="store_true", help="Force overwrite")
-    parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
-    parser.add_argument("-v", "--version", action="version", version=version)
-    parser.add_argument("files", nargs="*", type=str, help="Simulations to read")
-
-    if cli_args is None:
-        args = parser.parse_args(sys.argv[1:])
-    else:
-        args = parser.parse_args([str(arg) for arg in cli_args])
-
-    assert len(args.files) > 0
-    assert np.all([os.path.exists(f) for f in args.files])
-
-    if not args.force:
-        if os.path.isfile(args.output):
-            if not click.confirm(f'Overwrite "{args.output}"?'):
-                raise OSError("Cancelled")
-
-    start = []
-    stop = []
-
-    for file in args.files:
-        info = interpret_filename(file, convert=False)
-        start.append(info["gammadot"])
-        stop.append(info["jump"])
-
-    start = np.array(start)
-    stop = np.array(stop)
-    files = np.array(args.files)
-    Start = np.unique(start)
-    Stop = np.unique(stop)
-
-    with h5py.File(args.output, "w") as dest:
-
-        for jump in tqdm.tqdm(Stop):
-            for gammadot in Start:
-
-                select = np.logical_and(start == gammadot, stop == jump)
-                sigma = enstat.dynamic1d()
-                tau = enstat.dynamic1d()
-                for filepath in files[select]:
-                    with h5py.File(filepath, "r") as file:
-                        data = basic_output(file)
-                        sigma.add_sample(data["weak"]["sig"])
-                        tau.add_sample(data["weak"]["t"])
-
-                n = sigma.norm()
-
-                if n is None:
-                    continue
-
-                base = f"/jump={jump}/gammadot={gammadot}"
-
-                dest[f"{base}/sigma_weak/mean"] = sigma.mean()[n == n[0]]
-                dest[f"{base}/sigma_weak/std"] = sigma.std()[n == n[0]]
-
-                dest[f"{base}/t/mean"] = tau.mean()[n == n[0]]
-                dest[f"{base}/t/std"] = tau.std()[n == n[0]]
+    with h5py.File(args.output, "w") as output:
+        for filename in tqdm.tqdm(args.files):
+            with h5py.File(filename) as file:
+                out = basic_output(file)
+                for key in out:
+                    output[g5.join(f"/full/{filename}/{key}")] = out[key]
 
 
 def cli_branch_velocityjump(cli_args=None):
@@ -715,6 +522,7 @@ def cli_branch_velocityjump(cli_args=None):
     Branch simulation to a velocity jump experiment:
     Copies a snapshot as restart.
     To run simply use :py:func:`cli_run`.
+    Note that if no new flow rate(s) is specified the default ensemble is again generated.
     """
 
     class MyFmt(
@@ -729,103 +537,96 @@ def cli_branch_velocityjump(cli_args=None):
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
     progname = entry_points[funcname]
 
+    parser.add_argument("--conda", type=str, default=slurm.default_condabase, help="Env-basename")
     parser.add_argument("--develop", action="store_true", help="Development mode")
+    parser.add_argument("-i", "--inc", type=int, required=True, help="Increment to branch")
     parser.add_argument("-o", "--outdir", type=str, required=True, help="Output directory")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
-    parser.add_argument("files", nargs="*", type=str, help="Simulations to branch")
+    parser.add_argument("file", type=str, help="Flow simulation to branch from")
+    parser.add_argument("gammadot", type=float, nargs="*", help="New flow rate")
 
-    if cli_args is None:
-        args = parser.parse_args(sys.argv[1:])
+    args = tools._parse(parser, cli_args)
+    assert os.path.isfile(args.file)
+
+    with h5py.File(args.file, "r") as source:
+        assert str(args.inc) in source["snapshot"]["u"]
+
+    if len(args.gammadot) == 0:
+        Gammadot = DefaultEnsemble.gammadot
     else:
-        args = parser.parse_args([str(arg) for arg in cli_args])
+        Gammadot = np.array(args.gammadot)
 
-    assert np.all([os.path.exists(f) for f in args.files])
-    assert args.develop or not tag.has_uncommitted(version)
-
-    Gammadot = DefaultEnsemble.gammadot
-    inp_paths = []
     out_names = []
     out_paths = []
     out_gammadots = []
 
-    for filepath in args.files:
+    info = interpret_filename(os.path.basename(args.file))
+    include = np.logical_not(np.isclose(Gammadot / float(info["gammadot"]), 1.0))
 
-        info = interpret_filename(os.path.basename(filepath))
-        include = np.logical_not(np.isclose(Gammadot / float(info["gammadot"]), 1.0))
+    for gammadot in Gammadot[include]:
 
-        for gammadot in Gammadot[include]:
-
-            name = "id={id}_gammadot={gammadot}_jump={jump:.2e}.h5".format(jump=gammadot, **info)
-            inp_paths.append(filepath)
-            out_names.append(name)
-            out_paths.append(os.path.join(args.outdir, name))
-            out_gammadots.append(gammadot)
+        name = "id={id}_gammadot={gammadot}_jump={jump:.2e}.h5".format(jump=gammadot, **info)
+        out_names.append(name)
+        out_paths.append(os.path.join(args.outdir, name))
+        out_gammadots.append(gammadot)
 
     assert not np.any([os.path.exists(f) for f in out_paths])
 
     if not os.path.isdir(args.outdir):
         os.makedirs(args.outdir)
 
-    for out_gammadot, out_path, inp_path in zip(tqdm.tqdm(out_gammadots), out_paths, inp_paths):
+    with h5py.File(args.file, "r") as source:
 
-        with h5py.File(inp_path, "r") as source, h5py.File(out_path, "w") as dest:
+        for out_gammadot, out_path in zip(tqdm.tqdm(out_gammadots), out_paths):
 
-            output = basic_output(source)
-            if args.develop:
-                inc = output["snapshot"]["inc"]
-                inc = inc[int(inc.size / 2)]
-            else:
-                inc = output["snapshot"]["inc"][output["snapshot"]["steadystate"]]
+            with h5py.File(out_path, "w") as dest:
 
-            meta = "/meta/{:s}".format(entry_points["cli_run"])
-            paths = g5.getdatapaths(source)
-            paths = [p for p in paths if not re.match(r"(/snapshot/)(.*)", p)]
-            paths = [p for p in paths if not re.match(r"(/output/)(.*)", p)]
-            paths = [p for p in paths if not re.match(r"(/restart/)(.*)", p)]
-            paths = [p for p in paths if not re.match(f"({meta})(.*)", p)]
-            g5.copy(source, dest, paths)
+                meta = f"/meta/{entry_points['cli_run']}"
+                paths = g5.getdatapaths(source)
+                paths = [p for p in paths if not re.match(r"(/snapshot/)(.*)", p)]
+                paths = [p for p in paths if not re.match(r"(/output/)(.*)", p)]
+                paths = [p for p in paths if not re.match(r"(/restart/)(.*)", p)]
+                paths = [p for p in paths if not re.match(f"({meta})(.*)", p)]
+                g5.copy(source, dest, paths)
 
-            for t in ["restart", "output", "snapshot"]:
-                g5.copy(source, dest, [f"/{t}/interval"])
+                for t in ["restart", "output", "snapshot"]:
+                    g5.copy(source, dest, [f"/{t}/interval"])
 
-            g5.copy(
-                source,
-                dest,
-                ["/meta/{:s}".format(entry_points["cli_run"])],
-                ["/meta/{:s}_source".format(entry_points["cli_run"])],
-            )
-            if tag.greater(g5.version, "0.14.0"):
-                warnings.warn("Remove np.array conversion in previous command", FutureWarning)
+                g5.copy(
+                    source,
+                    dest,
+                    [f"/meta/{entry_points['cli_run']}"],
+                    [f"/meta/{entry_points['cli_run']}_source"],
+                )
 
-            meta = dest.create_group(f"/meta/{progname}")
-            meta.attrs["version"] = version
-            meta.attrs["inc"] = inc
+                meta = System.create_check_meta(dest, f"/meta/{progname}", dev=args.develop)
+                meta.attrs["inc"] = args.inc
 
-            dest["/gammadot"][...] = out_gammadot
-            dest["/restart/inc"] = 0
-            dest["/restart/u"] = source[f"/snapshot/u/{inc:d}"][...]
-            dest["/restart/v"] = source[f"/snapshot/v/{inc:d}"][...]
-            dest["/restart/a"] = source[f"/snapshot/a/{inc:d}"][...]
-            dest["/snapshot/u/0"] = source[f"/snapshot/u/{inc:d}"][...]
-            dest["/snapshot/v/0"] = source[f"/snapshot/v/{inc:d}"][...]
-            dest["/snapshot/a/0"] = source[f"/snapshot/a/{inc:d}"][...]
+                dest["/gammadot"][...] = out_gammadot
+                dest["/restart/inc"] = 0
+                dest["/restart/u"] = source[f"/snapshot/u/{args.inc:d}"][...]
+                dest["/restart/v"] = source[f"/snapshot/v/{args.inc:d}"][...]
+                dest["/restart/a"] = source[f"/snapshot/a/{args.inc:d}"][...]
+                dest["/snapshot/u/0"] = source[f"/snapshot/u/{args.inc:d}"][...]
+                dest["/snapshot/v/0"] = source[f"/snapshot/v/{args.inc:d}"][...]
+                dest["/snapshot/a/0"] = source[f"/snapshot/a/{args.inc:d}"][...]
 
-            run_create_extendible(dest)
+                run_create_extendible(dest)
 
-            i = int(inc / source["/output/interval"][...])
+                i = int(args.inc / source["/output/interval"][...])
 
-            for key in ["/output/inc"]:
-                dest[key].resize((1,))
-                dest[key][0] = 0
+                for key in ["/output/inc"]:
+                    dest[key].resize((1,))
+                    dest[key][0] = 0
 
-            for key in ["/output/S", "/output/epsp"]:
-                dest[key].resize((1,))
-                dest[key][0] = source[key][i]
+                for key in ["/output/fext", "/output/epsp"]:
+                    dest[key].resize((1,))
+                    dest[key][0] = source[key][i]
 
-            for key in ["/output/global/sig", "/output/weak/sig"]:
-                dest[key].resize((3, 1))
-                dest[key][:, 0] = source[key][:, i]
+                for key in ["/output/sig", "/output/eps"]:
+                    dest[key].resize((3, 1))
+                    dest[key][:, 0] = source[key][:, i]
 
     executable = entry_points["cli_run"]
     commands = [f"{executable} {file}" for file in out_names]
@@ -834,19 +635,12 @@ def cli_branch_velocityjump(cli_args=None):
         basename=executable,
         group=1,
         outdir=args.outdir,
+        conda=dict(condabase=args.conda),
         sbatch={"time": args.time},
     )
 
     if cli_args is not None:
         return out_paths
-
-
-def cli_update_branch_velocityjump(cli_args=None):
-    """
-    Not anymore relevant.
-    """
-
-    raise OSError("Not any more relevant, by cli_update_generate is")
 
 
 def moving_average(a: ArrayLike, n: int) -> ArrayLike:
@@ -899,58 +693,41 @@ def cli_plot(cli_args=None):
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
 
-    parser.add_argument("-a", "--moving-average", type=int, help="Apply moving average")
     parser.add_argument("-s", "--save", type=str, help="Save the image")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("file", type=str, help="Simulation file")
 
-    if cli_args is None:
-        args = parser.parse_args(sys.argv[1:])
-    else:
-        args = parser.parse_args([str(arg) for arg in cli_args])
-
+    args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)
 
     with h5py.File(args.file, "r") as file:
-        data = basic_output(file)
+        Eps = file["output"]["eps"][...]
+        Sig = file["output"]["sig"][...]
+        fext = file["output"]["fext"][...]
+        out = basic_output(file)
+
+    meps = out["eps"][...]
+    msig = out["sig"][...]
+    mfext = out["fext"][...]
+
+    eps = tools.epsd(xx=Eps[0, :], xy=Eps[1, :], yy=Eps[2, :]).ravel()
+    sig = tools.sigd(xx=Sig[0, :], xy=Sig[1, :], yy=Sig[2, :]).ravel()
+
+    i = np.argsort(eps)
+    eps = eps[i]
+    sig = sig[i]
+    fext = fext[i]
 
     fig, ax = plt.subplots()
-
-    s = data["weak"]["steadystate"]
-    ax.plot(
-        *moving_average_y(data["weak"]["eps"][:s], data["weak"]["sig"][:s], args.moving_average),
-        c=0.5 * np.ones(3),
-    )
-    ax.plot(
-        *moving_average_y(data["weak"]["eps"][s:], data["weak"]["sig"][s:], args.moving_average),
-        c="k",
-    )
-
-    lim = ax.get_ylim()
-    ax.set_ylim([0, lim[-1]])
-
-    s = data["snapshot"]["steadystate"]
-
-    eps = data["snapshot"]["eps"][:s]
-    x = np.zeros((2, eps.size), dtype=float)
-    y = np.zeros((2, eps.size), dtype=float)
-    x[0, :] = eps
-    x[1, :] = eps
-    y[1, :] = lim[-1]
-
-    ax.plot(x, y, c="r", lw=1)
-
-    eps = data["snapshot"]["eps"][s:]
-    x = np.zeros((2, eps.size), dtype=float)
-    y = np.zeros((2, eps.size), dtype=float)
-    x[0, :] = eps
-    x[1, :] = eps
-    y[1, :] = lim[-1]
-
-    ax.plot(x, y, c="b", lw=1)
-
+    ax.plot(eps, sig, c="k", label=r"$\sigma_\text{interface}$")
+    ax.plot(eps, fext, c="r", label=r"$f_\text{ext}$")
+    ax.plot(meps, msig, c="b", marker="o", ls="none", label=r"$\bar{\sigma}_\text{interface}$")
+    ax.plot(meps, mfext, c="tab:orange", marker="o", ls="none", label=r"$\bar{f}_\text{ext}$")
+    ax.set_xlim([0, ax.get_xlim()[-1]])
+    ax.set_ylim([0, ax.get_ylim()[-1]])
     ax.set_xlabel(r"$\varepsilon$")
     ax.set_ylabel(r"$\sigma$")
+    ax.legend()
 
     if args.save:
         fig.savefig(args.save)
@@ -958,66 +735,3 @@ def cli_plot(cli_args=None):
         plt.show()
 
     plt.close(fig)
-
-
-def cli_plot_velocityjump(cli_args=None):
-    """
-    Plot overview of flow simulation.
-    """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
-    funcname = inspect.getframeinfo(inspect.currentframe()).function
-    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
-
-    parser.add_argument("-a", "--moving-average", type=int, help="Apply moving average")
-    parser.add_argument("-v", "--version", action="version", version=version)
-    parser.add_argument("source", type=str, help="The initial simulation")
-    parser.add_argument("jump", type=str, help="The velocity jump")
-
-    if cli_args is None:
-        args = parser.parse_args(sys.argv[1:])
-    else:
-        args = parser.parse_args([str(arg) for arg in cli_args])
-
-    assert os.path.isfile(args.source)
-    assert os.path.isfile(args.jump)
-
-    with h5py.File(args.source, "r") as file:
-        source = basic_output(file)
-
-    with h5py.File(args.jump, "r") as file:
-        jump = basic_output(file)
-        prog = entry_points["cli_branch_velocityjump"]
-        inc0 = file[f"/meta/{prog}"].attrs["inc"]
-        eps0 = jump["meta"]["inc2eps"] * inc0
-
-    fig, ax = plt.subplots()
-
-    s = source["weak"]["steadystate"]
-
-    x, y = moving_average_y(
-        source["weak"]["eps"][:s], source["weak"]["sig"][:s], args.moving_average
-    )
-    ax.plot(x, y, c=0.5 * np.ones(3))
-
-    x, y = moving_average_y(
-        source["weak"]["eps"][s:], source["weak"]["sig"][s:], args.moving_average
-    )
-    ax.plot(x, y, c="k")
-
-    x, y = moving_average_y(eps0 + jump["weak"]["eps"], jump["weak"]["sig"], args.moving_average)
-    ax.plot(x, y, c="r")
-
-    ax.plot(eps0 * np.ones(2), ax.get_ylim(), c="g")
-
-    ax.set_xlabel(r"$\varepsilon$")
-    ax.set_ylabel(r"$\sigma$")
-
-    plt.show()

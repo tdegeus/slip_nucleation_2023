@@ -42,14 +42,15 @@ class MyTests(unittest.TestCase):
         files = my.Flow.cli_generate(["-N", N, "--dev", dirname])
 
         with h5py.File(files[-1], "a") as file:
-            file["/boundcheck"][...] = 170
+            file["/boundcheck"][...] = 193
 
         my.Flow.cli_run(["--develop", files[-1]])
-        # my.Flow.cli_ensembleinfo(["-o", os.path.join(dirname, "einfo.h5"), files[-1]])
+        my.Flow.cli_ensembleinfo(["-o", os.path.join(dirname, "einfo.h5"), files[-1]])
 
-        # branch = my.Flow.cli_branch_velocityjump(["--develop", "-o", dirname, files[-1]])
-        # my.Flow.cli_run(["--develop", branch[-1]])
-        # my.Flow.cli_ensembleinfo_velocityjump(["-o", os.path.join(dirname, "vinfo.h5"), branch[-1]])
+        branch = my.Flow.cli_branch_velocityjump(
+            ["--dev", "-o", dirname, "-i", "250000", files[-1]]
+        )
+        my.Flow.cli_run(["--dev", branch[-1]])
 
 
 if __name__ == "__main__":
