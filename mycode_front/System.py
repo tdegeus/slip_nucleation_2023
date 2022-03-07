@@ -1172,7 +1172,7 @@ def basic_output(
     :param norm: Normalisation, see :py:func:`normalisation` (read if not specified).
     :param verbose: Print progress.
 
-    :return: Basic information as follows::
+    :return: Basic output as follows::
         epsd: Macroscopic strain [ninc].
         sigd: Macroscopic stress [ninc].
         S: Number of times a block yielded [ninc].
