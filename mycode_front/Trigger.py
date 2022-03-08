@@ -34,6 +34,7 @@ entry_points = dict(
     cli_job_deltasigma="Trigger_JobDeltaSigma",
     cli_ensembleinfo="Trigger_EnsembleInfo",
     cli_ensemblepack="Trigger_EnsemblePack",
+    cli_ensemblepack_merge="Trigger_EnsemblePackMerge",
 )
 
 file_defaults = dict(
@@ -146,6 +147,48 @@ def cli_run(cli_args=None):
         pbar.refresh()
 
     return args.file
+
+
+def cli_ensemblepack_merge(cli_args=None):
+    """
+    Merge files created by :py:func:`cli_ensemblepack`.
+    """
+
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+
+    parser.add_argument("--develop", action="store_true", help="Development mode")
+    parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
+    parser.add_argument("-o", "--output", type=str, required=True, help="Output file")
+    parser.add_argument("files", nargs="*", type=str, help="Files to merge")
+
+    args = tools._parse(parser, cli_args)
+    assert len(args.files) > 0
+    assert all([os.path.isfile(file) for file in args.files])
+    tools._check_overwrite_file(args.output, args.force)
+
+    with h5py.File(args.output, "w") as output:
+        for ifile, filepath in enumerate(tqdm.tqdm(args.files)):
+            with h5py.File(filepath) as file:
+                if ifile == 0:
+                    g5.copy(file, output, ["/source", "/realisation", "/event"], expand_soft=False)
+                    continue
+
+                assert g5.allequal(file, output, g5.getdatapaths(file, "/source"))
+                assert g5.allequal(file, output, g5.getdatapaths(file, "/realisation"))
+
+                for path in file["event"]:
+                    if path in output["event"]:
+                        continue
+                    g5.copy(file, output, [f"/event/{path}"], expand_soft=False)
 
 
 def cli_ensemblepack(cli_args=None):
