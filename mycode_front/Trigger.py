@@ -267,7 +267,7 @@ def cli_ensemblepack(cli_args=None):
         f"/meta/{entry_points['cli_job_strain']}",
         f"/meta/{entry_points['cli_job_deltasigma']}",
     ]
-    skip = realisation + event_meta + restart
+    skip = realisation + event_meta + ensemble_meta + restart
 
     if args.append:
         with h5py.File(args.output, "r") as output:
