@@ -109,6 +109,10 @@ class MyTests(unittest.TestCase):
             ["-f", "-o", os.path.join(dirname, "rerundynamics"), infoname]
         )
 
+        my.System.cli_state_after_systemspanning(
+            ["-f", "-o", os.path.join(dirname, "state"), infoname]
+        )
+
 
 if __name__ == "__main__":
 

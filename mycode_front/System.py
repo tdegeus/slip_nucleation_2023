@@ -47,16 +47,18 @@ entry_points = dict(
     cli_rerun_event_collect="EventMapInfo",
     cli_rerun_event_job_systemspanning="RunEventMap_JobAllSystemSpanning",
     cli_run="Run",
+    cli_state_after_systemspanning="StateAfterSystemSpanning",
     cli_status="SimulationStatus",
 )
 
 
 file_defaults = dict(
     cli_ensembleinfo="EnsembleInfo.h5",
-    cli_rerun_event="EventMap.h5",
-    cli_rerun_event_job_systemspanning="EventMap_SystemSpanning",
-    cli_rerun_event_collect="EventMapInfo.h5",
     cli_rerun_dynamics_job_systemspanning="RunDynamics_SystemSpanning",
+    cli_rerun_event="EventMap.h5",
+    cli_rerun_event_collect="EventMapInfo.h5",
+    cli_rerun_event_job_systemspanning="EventMap_SystemSpanning",
+    cli_state_after_systemspanning="StateAfterSystemSpanning.h5",
 )
 
 
@@ -87,6 +89,18 @@ class System(model.System):
         self.quench()
         self.setT(file["/t"][inc])
         self.setU(file[f"/disp/{inc:d}"][...])
+
+    def plastic_dV(self, rank: int = 0):
+        ret = model.System.quad(self).dV()[self.plastic(), :]
+        if rank == 0:
+            return ret
+        return model.System.quad(self).AsTensor(rank, ret)
+
+    def plastic_Epsp(self):
+        return model.System.plastic_Epsp(self) / self.eps0
+
+    def plastic_Eps(self):
+        return model.System.plastic_Eps(self) / self.eps0
 
     def plastic_Sig(self):
         return model.System.plastic_Sig(self) / self.sig0
@@ -1053,20 +1067,18 @@ def interface_state(filepaths: dict[int], read_disp: dict[str] = None) -> dict[n
         with h5py.File(filepath, "r") as file:
 
             if i == 0:
-                system = init(file)
-                plastic = system.plastic()
-                N = plastic.size
-                dV = system.quad().dV()[plastic, :]
-                dV2 = system.quad().AsTensor(2, dV)
+                system = System(file)
+                dV = system.plastic_dV()
+                dV2 = system.plastic_dV(2)
                 ret = {
-                    "sig_xx": np.empty((n, N), dtype=float),
-                    "sig_xy": np.empty((n, N), dtype=float),
-                    "sig_yy": np.empty((n, N), dtype=float),
-                    "eps_xx": np.empty((n, N), dtype=float),
-                    "eps_xy": np.empty((n, N), dtype=float),
-                    "eps_yy": np.empty((n, N), dtype=float),
-                    "epsp": np.empty((n, N), dtype=float),
-                    "S": np.empty((n, N), dtype=int),
+                    "sig_xx": np.empty((n, system.N), dtype=float),
+                    "sig_xy": np.empty((n, system.N), dtype=float),
+                    "sig_yy": np.empty((n, system.N), dtype=float),
+                    "eps_xx": np.empty((n, system.N), dtype=float),
+                    "eps_xy": np.empty((n, system.N), dtype=float),
+                    "eps_yy": np.empty((n, system.N), dtype=float),
+                    "epsp": np.empty((n, system.N), dtype=float),
+                    "S": np.empty((n, system.N), dtype=int),
                 }
             else:
                 system.reset_epsy(read_epsy(file))
@@ -1768,3 +1780,70 @@ def cli_rerun_event_collect(cli_args=None):
         file["/dependencies/value"] = [data["dependencies"][i] for i in np.unique(index)]
 
         create_check_meta(file, f"/meta/{progname}", dev=args.develop)
+
+
+def cli_state_after_systemspanning(cli_args=None):
+    """
+    Extract state after system-spanning avalanches.
+    """
+
+    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    output = file_defaults[funcname]
+
+    parser.add_argument("--all", action="store_true", help="Store all output")
+    parser.add_argument("--sig", action="store_true", help="Include sig in output")
+    parser.add_argument("--eps", action="store_true", help="Include eps in output")
+    parser.add_argument("--epsp", action="store_true", help="Include epsp in output")
+    parser.add_argument("--size", action="store_true", help="Include S in output")
+    parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
+    parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
+    parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("EnsembleInfo", type=str, help="EnsembleInfo")
+
+    args = tools._parse(parser, cli_args)
+    assert os.path.isfile(args.EnsembleInfo)
+    tools._check_overwrite_file(args.output, args.force)
+
+    with h5py.File(args.EnsembleInfo) as file:
+        files = file["/files"].asstr()[...]
+        inc = file["/avalanche/inc"][...]
+        fid = file["/loading/file"][...]
+        A = file["/avalanche/A"][...]
+        N = int(file["/normalisation/N"][...])
+
+    keep = A == N
+    inc = inc[keep]
+    fid = fid[keep]
+    A = A[keep]
+
+    dirname = os.path.dirname(args.EnsembleInfo)
+    select = {}
+
+    for f in np.unique(fid):
+        filepath = os.path.join(dirname, files[f])
+        select[filepath] = inc[fid == f]
+
+    data = interface_state(select)
+
+    if args.all:
+        keep = [i for i in data]
+    else:
+        keep = []
+        if args.sig:
+            keep += ["sig_xx", "sig_xy", "sig_yy"]
+        if args.eps:
+            keep += ["eps_xx", "eps_xy", "eps_yy"]
+        if args.epsp:
+            keep += ["epsp"]
+        if args.size:
+            keep += ["S"]
+
+    with h5py.File(args.output, "w") as file:
+        for key in data:
+            if key in keep:
+                file[key] = data[key]
