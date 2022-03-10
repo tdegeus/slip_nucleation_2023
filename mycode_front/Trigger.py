@@ -22,6 +22,7 @@ import h5py
 import numpy as np
 import tqdm
 
+from . import EventMap
 from . import MeasureDynamics
 from . import slurm
 from . import storage
@@ -36,6 +37,7 @@ entry_points = dict(
     cli_ensemblepack_merge="Trigger_EnsemblePackMerge",
     cli_job_deltasigma="Trigger_JobDeltaSigma",
     cli_job_rerun_dynamics="Trigger_JobRerunDynamics",
+    cli_job_rerun_eventmap="Trigger_JobRerunEventMap",
     cli_job_strain="Trigger_JobStrain",
     cli_run="Trigger_run",
 )
@@ -512,6 +514,79 @@ def restore_from_ensembleinfo(
     return destpath
 
 
+def cli_job_rerun_eventmap(cli_args=None):
+    """
+    Rerun to measure get an event-map for avalanches after triggers after system spanning events.
+    """
+
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+
+    parser.add_argument("--conda", type=str, default=slurm.default_condabase, help="Env-basename")
+    parser.add_argument("--develop", action="store_true", help="Development mode")
+    parser.add_argument("--group", type=int, default=5, help="#simulations to group")
+    parser.add_argument("--time", type=str, default="24h", help="Walltime")
+    parser.add_argument("--amin", type=int, default=20, help="Minimal avalanche size")
+    parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
+    parser.add_argument("-n", "--nsim", type=int, help="Number of simulations")
+    parser.add_argument("-o", "--outdir", type=str, required=True, help="Output directory")
+    parser.add_argument("-s", "--sourcedir", type=str, default=".", help="Path to sim-dir.")
+    parser.add_argument("ensembleinfo", type=str, help="File to read")
+
+    args = tools._parse(parser, cli_args)
+    assert os.path.isfile(args.ensembleinfo)
+
+    if not os.path.isdir(args.outdir):
+        os.makedirs(args.outdir)
+
+    ret = []
+
+    with h5py.File(args.ensembleinfo) as file:
+
+        if "/meta/normalisation/N" not in file:
+            A = file["A"][...]
+            truncated = file["truncated"][...]
+            N = np.unique(A[truncated])
+            assert N.size == 1
+            N = N[0]
+        else:
+            N = int(file["/meta/normalisation/N"][...])
+
+        inc = file["inc"][...]
+        incc = file["incc"][...]
+        A = file["A"][...]
+        select = np.argwhere((A > args.amin) * (A < N) * (inc == incc)).ravel()
+
+        for index in select:
+            dest = "src_id={sid:d}_incc={incc:d}_element={element:d}.h5"
+            dest = os.path.join(args.outdir, dest)
+            ret += [restore_from_ensembleinfo(file, index, dest, args.sourcedir, args.develop)]
+
+    executable = EventMap.entry_points["cli_run"]
+    commands = [os.path.split(i)[-1].split("src_")[1] for i in ret]
+    commands = [f"{executable} -i 1 -o {i} src_{i}" for i in commands]
+
+    slurm.serial_group(
+        commands,
+        basename="TriggerEventMap_conda={conda:s}",
+        group=args.group,
+        outdir=args.outdir,
+        conda=dict(condabase=args.conda),
+        sbatch={"time": args.time},
+    )
+
+    if cli_args is not None:
+        return commands
+
+
 def cli_job_rerun_dynamics(cli_args=None):
     """
     Rerun to measure the dynamics of system spanning events.
@@ -533,7 +608,7 @@ def cli_job_rerun_dynamics(cli_args=None):
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("--group", type=int, default=5, help="#simulations to group")
     parser.add_argument("--skip", type=int, default=1, help="Number bins to skip")
-    parser.add_argument("--test", action="store_true", help="Test most")
+    parser.add_argument("--test", action="store_true", help="Test mode")
     parser.add_argument("--time", type=str, default="24h", help="Walltime")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument("-n", "--nsim", type=int, default=100, help="Number of simulations")

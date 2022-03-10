@@ -81,26 +81,8 @@ class MyTests(unittest.TestCase):
         # function call without without check
         my.System.interface_state({filename: incs[-2:]})
 
-    def test_rerun(self):
+    def test_generate_rerun(self):
 
-        with h5py.File(infoname, "r") as file:
-            S = file[f"/full/{idname}/S"][...]
-
-        # Rerun increment
-
-        name = os.path.join(dirname, "rerun.h5")
-        i = np.argmax(S)
-        my.System.cli_rerun_event(["--dev", "-f", "-i", i, "-o", name, filename])
-
-        with h5py.File(name, "r") as file:
-            s = file["S"][...]
-            self.assertEqual(S[i], np.sum(s))
-
-        # function call without without check
-
-        my.System.cli_rerun_event_collect(
-            ["--dev", "-f", "-o", os.path.join(dirname, "eventcollect.h5"), name]
-        )
         my.System.cli_rerun_event_job_systemspanning(
             ["-f", "-o", os.path.join(dirname, "eventmap"), infoname]
         )
