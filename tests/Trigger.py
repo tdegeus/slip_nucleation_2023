@@ -120,10 +120,16 @@ class MyTests(unittest.TestCase):
             self.assertTrue(np.allclose(source["/disp/1"][...], dest["/disp/1"][...]))
             self.assertTrue(np.isclose(np.diff(source["/t"][...]), np.diff(dest["/t"][...])))
 
-        # check that dynamics can be rerun on restored file
+        # create ensemble to rerun dynamics and try to rerun one
 
-        tempname = os.path.join(dirname, "myrerun.h5")
-        my.MeasureDynamics.cli_run(["--dev", "-f", "-i", 1, "-o", tempname, clonename])
+        outdir = os.path.join(dirname, "dynamics")
+        cmd = my.Trigger.cli_job_rerun_dynamics(
+            ["--dev", "-f", "-n", "2", "-s", dirname, "-o", outdir, triggerinfo]
+        )
+        cmd = cmd[0].split(" ")[1:]
+        cmd[-1] = os.path.join(outdir, cmd[-1])
+        cmd[-2] = os.path.join(outdir, cmd[-2])
+        my.MeasureDynamics.cli_run(["--dev", "-f"] + cmd)
 
 
 if __name__ == "__main__":
