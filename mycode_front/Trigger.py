@@ -17,10 +17,12 @@ import FrictionQPotFEM  # noqa: F401
 import GMatElastoPlasticQPot  # noqa: F401
 import GooseFEM  # noqa: F401
 import GooseHDF5 as g5
+import GooseMPL as gplt
 import h5py
 import numpy as np
 import tqdm
 
+from . import MeasureDynamics
 from . import slurm
 from . import storage
 from . import System
@@ -29,12 +31,13 @@ from . import tools
 from ._version import version
 
 entry_points = dict(
-    cli_run="Trigger_run",
-    cli_job_strain="Trigger_JobStrain",
-    cli_job_deltasigma="Trigger_JobDeltaSigma",
     cli_ensembleinfo="Trigger_EnsembleInfo",
     cli_ensemblepack="Trigger_EnsemblePack",
     cli_ensemblepack_merge="Trigger_EnsemblePackMerge",
+    cli_job_deltasigma="Trigger_JobDeltaSigma",
+    cli_job_rerun_dynamics="Trigger_JobRerunDynamics",
+    cli_job_strain="Trigger_JobStrain",
+    cli_run="Trigger_run",
 )
 
 file_defaults = dict(
@@ -179,9 +182,15 @@ def cli_ensemblepack_merge(cli_args=None):
         for ifile, filepath in enumerate(tqdm.tqdm(args.files)):
             with h5py.File(filepath) as file:
                 if ifile == 0:
-                    g5.copy(file, output, ["/source", "/realisation", "/event"], expand_soft=False)
+                    g5.copy(
+                        file,
+                        output,
+                        ["/source", "/realisation", "/event", "/ensemble"],
+                        expand_soft=False,
+                    )
                     continue
 
+                assert g5.allequal(file, output, g5.getdatapaths(file, "/ensemble"))
                 assert g5.allequal(file, output, g5.getdatapaths(file, "/source"))
                 assert g5.allequal(file, output, g5.getdatapaths(file, "/realisation"))
 
@@ -383,6 +392,7 @@ def cli_ensembleinfo(cli_args=None):
         element=[],
         run_version=[],
         run_dependencies=[],
+        source=[],
         file=[],
         inc=[],
         inci=[],
@@ -393,6 +403,7 @@ def cli_ensembleinfo(cli_args=None):
     with h5py.File(args.ensemblepack, "r") as pack, h5py.File(args.output, "w") as output:
 
         files = [i for i in pack["event"]]
+        assert len(files) > 0
         simid = [int(tools.read_parameters(i)["id"]) for i in files]
         index = np.argsort(simid)
         fmt = "{:" + str(max(len(i) for i in files)) + "s}"
@@ -407,6 +418,7 @@ def cli_ensembleinfo(cli_args=None):
 
             if i == 0:
                 system = System.init(file)
+                N = system.plastic().size
             elif simid[idx] != simid[index[i - 1]]:
                 system.reset_epsy(System.read_epsy(file))
 
@@ -430,6 +442,7 @@ def cli_ensembleinfo(cli_args=None):
             ret["element"].append(file["trigger"]["element"][1])
             ret["run_version"].append(meta.attrs["version"])
             ret["run_dependencies"].append(";".join(meta.attrs["dependencies"]))
+            ret["source"].append(os.path.basename(filepath))
             ret["file"].append(branch.attrs["file"])
             ret["inc"].append(branch.attrs["inc"] if "inc" in branch.attrs else int(-1))
             ret["inci"].append(branch.attrs["inci"] if "inci" in branch.attrs else int(-1))
@@ -449,6 +462,7 @@ def cli_ensembleinfo(cli_args=None):
             output[key] = ret[key]
 
         System.create_check_meta(output, f"/meta/{progname}", dev=args.develop)
+        output["/meta/normalisation/N"] = N
 
 
 def restore_from_ensembleinfo(
@@ -464,6 +478,11 @@ def restore_from_ensembleinfo(
     """
 
     sourcepath = tools.h5py_read_unique(ensembleinfo, "file", asstr=True)[index]
+    sid = System.interpret_filename(sourcepath)["id"]
+    inc = ensembleinfo["inc"][index]
+    incc = ensembleinfo["incc"][index]
+    element = ensembleinfo["element"][index]
+    destpath = destpath.format(sid=sid, incc=incc, element=element)
 
     if sourcedir is not None:
         sourcepath = os.path.join(sourcedir, sourcepath)
@@ -478,16 +497,106 @@ def restore_from_ensembleinfo(
         System.branch_fixed_stress(
             source=source,
             dest=dest,
-            inc=ensembleinfo["inc"][index],
-            incc=ensembleinfo["incc"][index],
+            inc=inc if inc > 0 else None,
+            incc=incc,
             stress=ensembleinfo["stress"][index],
             normalised=True,
             system=System.init(source),
             dev=dev,
         )
 
-        _writeinitbranch(dest, ensembleinfo["element"][index])
+        _writeinitbranch(dest, element)
         storage.dset_extend1d(dest, "/t", 1, ensembleinfo["duration"][index])
+        storage.dset_extend1d(dest, "/trigger/element", 1, element)
+
+    return destpath
+
+
+def cli_job_rerun_dynamics(cli_args=None):
+    """
+    Rerun to measure the dynamics of system spanning events.
+    """
+
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+
+    parser.add_argument("--bins", type=int, default=7, help="Number of stress bins")
+    parser.add_argument("--conda", type=str, default=slurm.default_condabase, help="Env-basename")
+    parser.add_argument("--develop", action="store_true", help="Development mode")
+    parser.add_argument("--group", type=int, default=5, help="#simulations to group")
+    parser.add_argument("--skip", type=int, default=1, help="Number bins to skip")
+    parser.add_argument("--test", action="store_true", help="Test most")
+    parser.add_argument("--time", type=str, default="24h", help="Walltime")
+    parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
+    parser.add_argument("-n", "--nsim", type=int, default=100, help="Number of simulations")
+    parser.add_argument("-o", "--outdir", type=str, required=True, help="Output directory")
+    parser.add_argument("-s", "--sourcedir", type=str, default=".", help="Path to sim-dir.")
+    parser.add_argument("ensembleinfo", type=str, help="File to read")
+
+    args = tools._parse(parser, cli_args)
+    assert os.path.isfile(args.ensembleinfo)
+
+    if not os.path.isdir(args.outdir):
+        os.makedirs(args.outdir)
+
+    ret = []
+
+    with h5py.File(args.ensembleinfo) as file:
+
+        if "/meta/normalisation/N" not in file:
+            A = file["A"][...]
+            truncated = file["truncated"][...]
+            N = np.unique(A[truncated])
+            assert N.size == 1
+            N = N[0]
+        else:
+            N = int(file["/meta/normalisation/N"][...])
+
+        sigmastar = file["sigd0"][...]
+        A = file["A"][...]
+
+        bin_edges = gplt.histogram_bin_edges(sigmastar, bins=args.bins)
+        bins = bin_edges.size - 1
+        bin_index = np.digitize(sigmastar, bin_edges) - 1
+        bin_index[bin_index == bins] = bins - 1
+
+        for i in range(args.skip, args.bins):
+            keep = bin_index == i
+            if np.sum(keep) == 0:
+                continue
+            target = np.mean(sigmastar[keep])
+            sorter = np.argsort(np.abs(sigmastar - target))
+            if not args.test:
+                sorter = sorter[A[sorter] == N]
+            select = np.argsort(np.abs(sigmastar - target))[: args.nsim]
+            for index in select:
+                dest = f"src_bin={i:02d}" + "_id={sid:d}_incc={incc:d}_element={element:d}.h5"
+                dest = os.path.join(args.outdir, dest)
+                ret += [restore_from_ensembleinfo(file, index, dest, args.sourcedir, args.develop)]
+
+    executable = MeasureDynamics.entry_points["cli_run"]
+    commands = [os.path.split(i)[-1].split("src_")[1] for i in ret]
+    commands = [f"{executable} -i 1 -o {i} src_{i}" for i in commands]
+
+    slurm.serial_group(
+        commands,
+        basename="TriggerDynamics_conda={conda:s}",
+        group=args.group,
+        outdir=args.outdir,
+        conda=dict(condabase=args.conda),
+        sbatch={"time": args.time},
+    )
+
+    if cli_args is not None:
+        return commands
 
 
 def _writeinitbranch(file: h5py.File, element: int, meta: tuple[str, dict] = None):
