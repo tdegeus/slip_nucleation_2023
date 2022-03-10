@@ -47,12 +47,14 @@ jobs:
     - name: Run tests
       working-directory: tests
       run: |
-        python MeasureDynamics.py
-        python PinAndTrigger.py
         python slurm.py
         python storage.py
         python System.py
         python tag.py
         python tools.py
+        python System.py
+        python EventMap.py
+        python MeasureDynamics.py
         python Trigger.py
         python Flow.py
+        python PinAndTrigger.py
