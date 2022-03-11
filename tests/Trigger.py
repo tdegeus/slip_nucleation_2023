@@ -48,6 +48,7 @@ class MyTests(unittest.TestCase):
         n = 3
         opts = ["--dev", "-f", infoname, "-n", 4, "-p", 2, "-o", dirname, "--nmax", n, "-r"]
         commands = my.Trigger.cli_job_strain(opts)
+        commands += my.Trigger.cli_job_strain(opts + ["--element", "2"])
 
         output = []
         for command in commands:
@@ -67,6 +68,7 @@ class MyTests(unittest.TestCase):
         n = 5
         opts = ["--dev", "-f", infoname, "-d", 0.12, "-p", 2, "-o", dirname, "--nmax", n]
         commands = my.Trigger.cli_job_deltasigma(opts)
+        commands += my.Trigger.cli_job_deltasigma(opts + ["--element", "2"])
 
         # check that copying worked
 

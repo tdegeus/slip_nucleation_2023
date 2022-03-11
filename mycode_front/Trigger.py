@@ -979,6 +979,7 @@ def cli_job_deltasigma(cli_args=None):
     parser.add_argument("--nmax", type=int, help="Keep first nmax jobs (mostly for testing)")
     parser.add_argument("--truncate-system-spanning", action="store_true", help="Stop large events")
     parser.add_argument("-d", "--delta-sigma", type=float, required=True, help="delta_sigma")
+    parser.add_argument("-e", "--element", type=int, help="Specify element to push")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument("-n", "--group", type=int, default=50, help="#simulations to group")
     parser.add_argument("-o", "--outdir", type=str, default=".", help="Output directory")
@@ -998,7 +999,6 @@ def cli_job_deltasigma(cli_args=None):
     executable = entry_points["cli_run"]
 
     with h5py.File(args.ensembleinfo, "r") as file:
-
         files = [os.path.join(basedir, f) for f in file["/files"].asstr()[...]]
         N = file["/normalisation/N"][...]
         A = file["/avalanche/A"][...]
@@ -1020,6 +1020,9 @@ def cli_job_deltasigma(cli_args=None):
     assert args.delta_sigma > 0
     assert args.delta_sigma < np.max(sigd_loading - sigd)
     elements = np.linspace(0, N + 1, args.pushes + 1)[:-1].astype(int)
+
+    if args.element:
+        elements = [args.element]
 
     ret = dict(
         source=[],
@@ -1098,6 +1101,7 @@ def cli_job_strain(cli_args=None):
     parser.add_argument("--filter", type=str, help="Filter completed jobs")
     parser.add_argument("--nmax", type=int, help="Keep first nmax jobs (mostly for testing)")
     parser.add_argument("--truncate-system-spanning", action="store_true", help="Stop large events")
+    parser.add_argument("-e", "--element", type=int, help="Specify element to push")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument("-n", "--group", type=int, default=50, help="#simulations to group")
     parser.add_argument("-o", "--outdir", type=str, default=".", help="Output directory")
@@ -1138,6 +1142,9 @@ def cli_job_strain(cli_args=None):
     ifile_loading = ifile_loading[keep]
     assert all(inc - 1 == inc_loading)
     elements = np.linspace(0, N + 1, args.pushes + 1)[:-1].astype(int)
+
+    if args.element:
+        elements = [args.element]
 
     ret = dict(
         source=[],
