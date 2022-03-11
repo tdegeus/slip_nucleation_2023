@@ -68,7 +68,7 @@ class MyTests(unittest.TestCase):
         n = 5
         opts = ["--dev", "-f", infoname, "-d", 0.12, "-p", 2, "-o", dirname, "--nmax", n]
         commands = my.Trigger.cli_job_deltasigma(opts)
-        other = my.Trigger.cli_job_deltasigma(opts + ["--element", "2"])
+        my.Trigger.cli_job_deltasigma(opts + ["--element", "2"])
 
         # check that copying worked
 
