@@ -528,7 +528,7 @@ def __job_rerun(file, sims, basename, executable, args):
     commands = []
     ret = []
 
-    for i in range(len(sims["replica"])):
+    for i in tqdm.tqdm(range(len(sims["replica"]))):
         index = sims["index"][i]
         replica = sims["replica"][i]
         output = sims["output"][i]
