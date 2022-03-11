@@ -480,11 +480,9 @@ def restore_from_ensembleinfo(
     """
 
     sourcepath = tools.h5py_read_unique(ensembleinfo, "file", asstr=True)[index]
-    sid = System.interpret_filename(sourcepath)["id"]
     inc = ensembleinfo["inc"][index]
     incc = ensembleinfo["incc"][index]
     element = ensembleinfo["element"][index]
-    destpath = destpath.format(sid=sid, incc=incc, element=element)
 
     if sourcedir is not None:
         sourcepath = os.path.join(sourcedir, sourcepath)
@@ -512,6 +510,44 @@ def restore_from_ensembleinfo(
         storage.dset_extend1d(dest, "/trigger/element", 1, element)
 
     return destpath
+
+
+def __job_rerun(file, sims, basename, executable, args):
+
+    if not args.force:
+        if any([os.path.isfile(i) for i in sims["replica"]]) or any(
+            [os.path.isfile(i) for i in sims["output"]]
+        ):
+            if not click.confirm("Overwrite existing?"):
+                raise OSError("Cancelled")
+
+    for dirname in list({os.path.dirname(i) for i in sims["replica"]}):
+        if not os.path.isdir(dirname):
+            os.makedirs(dirname)
+
+    commands = []
+    ret = []
+
+    for i in tqdm.tqdm(range(len(sims["replica"]))):
+        index = sims["index"][i]
+        replica = sims["replica"][i]
+        output = sims["output"][i]
+        restore_from_ensembleinfo(file, index, replica, args.sourcedir, args.develop)
+        o = os.path.relpath(output, args.outdir)
+        r = os.path.relpath(replica, args.outdir)
+        commands += [f"{executable} -i 1 -o {o} {r}"]
+        ret += [f"{executable} -i 1 -o {output} {replica}"]
+
+    slurm.serial_group(
+        commands,
+        basename=basename,
+        group=args.group,
+        outdir=args.outdir,
+        conda=dict(condabase=args.conda),
+        sbatch={"time": args.time},
+    )
+
+    return ret
 
 
 def cli_job_rerun_eventmap(cli_args=None):
@@ -560,31 +596,34 @@ def cli_job_rerun_eventmap(cli_args=None):
         else:
             N = int(file["/meta/normalisation/N"][...])
 
+        A = file["A"][...]
         inc = file["inc"][...]
         incc = file["incc"][...]
-        A = file["A"][...]
+        element = file["element"][...]
+        sid = [
+            System.interpret_filename(i)["id"]
+            for i in tools.h5py_read_unique(file, "file", asstr=True)
+        ]
+
         select = np.argwhere((A > args.amin) * (A < N) * (inc == incc)).ravel()
 
+        sims = dict(
+            replica=[],
+            output=[],
+            index=[],
+        )
+
         for index in select:
-            dest = "src_id={sid:d}_incc={incc:d}_element={element:d}.h5"
-            dest = os.path.join(args.outdir, dest)
-            ret += [restore_from_ensembleinfo(file, index, dest, args.sourcedir, args.develop)]
+            base = f"id={sid[index]:d}_incc={incc[index]:d}_element={element[index]:d}.h5"
+            sims["replica"].append(os.path.join(args.outdir, "src", base))
+            sims["output"].append(os.path.join(args.outdir, base))
+            sims["index"].append(index)
 
-    executable = EventMap.entry_points["cli_run"]
-    commands = [os.path.split(i)[-1].split("src_")[1] for i in ret]
-    commands = [f"{executable} -i 1 -o {i} src_{i}" for i in commands]
-
-    slurm.serial_group(
-        commands,
-        basename="TriggerEventMap_conda={conda:s}",
-        group=args.group,
-        outdir=args.outdir,
-        conda=dict(condabase=args.conda),
-        sbatch={"time": args.time},
-    )
+        executable = EventMap.entry_points["cli_run"]
+        ret = __job_rerun(file, sims, "TriggerEventMap_conda={conda:s}", executable, args)
 
     if cli_args is not None:
-        return commands
+        return ret
 
 
 def cli_job_rerun_dynamics(cli_args=None):
@@ -619,11 +658,6 @@ def cli_job_rerun_dynamics(cli_args=None):
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.ensembleinfo)
 
-    if not os.path.isdir(args.outdir):
-        os.makedirs(args.outdir)
-
-    ret = []
-
     with h5py.File(args.ensembleinfo) as file:
 
         if "/meta/normalisation/N" not in file:
@@ -637,41 +671,43 @@ def cli_job_rerun_dynamics(cli_args=None):
 
         sigmastar = file["sigd0"][...]
         A = file["A"][...]
+        incc = file["incc"][...]
+        element = file["element"][...]
+        sid = [
+            System.interpret_filename(i)["id"]
+            for i in tools.h5py_read_unique(file, "file", asstr=True)
+        ]
 
         bin_edges = gplt.histogram_bin_edges(sigmastar, bins=args.bins)
         bins = bin_edges.size - 1
         bin_index = np.digitize(sigmastar, bin_edges) - 1
         bin_index[bin_index == bins] = bins - 1
 
-        for i in range(args.skip, args.bins):
-            keep = bin_index == i
+        sims = dict(
+            replica=[],
+            output=[],
+            index=[],
+        )
+
+        for ibin in range(args.skip, args.bins):
+            keep = bin_index == ibin
             if np.sum(keep) == 0:
                 continue
             target = np.mean(sigmastar[keep])
             sorter = np.argsort(np.abs(sigmastar - target))
             if not args.test:
                 sorter = sorter[A[sorter] == N]
-            select = np.argsort(np.abs(sigmastar - target))[: args.nsim]
-            for index in select:
-                dest = f"src_bin={i:02d}" + "_id={sid:d}_incc={incc:d}_element={element:d}.h5"
-                dest = os.path.join(args.outdir, dest)
-                ret += [restore_from_ensembleinfo(file, index, dest, args.sourcedir, args.develop)]
+            for index in sorter[: args.nsim]:
+                base = f"id={sid[index]:d}_incc={incc[index]:d}_element={element[index]:d}.h5"
+                sims["replica"].append(os.path.join(args.outdir, f"bin={ibin:02d}", "src", base))
+                sims["output"].append(os.path.join(args.outdir, f"bin={ibin:02d}", base))
+                sims["index"].append(index)
 
-    executable = MeasureDynamics.entry_points["cli_run"]
-    commands = [os.path.split(i)[-1].split("src_")[1] for i in ret]
-    commands = [f"{executable} -i 1 -o {i} src_{i}" for i in commands]
-
-    slurm.serial_group(
-        commands,
-        basename="TriggerDynamics_conda={conda:s}",
-        group=args.group,
-        outdir=args.outdir,
-        conda=dict(condabase=args.conda),
-        sbatch={"time": args.time},
-    )
+        executable = MeasureDynamics.entry_points["cli_run"]
+        ret = __job_rerun(file, sims, "TriggerDynamics_conda={conda:s}", executable, args)
 
     if cli_args is not None:
-        return commands
+        return ret
 
 
 def _writeinitbranch(file: h5py.File, element: int, meta: tuple[str, dict] = None):

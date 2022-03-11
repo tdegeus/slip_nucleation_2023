@@ -213,12 +213,9 @@ def cli_basic_output(cli_args=None):
 
     # sorting simulation-id and then increment
 
-    _, index = np.unique(data["file"], return_inverse=True)
-    index = index * int(10 ** (np.ceil(np.log10(np.max(data["inc"]))) + 1)) + np.array(data["inc"])
-    index = np.argsort(index)
-
+    sorter = np.lexsort((data["inc"], data["file"]))
     for key in data:
-        data[key] = [data[key][i] for i in index]
+        data[key] = [data[key][i] for i in sorter]
 
     # store (compress where possible)
 
@@ -232,15 +229,10 @@ def cli_basic_output(cli_args=None):
             prefix += "/"
         data["file"] = [i.removeprefix(prefix) for i in data["file"]]
         file["/file/prefix"] = prefix
-
-        for key in ["file", "version"]:
-            value, index = np.unique(data[key], return_inverse=True)
-            file[f"/{key}/index"] = index
-            file[f"/{key}/value"] = list(str(i) for i in value)
-
-        dep = [";".join(i) for i in data["dependencies"]]
-        value, index = np.unique(dep, return_inverse=True)
-        file["/dependencies/index"] = index
-        file["/dependencies/value"] = [data["dependencies"][i] for i in np.unique(index)]
+        tools.h5py_save_unique(data["file"], file, "/file", asstr=True)
+        tools.h5py_save_unique(data["version"], file, "/version", asstr=True)
+        tools.h5py_save_unique(
+            [";".join(i) for i in data["dependencies"]], file, "/dependencies", split=";"
+        )
 
         System.create_check_meta(file, f"/meta/{progname}", dev=args.develop)

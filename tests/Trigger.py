@@ -124,12 +124,9 @@ class MyTests(unittest.TestCase):
 
         outdir = os.path.join(dirname, "dynamics")
         cmd = my.Trigger.cli_job_rerun_dynamics(
-            ["--dev", "-f", "-n", "2", "-s", dirname, "-o", outdir, triggerinfo]
+            ["--dev", "-f", "--test", "-n", "2", "-s", dirname, "-o", outdir, triggerinfo]
         )
-        cmd = cmd[0].split(" ")[1:]
-        cmd[-1] = os.path.join(outdir, cmd[-1])
-        cmd[-2] = os.path.join(outdir, cmd[-2])
-        my.MeasureDynamics.cli_run(["--dev", "-f"] + cmd)
+        my.MeasureDynamics.cli_run(["--dev", "-f"] + cmd[0].split(" ")[1:])
 
         # create ensemble to rerun EventMap and try to rerun one
 
@@ -137,10 +134,7 @@ class MyTests(unittest.TestCase):
         cmd = my.Trigger.cli_job_rerun_eventmap(
             ["--dev", "-f", "--amin", "2", "-n", "2", "-s", dirname, "-o", outdir, triggerinfo]
         )
-        cmd = cmd[0].split(" ")[1:]
-        cmd[-1] = os.path.join(outdir, cmd[-1])
-        cmd[-2] = os.path.join(outdir, cmd[-2])
-        my.EventMap.cli_run(["--dev", "-f"] + cmd)
+        my.EventMap.cli_run(["--dev", "-f"] + cmd[0].split(" ")[1:])
 
 
 if __name__ == "__main__":
