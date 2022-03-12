@@ -66,15 +66,22 @@ class System(model.System):
             file["conn"][...],
             file["dofs"][...],
             file["dofsP"][...] if "dofsP" in file else file["iip"][...],
-            file["/elastic/elem"][...],
-            file["/cusp/elem"][...],
+            file["elastic"]["elem"][...],
+            file["cusp"]["elem"][...],
         )
 
         self.setMassMatrix(file["rho"][...])
-        self.setDampingMatrix(file["alpha"][...] if "alpha" in file else file["damping/alpha"][...])
-        self.setElastic(file["/elastic/K"][...], file["/elastic/G"][...])
-        self.setPlastic(file["/cusp/K"][...], file["/cusp/G"][...], read_epsy(file))
-        self.setDt(file["/run/dt"][...])
+
+        if "alpha" in file:
+            self.setDampingMatrix(file["alpha"][...])
+        elif "/damping/alpha" in file:
+            self.setDampingMatrix(file["damping/alpha"][...])
+        else:
+            raise OSError("No damping found")
+
+        self.setElastic(file["elastic"]["K"][...], file["elastic"]["G"][...])
+        self.setPlastic(file["cusp"]["K"][...], file["cusp"]["G"][...], read_epsy(file))
+        self.setDt(file["run"]["dt"][...])
 
         norm = normalisation(file)
         self.N = norm["N"]
@@ -84,8 +91,8 @@ class System(model.System):
 
     def restore_inc(self, file: h5py.File, inc: int):
         self.quench()
-        self.setT(file["/t"][inc])
-        self.setU(file[f"/disp/{inc:d}"][...])
+        self.setT(file["t"][inc])
+        self.setU(file["disp"][str(inc)][...])
 
     def plastic_dV(self, rank: int = 0):
         ret = model.System.quad(self).dV()[self.plastic(), :]
