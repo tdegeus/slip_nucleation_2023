@@ -514,8 +514,6 @@ def cli_ensembleinfo_merge(cli_args=None):
                 else:
                     if "ensemble" in file:
                         assert g5.allequal(file, output, g5.getdatapaths(file, "/ensemble"))
-                    if "meta" in file:
-                        assert g5.allequal(file, output, g5.getdatapaths(file, "/meta"))
 
                 for k in paths:
                     if k not in ret:
