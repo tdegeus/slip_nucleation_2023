@@ -33,6 +33,7 @@ from ._version import version
 
 entry_points = dict(
     cli_ensembleinfo="Trigger_EnsembleInfo",
+    cli_ensembleinfo_merge="Trigger_EnsembleInfoMerge",
     cli_ensemblepack="Trigger_EnsemblePack",
     cli_ensemblepack_merge="Trigger_EnsemblePackMerge",
     cli_job_deltasigma="Trigger_JobDeltaSigma",
@@ -467,6 +468,87 @@ def cli_ensembleinfo(cli_args=None):
         output["/meta/normalisation/N"] = N
 
 
+def cli_ensembleinfo_merge(cli_args=None):
+    """
+    Merge files created by :py:func:`cli_ensemblepack`.
+    """
+
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    progname = entry_points[funcname]
+
+    parser.add_argument("--develop", action="store_true", help="Development mode")
+    parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
+    parser.add_argument("-o", "--output", type=str, required=True, help="Output file")
+    parser.add_argument("files", nargs="*", type=str, help="Files to merge")
+
+    args = tools._parse(parser, cli_args)
+    assert len(args.files) > 0
+    assert all([os.path.isfile(file) for file in args.files])
+    tools._check_overwrite_file(args.output, args.force)
+
+    ret = {}
+
+    with h5py.File(args.output, "w") as output:
+        for ifile, filepath in enumerate(tqdm.tqdm(args.files)):
+            with h5py.File(filepath) as file:
+                if ifile == 0:
+                    g5.copy(file, output, ["/ensemble", "/meta"])
+                    paths = list(g5.getdatasets(file, max_depth=1))
+                    paths.remove("/ensemble/...")
+                    paths.remove("/meta/...")
+                    paths.remove("/file/...")
+                    paths.remove("/run_version/...")
+                    paths.remove("/run_dependencies/...")
+                    paths = [i[1:] for i in paths] # split "/"
+                else:
+                    assert g5.allequal(file, output, g5.getdatapaths(file, "/ensemble"))
+                    assert g5.allequal(file, output, g5.getdatapaths(file, "/meta"))
+
+                for k in paths:
+                    if k not in ret:
+                        ret[k] = []
+                    if k in ["source"]:
+                        ret[k] += file[k].asstr()[...].tolist()
+                    else:
+                        ret[k] += file[k][...].tolist()
+
+                for k in ["file", "run_version"]:
+                    if k not in ret:
+                        ret[k] = []
+                    ret[k] += tools.h5py_read_unique(file, k, asstr=True)
+
+                for k in ["run_dependencies"]:
+                    if k not in ret:
+                        ret[k] = []
+                    ret[k] += [";".join(i) for i in tools.h5py_read_unique(file, k, asstr=True)]
+
+        _, index = np.unique(ret["source"], return_index=True)
+
+        if len(index) != len(ret["source"]):
+            for k in ret:
+                ret[k] = [ret[k][i] for i in index]
+
+        for key in ["file", "run_version"]:
+            tools.h5py_save_unique(data=ret.pop(key), file=output, path=f"/{key}", asstr=True)
+
+        for key in ["run_dependencies"]:
+            tools.h5py_save_unique(data=ret.pop(key), file=output, path=f"/{key}", split=";")
+
+        for key in ret:
+            output[key] = ret[key]
+
+        System.create_check_meta(output, f"/meta/{progname}", dev=args.develop)
+
+
 def restore_from_ensembleinfo(
     ensembleinfo: h5py.File, index: int, destpath: str, sourcedir: str = None, dev: bool = False
 ):
@@ -575,7 +657,7 @@ def cli_job_rerun_eventmap(cli_args=None):
     parser.add_argument("-n", "--nsim", type=int, help="Number of simulations")
     parser.add_argument("-o", "--outdir", type=str, required=True, help="Output directory")
     parser.add_argument("-s", "--sourcedir", type=str, default=".", help="Path to sim-dir.")
-    parser.add_argument("ensembleinfo", type=str, help="File to read")
+    parser.add_argument("ensembleinfo", type=str, help=f"{entry_points['cli_ensembleinfo']} (read)")
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.ensembleinfo)
