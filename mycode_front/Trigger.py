@@ -193,9 +193,10 @@ def cli_ensemblepack_merge(cli_args=None):
                     )
                     continue
 
-                assert g5.allequal(file, output, g5.getdatapaths(file, "/ensemble"))
                 assert g5.allequal(file, output, g5.getdatapaths(file, "/source"))
                 assert g5.allequal(file, output, g5.getdatapaths(file, "/realisation"))
+                if "/ensemble" in file:
+                    assert g5.allequal(file, output, g5.getdatapaths(file, "/ensemble"))
 
                 for path in file["event"]:
                     if path in output["event"]:
