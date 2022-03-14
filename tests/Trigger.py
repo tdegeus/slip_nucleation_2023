@@ -100,10 +100,12 @@ class MyTests(unittest.TestCase):
         triggerpack_a = os.path.join(dirname, "TriggerPack_a.h5")
         triggerpack_b = os.path.join(dirname, "TriggerPack_b.h5")
         triggerinfo = os.path.join(dirname, "TriggerInfo.h5")
+        triggerinfo_b = os.path.join(dirname, "TriggerInfo_b.h5")
         my.Trigger.cli_ensemblepack(["-f", "-o", triggerpack_a] + output[:2])
         my.Trigger.cli_ensemblepack(["-f", "-o", triggerpack_b] + output[2:])
         my.Trigger.cli_ensemblepack_merge(["-f", "-o", triggerpack, triggerpack_a, triggerpack_b])
         my.Trigger.cli_ensembleinfo(["--dev", "-f", "-o", triggerinfo, triggerpack])
+        my.Trigger.cli_ensembleinfo_merge(["--dev", "-o", triggerinfo_b, triggerinfo, triggerinfo])
 
         # check partial re-rendering
 
