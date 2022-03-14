@@ -508,7 +508,7 @@ def cli_ensembleinfo_merge(cli_args=None):
                     paths.remove("/file/...")
                     paths.remove("/run_version/...")
                     paths.remove("/run_dependencies/...")
-                    paths = [i[1:] for i in paths] # split "/"
+                    paths = [i[1:] for i in paths]  # split "/"
                 else:
                     assert g5.allequal(file, output, g5.getdatapaths(file, "/ensemble"))
                     assert g5.allequal(file, output, g5.getdatapaths(file, "/meta"))
