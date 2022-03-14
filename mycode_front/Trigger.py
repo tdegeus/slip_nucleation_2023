@@ -501,7 +501,9 @@ def cli_ensembleinfo_merge(cli_args=None):
         for ifile, filepath in enumerate(tqdm.tqdm(args.files)):
             with h5py.File(filepath) as file:
                 if ifile == 0:
-                    g5.copy(file, output, ["/ensemble", "/meta"])
+                    g5.copy(file, output, ["/meta/normalisation/N"])
+                    if "ensemble" in file:
+                        g5.copy(file, output, ["/ensemble"])
                     paths = list(g5.getdatasets(file, max_depth=1))
                     paths.remove("/ensemble/...")
                     paths.remove("/meta/...")
