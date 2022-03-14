@@ -399,7 +399,10 @@ def cli_ensembleinfo(cli_args=None):
                     weaklayer = np.all(np.in1d(system.plastic(), partial.element_list()))
                     assert weaklayer
 
-                out = basic_output(system, file, norm=norm, verbose=False)
+                try:
+                    out = basic_output(system, file, norm=norm, verbose=False)
+                except AssertionError:
+                    print(f'Treating "{filepath}" as broken')
 
                 for key in out:
                     output[f"/full/{os.path.basename(filepath)}/{key}"] = out[key]
