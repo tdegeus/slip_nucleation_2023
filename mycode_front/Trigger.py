@@ -510,8 +510,10 @@ def cli_ensembleinfo_merge(cli_args=None):
                     paths.remove("/run_dependencies/...")
                     paths = [i[1:] for i in paths]  # split "/"
                 else:
-                    assert g5.allequal(file, output, g5.getdatapaths(file, "/ensemble"))
-                    assert g5.allequal(file, output, g5.getdatapaths(file, "/meta"))
+                    if "ensemble" in output:
+                        assert g5.allequal(file, output, g5.getdatapaths(file, "/ensemble"))
+                    if "meta" in output:
+                        assert g5.allequal(file, output, g5.getdatapaths(file, "/meta"))
 
                 for k in paths:
                     if k not in ret:
