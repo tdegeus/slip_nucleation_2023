@@ -322,7 +322,7 @@ def basic_output(system: model.System, file: h5py.File, norm: dict, verbose: boo
         ret["S"][i] = np.sum(idx - idx_n)
         ret["A"][i] = np.sum(idx != idx_n)
 
-    assert np.all(np.equal(ret["A"], file["/A"][...]))
+    assert np.all(file["/A"][...] >= ret["A"])
     ret["t"] = file["/t"][...] / norm["t0"]
 
     ret["Epsbar"] /= norm["eps0"]
