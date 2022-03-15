@@ -25,10 +25,12 @@ from ._version import version
 entry_points = dict(
     cli_run="MeasureDynamics_run",
     cli_ensembleinfo="MeasureDynamics_EnsembleInfo",
+    cli_spatialaverage_sync_A="MeasureDynamics_SpatialAverage_sync-A",
 )
 
 file_defaults = dict(
     cli_ensembleinfo="MeasureDynamics_EnsembleInfo.h5",
+    cli_spatialaverage_sync_A="MeasureDynamics_SpatialAverage_sync-A.h5",
 )
 
 
@@ -341,6 +343,65 @@ def basic_output(system: model.System, file: h5py.File, norm: dict, verbose: boo
     return ret
 
 
+def basic_spatial_sync_A(system: model.System, file: h5py.File, verbose: bool = True) -> dict:
+    """
+    Read basic output from simulation.
+
+    :param system: The system (modified: all increments visited).
+    :param file: Open simulation HDF5 archive (read-only).
+    :param verbose: Print progress.
+
+    :return: Basic information per A::
+        Eps: Strain tensor [N + 1, N, 2, 2].
+        Sig: Stress tensor [N + 1, N, 2, 2].
+        epsp: Plastic strain [N + 1, N].
+        s: Number of times a block yielded [N + 1, N].
+        mask: If ``True`` no data was read for that array [N + 1].
+    """
+
+    doflist = file["/doflist"][...]
+    vector = system.vector()
+    udof = np.zeros(vector.shape_dofval())
+    N = system.plastic().size
+
+    ret = {}
+    ret["Eps"] = np.empty((N + 1, N, 2, 2), dtype=float)
+    ret["Sig"] = np.empty((N + 1, N, 2, 2), dtype=float)
+    ret["epsp"] = np.empty((N + 1, N), dtype=float)
+    ret["s"] = np.empty((N + 1, N), dtype=int)
+    ret["mask"] = np.ones((N + 1), dtype=bool)
+
+    for i, iiter in enumerate(file["/stored"][...]):
+
+        udof[doflist] = file[f"/u/{iiter:d}"]
+        system.setU(vector.AsNode(udof))
+
+        if i == 0:
+            idx_n = system.plastic_CurrentIndex().astype(int)[:, 0]
+
+        idx = system.plastic_CurrentIndex().astype(int)[:, 0]
+
+        A = np.sum(idx != idx_n)
+
+        if not ret["mask"][A]:
+            continue
+
+        ret["mask"][A] = False
+        ret["Eps"][A, ...] = np.mean(system.plastic_Eps(), axis=1)
+        ret["Sig"][A, ...] = np.mean(system.plastic_Sig(), axis=1)
+        ret["epsp"][A, ...] = np.mean(system.plastic_Epsp(), axis=1)
+        ret["s"][A, ...] = idx - idx_n
+
+        if A >= N:
+            break
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    tools.check_docstring(doc, ret, ":return:")
+
+    return ret
+
+
 def cli_ensembleinfo(cli_args=None):
     """
     Read and store basic info from individual runs.
@@ -408,3 +469,71 @@ def cli_ensembleinfo(cli_args=None):
                     output[f"/full/{os.path.basename(filepath)}/{key}"] = out[key]
 
         output["/stored"] = [os.path.basename(i) for i in args.files]
+
+
+def cli_spatialaverage_sync_A(cli_args=None):
+    """
+    Get spatial average of growing events.
+    """
+
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    entry_points[funcname]
+    output = file_defaults[funcname]
+
+    parser.add_argument("--develop", action="store_true", help="Development mode")
+    parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
+    parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
+    parser.add_argument("-p", "--sourcedir", type=str, default=".", help="Source directory")
+    parser.add_argument("files", nargs="*", type=str, help="Files to read")
+
+    args = tools._parse(parser, cli_args)
+    assert len(args.files) > 0
+    assert all([os.path.isfile(file) for file in args.files])
+    tools._check_overwrite_file(args.output, args.force)
+
+    fmt = "{:" + str(max(len(i) for i in args.files)) + "s}"
+    pbar = tqdm.tqdm(args.files)
+    pbar.set_description(fmt.format(""))
+
+    with h5py.File(args.output, "w") as output:
+
+        for ifile, filepath in enumerate(pbar):
+
+            pbar.set_description(fmt.format(filepath), refresh=True)
+
+            with h5py.File(filepath, "r") as file:
+
+                meta = file[f"/meta/{entry_points['cli_run']}"]
+                sourcepath = os.path.join(args.sourcedir, meta.attrs["file"])
+                assert os.path.isfile(sourcepath)
+
+                with h5py.File(sourcepath, "r") as source:
+                    system = System.System(source)
+
+                if ifile == 0:
+                    partial = tools.PartialDisplacement(
+                        conn=system.conn(),
+                        dofs=system.dofs(),
+                        dof_list=file["/doflist"][...],
+                    )
+                    weaklayer = np.all(np.in1d(system.plastic(), partial.element_list()))
+                    assert weaklayer
+
+                try:
+                    out = basic_spatial_sync_A(system, file, verbose=False)
+                except AssertionError:
+                    print(f'Treating "{filepath}" as broken')
+
+                for key in out:
+                    output[f"/full/{os.path.basename(filepath)}/{key}"] = out[key]
+
+            output["/stored"] = [os.path.basename(i) for i in args.files]
