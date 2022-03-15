@@ -536,4 +536,4 @@ def cli_spatialaverage_syncA(cli_args=None):
                 for key in out:
                     output[f"/full/{os.path.basename(filepath)}/{key}"] = out[key]
 
-            output["/stored"] = [os.path.basename(i) for i in args.files]
+        output["/stored"] = [os.path.basename(i) for i in args.files]
