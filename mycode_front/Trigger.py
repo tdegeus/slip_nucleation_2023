@@ -731,7 +731,8 @@ def cli_job_rerun_dynamics(cli_args=None):
     parser.add_argument("--conda", type=str, default=slurm.default_condabase, help="Env-basename")
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("--group", type=int, default=5, help="#simulations to group")
-    parser.add_argument("--skip", type=int, default=1, help="Number bins to skip")
+    parser.add_argument("--skip", type=int, default=0, help="Number bins to skip")
+    parser.add_argument("--ibin", type=int, help="Choose one bin")
     parser.add_argument("--test", action="store_true", help="Test mode")
     parser.add_argument("--time", type=str, default="24h", help="Walltime")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
@@ -775,6 +776,11 @@ def cli_job_rerun_dynamics(cli_args=None):
         )
 
         for ibin in range(args.skip, args.bins):
+
+            if args.ibin is not None:
+                if ibin != args.ibin:
+                    continue
+
             keep = bin_index == ibin
             if np.sum(keep) == 0:
                 continue
