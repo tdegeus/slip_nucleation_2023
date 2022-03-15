@@ -25,12 +25,12 @@ from ._version import version
 entry_points = dict(
     cli_run="MeasureDynamics_run",
     cli_ensembleinfo="MeasureDynamics_EnsembleInfo",
-    cli_spatialaverage_sync_A="MeasureDynamics_SpatialAverage_sync-A",
+    cli_spatialaverage_syncA="MeasureDynamics_SpatialAverage_syncA",
 )
 
 file_defaults = dict(
     cli_ensembleinfo="MeasureDynamics_EnsembleInfo.h5",
-    cli_spatialaverage_sync_A="MeasureDynamics_SpatialAverage_sync-A.h5",
+    cli_spatialaverage_syncA="MeasureDynamics_SpatialAverage_syncA.h5",
 )
 
 
@@ -471,7 +471,7 @@ def cli_ensembleinfo(cli_args=None):
         output["/stored"] = [os.path.basename(i) for i in args.files]
 
 
-def cli_spatialaverage_sync_A(cli_args=None):
+def cli_spatialaverage_syncA(cli_args=None):
     """
     Get spatial average of growing events.
     """

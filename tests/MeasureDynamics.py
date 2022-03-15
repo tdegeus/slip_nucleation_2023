@@ -104,7 +104,7 @@ class MyTests(unittest.TestCase):
         my.MeasureDynamics.cli_ensembleinfo(
             ["--dev", "-f", "--source", os.path.abspath(dirname), "-o", info, outname]
         )
-        my.MeasureDynamics.cli_spatialaverage_sync_A(
+        my.MeasureDynamics.cli_spatialaverage_syncA(
             ["--dev", "-f", "--source", os.path.abspath(dirname), "-o", syncA, outname]
         )
 
