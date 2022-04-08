@@ -237,24 +237,20 @@ def pinsystem(system: model.System, target_element: int, target_A: int) -> np.nd
     nip = system.quad().nip()
     pinned = pinning(system, target_element, target_A)
     idx = system.plastic_CurrentIndex()
-    material = system.material()
     material_plastic = system.material_plastic()
 
     for i, e in enumerate(plastic):
         if pinned[i]:
             for q in range(nip):
-                for cusp in [
-                    material.refCusp([e, q]),
-                    material_plastic.refCusp([i, q]),
-                ]:
-                    chunk = cusp.refQPotChunked()
-                    y = chunk.y()
-                    ymax = y[-1]  # get some scale
-                    ii = int(idx[i, q])
-                    jj = int(idx[i, q] + 2)  # slicing is up to not including
-                    y = y[ii:jj]
-                    ymin = 0.5 * sum(y)  # current minimum
-                    chunk.set_y([ymin - 2 * ymax, ymin + 2 * ymax])
+                cusp = material_plastic.refCusp([i, q])
+                chunk = cusp.refQPotChunked()
+                y = chunk.y()
+                ymax = y[-1]  # get some scale
+                ii = int(idx[i, q])
+                jj = int(idx[i, q] + 2)  # slicing is up to not including
+                y = y[ii:jj]
+                ymin = 0.5 * sum(y)  # current minimum
+                chunk.set_y([ymin - 2 * ymax, ymin + 2 * ymax])
 
     return pinned
 
