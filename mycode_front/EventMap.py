@@ -13,14 +13,13 @@ import sys
 import textwrap
 
 import FrictionQPotFEM  # noqa: F401
-import FrictionQPotFEM.UniformSingleLayer2d as model
 import GMatElastoPlasticQPot  # noqa: F401
 import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 import tqdm
 
-from . import System
+from . import QuasiStatic
 from . import tools
 from ._version import version
 
@@ -48,7 +47,7 @@ def replace_ep(doc: str) -> str:
     return doc
 
 
-def runinc_event_basic(system: model.System, file: h5py.File, inc: int, Smax=None) -> dict:
+def runinc_event_basic(system: QuasiStatic.System, file: h5py.File, inc: int, Smax=None) -> dict:
     """
     Rerun increment and get basic event information.
 
@@ -59,9 +58,11 @@ def runinc_event_basic(system: model.System, file: h5py.File, inc: int, Smax=Non
     :return: A dictionary as follows::
 
         r: Position of yielding event (block index).
-        t: Time of each yielding event.
+        t: Time of each yielding event (real units).
         S: Size (signed) of the yielding event.
     """
+
+    assert type(system) == QuasiStatic.System
 
     stored = file["/stored"][...]
 
@@ -70,7 +71,7 @@ def runinc_event_basic(system: model.System, file: h5py.File, inc: int, Smax=Non
 
     assert inc - 1 in stored
 
-    System._restore_inc(file, system, inc - 1)
+    system.restore_inc(file, inc - 1)
     idx_n = system.plastic_CurrentIndex()[:, 0].astype(int)
     idx_t = system.plastic_CurrentIndex()[:, 0].astype(int)
     deps = file["/run/epsd/kick"][...]
@@ -142,7 +143,7 @@ def cli_run(cli_args=None):
     tools._check_overwrite_file(args.output, args.force)
 
     with h5py.File(args.file, "r") as file:
-        system = System.init(file)
+        system = QuasiStatic.System(file)
         ret = runinc_event_basic(system, file, args.inc, args.smax)
 
     with h5py.File(args.output, "w") as file:
@@ -150,7 +151,7 @@ def cli_run(cli_args=None):
         file["t"] = ret["t"]
         file["S"] = ret["S"]
 
-        meta = System.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
+        meta = QuasiStatic.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
         meta.attrs["file"] = args.file
         meta.attrs["inc"] = args.inc
         meta.attrs["Smax"] = args.smax if args.smax else sys.maxsize
@@ -235,4 +236,4 @@ def cli_basic_output(cli_args=None):
             [";".join(i) for i in data["dependencies"]], file, "/dependencies", split=";"
         )
 
-        System.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
+        QuasiStatic.create_check_meta(file, f"/meta/{progname}", dev=args.develop)

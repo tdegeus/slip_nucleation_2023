@@ -17,9 +17,9 @@ import numpy as np
 import tqdm
 from numpy.typing import ArrayLike
 
+from . import QuasiStatic
 from . import slurm
 from . import storage
-from . import System
 from . import tools
 from ._version import version
 
@@ -108,7 +108,7 @@ def interpret_filename(filepath: str, convert: bool = False) -> dict:
 def generate(*args, **kwargs):
     """
     Generate input file.
-    See :py:func:`System.generate`. On top of that:
+    See :py:func:`mycode_front.QuasiStatic.generate`. On top of that:
 
     :param gammadot: The shear-rate to prescribe.
     :param output: Output storage interval.
@@ -123,7 +123,7 @@ def generate(*args, **kwargs):
     snapshot = kwargs.pop("snapshot")
 
     progname = entry_points["cli_generate"]
-    System.generate(*args, **kwargs)
+    QuasiStatic.generate(*args, **kwargs)
 
     with h5py.File(kwargs["filepath"], "a") as file:
 
@@ -291,11 +291,9 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
 
     with h5py.File(filepath, "a") as file:
 
-        system = System.init(file)
-        norm = System.normalisation(file)
-        sig0 = norm["sig0"]
-        eps0 = norm["eps0"]
-        meta = System.create_check_meta(file, f"/meta/{progname}", dev=dev)
+        system = QuasiStatic.DimensionlessSystem(file)
+        meta = QuasiStatic.create_check_meta(file, f"/meta/{progname}", dev=dev)
+        dV = system.plastic_dV(rank=2)
 
         if "completed" in meta.attrs:
             print(f'"{basename}": marked completed, skipping')
@@ -308,10 +306,6 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
         restart = file["/restart/interval"][...]
         snapshot = file["/snapshot/interval"][...] if "/snapshot/interval" in file else sys.maxsize
         v = system.affineSimpleShear(file["/gammadot"][...])
-
-        plastic = system.plastic()
-        dV = system.quad().AsTensor(2, system.quad().dV())
-        dV_plas = dV[plastic, ...]
 
         boundcheck = file["/boundcheck"][...]
         nchunk = file["/cusp/epsy/nchunk"][...] - boundcheck
@@ -369,16 +363,16 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
                 for key in ["/output/sig", "/output/eps"]:
                     file[key].resize((3, i + 1))
 
-                Eps_weak = np.average(system.plastic_Eps(), weights=dV_plas, axis=(0, 1)) / eps0
-                Sig_weak = np.average(system.plastic_Sig(), weights=dV_plas, axis=(0, 1)) / sig0
+                Eps_weak = np.average(system.plastic_Eps(), weights=dV, axis=(0, 1))
+                Sig_weak = np.average(system.plastic_Sig(), weights=dV, axis=(0, 1))
 
                 fext = system.fext()[top, 0]
                 fext[0] += fext[-1]
-                fext = np.mean(fext[:-1]) / h / sig0
+                fext = np.mean(fext[:-1]) / h / system.normalisation["sig0"]
 
                 file["/output/inc"][i] = inc
                 file["/output/fext"][i] = fext
-                file["/output/epsp"][i] = np.mean(system.plastic_Epsp()) / eps0
+                file["/output/epsp"][i] = np.mean(system.plastic_Epsp())
                 file["/output/eps"][:, i] = Eps_weak.ravel()[[0, 1, 3]]
                 file["/output/sig"][:, i] = Sig_weak.ravel()[[0, 1, 3]]
                 file.flush()
@@ -444,7 +438,7 @@ def basic_output(file: h5py.File, interval=400) -> dict:
     """
 
     gammadot = file["/gammadot"][...]
-    norm = System.normalisation(file)
+    norm = QuasiStatic.normalisation(file)
 
     dt = norm["dt"]
     t0 = norm["t0"]
@@ -604,7 +598,7 @@ def cli_branch_velocityjump(cli_args=None):
                     [f"/meta/{entry_points['cli_run']}_source"],
                 )
 
-                meta = System.create_check_meta(dest, f"/meta/{progname}", dev=args.develop)
+                meta = QuasiStatic.create_check_meta(dest, f"/meta/{progname}", dev=args.develop)
                 meta.attrs["inc"] = args.inc
 
                 dest["/gammadot"][...] = out_gammadot

@@ -10,7 +10,8 @@ root = os.path.join(os.path.dirname(__file__), "..")
 if os.path.exists(os.path.join(root, "mycode_front", "_version.py")):
     sys.path.insert(0, os.path.abspath(root))
 
-import mycode_front as my  # noqa: E402
+from mycode_front import QuasiStatic  # noqa: E402
+from mycode_front import PinAndTrigger  # noqa: E402
 
 dirname = "mytest"
 idname = "id=0.h5"
@@ -32,9 +33,9 @@ class MyTests(unittest.TestCase):
             os.makedirs(dirname)
 
         N = 9
-        my.System.generate(filename, N=N, test_mode=True, dev=True)
-        my.System.cli_run(["--develop", filename])
-        my.System.cli_ensembleinfo([filename, "--output", infoname, "--dev"])
+        QuasiStatic.generate(filename, N=N, test_mode=True, dev=True)
+        QuasiStatic.cli_run(["--develop", filename])
+        QuasiStatic.cli_ensembleinfo([filename, "--output", infoname, "--dev"])
 
     @classmethod
     def tearDownClass(self):
@@ -64,7 +65,7 @@ class MyTests(unittest.TestCase):
 
         for pushname, incc in zip(pushnames, pushincs):
 
-            my.PinAndTrigger.cli_run(
+            PinAndTrigger.cli_run(
                 [
                     "--file",
                     filename,
@@ -89,7 +90,7 @@ class MyTests(unittest.TestCase):
             if os.path.isfile(file):
                 os.remove(file)
 
-        my.PinAndTrigger.cli_collect(
+        PinAndTrigger.cli_collect(
             [
                 "--output",
                 collectname1,
@@ -99,7 +100,7 @@ class MyTests(unittest.TestCase):
             + pushnames[:2]
         )
 
-        my.PinAndTrigger.cli_collect(
+        PinAndTrigger.cli_collect(
             [
                 "--output",
                 collectname2,
@@ -109,7 +110,7 @@ class MyTests(unittest.TestCase):
             + pushnames[2:]
         )
 
-        my.PinAndTrigger.cli_collect_combine(
+        PinAndTrigger.cli_collect_combine(
             [
                 "--output",
                 collectname,
@@ -123,13 +124,13 @@ class MyTests(unittest.TestCase):
         interpret = os.path.join(dirname, "myinterpret.h5")
         spatial = os.path.join(dirname, "myspatial.h5")
 
-        my.PinAndTrigger.cli_output_scalar(["-f", "-i", infoname, "-o", interpret, collectname])
+        PinAndTrigger.cli_output_scalar(["-f", "-i", infoname, "-o", interpret, collectname])
 
-        my.PinAndTrigger.cli_output_spatial(["-f", "-i", infoname, "-o", spatial, collectname])
+        PinAndTrigger.cli_output_spatial(["-f", "-i", infoname, "-o", spatial, collectname])
 
         # PinAndTrigger : extract dynamics (try running only, not really test)
 
-        paths = my.PinAndTrigger.cli_getdynamics_sync_A_job(
+        paths = PinAndTrigger.cli_getdynamics_sync_A_job(
             ["-c", collectname, "-i", infoname, "--group", 2, dirname]
         )
 
@@ -138,15 +139,15 @@ class MyTests(unittest.TestCase):
             f = os.path.basename(path)
             pwd = os.getcwd()
             os.chdir(d)
-            my.PinAndTrigger.cli_getdynamics_sync_A([f])
+            PinAndTrigger.cli_getdynamics_sync_A([f])
             os.chdir(pwd)
 
-        my.PinAndTrigger.cli_getdynamics_sync_A_combine(
+        PinAndTrigger.cli_getdynamics_sync_A_combine(
             ["-f", "-o", os.path.join(dirname, "mydynamics.h5")]
             + [path.replace(".yaml", ".h5") for path in paths]
         )
 
-        my.PinAndTrigger.cli_getdynamics_sync_A_average(
+        PinAndTrigger.cli_getdynamics_sync_A_average(
             [
                 "-f",
                 "-o",
@@ -162,13 +163,13 @@ class MyTests(unittest.TestCase):
         Tries running only, not really a test
         """
 
-        my.PinAndTrigger.cli_job(["-a", 4, infoname, "-o", dirname, "-n", int(1e9)])
+        PinAndTrigger.cli_job(["-a", 4, infoname, "-o", dirname, "-n", int(1e9)])
 
         pwd = os.getcwd()
         os.chdir(dirname)
         with open("PinAndTrigger_1-of-1.slurm") as file:
             cmd = file.read().split("\n")[-3].split("stdbuf -o0 -e0 PinAndTrigger ")[1].split(" ")
-            my.PinAndTrigger.cli_run(cmd)
+            PinAndTrigger.cli_run(cmd)
         os.chdir(pwd)
 
 

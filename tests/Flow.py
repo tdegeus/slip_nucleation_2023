@@ -9,7 +9,7 @@ root = os.path.join(os.path.dirname(__file__), "..")
 if os.path.exists(os.path.join(root, "mycode_front", "_version.py")):
     sys.path.insert(0, os.path.abspath(root))
 
-import mycode_front as my  # noqa: E402
+from mycode_front import Flow  # noqa: E402
 
 dirname = "mytest"
 
@@ -39,18 +39,16 @@ class MyTests(unittest.TestCase):
         """
 
         N = 9
-        files = my.Flow.cli_generate(["-N", N, "--dev", dirname])
+        files = Flow.cli_generate(["-N", N, "--dev", dirname])
 
         with h5py.File(files[-1], "a") as file:
             file["/boundcheck"][...] = 193
 
-        my.Flow.cli_run(["--develop", files[-1]])
-        my.Flow.cli_ensembleinfo(["-o", os.path.join(dirname, "einfo.h5"), files[-1]])
+        Flow.cli_run(["--develop", files[-1]])
+        Flow.cli_ensembleinfo(["-o", os.path.join(dirname, "einfo.h5"), files[-1]])
 
-        branch = my.Flow.cli_branch_velocityjump(
-            ["--dev", "-o", dirname, "-i", "250000", files[-1]]
-        )
-        my.Flow.cli_run(["--dev", branch[-1]])
+        branch = Flow.cli_branch_velocityjump(["--dev", "-o", dirname, "-i", "250000", files[-1]])
+        Flow.cli_run(["--dev", branch[-1]])
 
 
 if __name__ == "__main__":

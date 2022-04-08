@@ -11,7 +11,7 @@ root = os.path.join(os.path.dirname(__file__), "..")
 if os.path.exists(os.path.join(root, "mycode_front", "_version.py")):
     sys.path.insert(0, os.path.abspath(root))
 
-import mycode_front as my  # noqa: E402
+from mycode_front import QuasiStatic  # noqa: E402
 
 dirname = "mytest"
 idname = "id=0.h5"
@@ -33,9 +33,9 @@ class MyTests(unittest.TestCase):
             os.makedirs(dirname)
 
         N = 9
-        my.System.generate(filename, N=N, test_mode=True, dev=True)
-        my.System.cli_run(["--develop", filename])
-        my.System.cli_ensembleinfo([filename, "--output", infoname, "--dev"])
+        QuasiStatic.generate(filename, N=N, test_mode=True, dev=True)
+        QuasiStatic.cli_run(["--develop", filename])
+        QuasiStatic.cli_ensembleinfo([filename, "--output", infoname, "--dev"])
 
     @classmethod
     def tearDownClass(self):
@@ -52,13 +52,15 @@ class MyTests(unittest.TestCase):
         if not os.path.isdir(mygendir):
             os.makedirs(mygendir)
 
-        my.System.cli_generate(["--dev", mygendir])
+        QuasiStatic.cli_generate(["--dev", mygendir])
 
     def test_status(self):
         """
         Check that file was completed.
         """
-        ret = my.System.cli_status(["-k", f"/meta/{my.System.entry_points['cli_run']}", filename])
+        ret = QuasiStatic.cli_status(
+            ["-k", f"/meta/{QuasiStatic.entry_points['cli_run']}", filename]
+        )
         self.assertEqual(ret, {"completed": [filename], "new": [], "partial": []})
 
     def test_small(self):
@@ -79,19 +81,19 @@ class MyTests(unittest.TestCase):
         self.assertTrue(np.allclose(sigd[1:], historic["sigd"][3:]))
 
         # function call without without check
-        my.System.interface_state({filename: incs[-2:]})
+        QuasiStatic.interface_state({filename: incs[-2:]})
 
     def test_generate_rerun(self):
 
-        my.System.cli_rerun_event_job_systemspanning(
+        QuasiStatic.cli_rerun_event_job_systemspanning(
             ["-f", "-o", os.path.join(dirname, "eventmap"), infoname]
         )
 
-        my.System.cli_rerun_dynamics_job_systemspanning(
+        QuasiStatic.cli_rerun_dynamics_job_systemspanning(
             ["-f", "-o", os.path.join(dirname, "rerundynamics"), infoname]
         )
 
-        my.System.cli_state_after_systemspanning(
+        QuasiStatic.cli_state_after_systemspanning(
             ["-f", "-o", os.path.join(dirname, "state"), infoname]
         )
 

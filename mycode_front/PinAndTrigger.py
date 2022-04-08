@@ -26,8 +26,8 @@ import tqdm
 import yaml
 from nested_dict import nested_dict
 
+from . import QuasiStatic
 from . import slurm
-from . import System
 from . import tag
 from . import tools
 from ._version import version
@@ -111,7 +111,7 @@ def interpret_filename(filepath: str, convert: bool = False) -> dict:
 
 
 def pushincrements(
-    system: model.System,
+    system: QuasiStatic.System | QuasiStatic.DimensionlessSystem,
     file: h5py.File,
     target_stress: float,
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -126,10 +126,9 @@ def pushincrements(
         ``inc_push`` List of increment from which the stress can be reached by elastic loading only.
     """
 
-    warnings.warn("deprecated in favour if System.branch_fixed_stress", DeprecationWarning)
+    warnings.warn("deprecated in favour if QuasiStatic.branch_fixed_stress", DeprecationWarning)
 
-    plastic = system.plastic()
-    N = plastic.size
+    N = system.N
     kick = file["/kick"][...].astype(bool)
     incs = file["/stored"][...].astype(int)
     assert all(incs == np.arange(incs.size))
@@ -137,7 +136,7 @@ def pushincrements(
     assert all(np.logical_not(kick[::2]))
     assert all(kick[1::2])
 
-    output = System.basic_output(system, file, verbose=False)
+    output = QuasiStatic.basic_output(system, file, verbose=False)
 
     Stress = output["sigd"] * output["sig0"]
     A = output["A"]
@@ -173,7 +172,9 @@ def pushincrements(
     return inc_system_ret, inc_push
 
 
-def pinning(system: model.System, target_element: int, target_A: int) -> np.ndarray:
+def pinning(
+    system: QuasiStatic.System | QuasiStatic.DimensionlessSystem, target_element: int, target_A: int
+) -> np.ndarray:
     r"""
     Return pinning used in ``pinsystem``.
 
@@ -189,8 +190,7 @@ def pinning(system: model.System, target_element: int, target_A: int) -> np.ndar
     :return: Per element: pinned (``True``) or not (``False``)
     """
 
-    plastic = system.plastic()
-    N = plastic.size
+    N = system.N
 
     assert target_A <= N
     assert target_element <= N
@@ -215,7 +215,9 @@ def pinning(system: model.System, target_element: int, target_A: int) -> np.ndar
     return pinned
 
 
-def pinsystem(system: model.System, target_element: int, target_A: int) -> np.ndarray:
+def pinsystem(
+    system: QuasiStatic.System | QuasiStatic.DimensionlessSystem, target_element: int, target_A: int
+) -> np.ndarray:
     r"""
     Pin down part of the system.
     This converts a number of blocks to being elastic:
@@ -301,7 +303,7 @@ def cli_run(cli_args=None):
 
     with h5py.File(args.file, "r") as file:
 
-        system = System.init(file)
+        system = QuasiStatic.System(file)
         eps_kick = file["/run/epsd/kick"][...]
 
         # (*) Determine at which increment a push could be applied
@@ -343,7 +345,7 @@ def cli_run(cli_args=None):
         meta = output.create_group(f"/meta/{progname}")
         meta.attrs["file"] = os.path.relpath(args.file, os.path.dirname(args.output))
         meta.attrs["version"] = version
-        meta.attrs["dependencies"] = System.dependencies(model)
+        meta.attrs["dependencies"] = QuasiStatic.dependencies(model)
         meta.attrs["target_stress"] = target_stress
         meta.attrs["target_inc_system"] = target_inc_system
         meta.attrs["target_A"] = target_A
@@ -413,11 +415,13 @@ def cli_collect(cli_args=None):
         if "meta" not in output:
             meta = output.create_group("meta")
             meta.attrs["version"] = version
-            meta.attrs["dependencies"] = System.dependencies(model)
+            meta.attrs["dependencies"] = QuasiStatic.dependencies(model)
         else:
             meta = output["meta"]
             assert tag.greater_equal(version, meta.attrs["version"])
-            assert tag.all_greater_equal(System.dependencies(model), meta.attrs["dependencies"])
+            assert tag.all_greater_equal(
+                QuasiStatic.dependencies(model), meta.attrs["dependencies"]
+            )
 
         for filepath in tqdm.tqdm(args.files):
 
@@ -440,7 +444,9 @@ def cli_collect(cli_args=None):
                 info = interpret_filename(os.path.basename(filepath), convert=True)
                 meta = file["/meta/{:s}".format(entry_points["cli_run"])]
                 assert tag.greater_equal(version, meta.attrs["version"])
-                assert tag.all_greater_equal(System.dependencies(model), meta.attrs["dependencies"])
+                assert tag.all_greater_equal(
+                    QuasiStatic.dependencies(model), meta.attrs["dependencies"]
+                )
                 assert meta.attrs["target_inc_system"] == info["incc"]
                 assert meta.attrs["target_A"] == info["A"]
                 assert meta.attrs["target_element"] == info["element"]
@@ -521,7 +527,7 @@ def cli_upgrade_collect(cli_args=None):
 
                 meta = output.create_group("meta")
                 meta.attrs["version"] = version
-                meta.attrs["dependencies"] = System.dependencies(model)
+                meta.attrs["dependencies"] = QuasiStatic.dependencies(model)
 
                 vers = str(file["/meta/version"].asstr()[...])
                 deps = sorted(str(d) for d in file["/meta/version_dependencies"].asstr()[...])
@@ -702,9 +708,9 @@ def cli_job(cli_args=None):
                 with h5py.File(filename, "r") as file:
 
                     if system is None:
-                        system = System.init(file)
+                        system = QuasiStatic.System(file)
                     else:
-                        system.reset_epsy(System.read_epsy(file))
+                        system.reset(file)
 
                     trigger, _ = pushincrements(system, file, stress)
 
@@ -841,12 +847,11 @@ def cli_job_minimal(cli_args=None):
         return commands
 
 
-def output_scalar(filepath: str, sig0: float):
+def output_scalar(filepath: str):
     """
     Interpret scalar data of an ensemble, collected by :py:func:`cli_collect`.
 
     :param filepath: File with the ensemble.
-    :param sig0: Stress normalisation.
     :return: Dictionary with output per stress/A.
     """
 
@@ -873,12 +878,11 @@ def output_scalar(filepath: str, sig0: float):
 
             with h5py.File(os.path.join(dirname, meta.attrs["file"]), "r") as simfile:
                 if system is None:
-                    system = System.init(simfile)
-                    dV = system.quad().AsTensor(2, system.quad().dV())
-                    plastic = system.plastic()
-                    plastic_dV = dV[plastic, ...]
+                    system = QuasiStatic.DimensionlessSystem(simfile)
+                    dV = system.dV(rank=2)
+                    plastic_dV = system.plastic_dV(rank=2)
                 else:
-                    system.reset_epsy(System.read_epsy(simfile))
+                    system.reset(simfile)
 
             system.setU(root["disp"]["0"][...])
             pinned = pinsystem(system, meta.attrs["target_element"], meta.attrs["target_A"])
@@ -889,10 +893,8 @@ def output_scalar(filepath: str, sig0: float):
 
             s = np.sum(idx - idx_n)
             a = np.sum(idx != idx_n)
-            Sig = np.average(system.Sig(), weights=dV, axis=(0, 1)) / sig0
+            Sig = np.average(system.Sig(), weights=dV, axis=(0, 1))
             plastic_sig = np.average(system.plastic_Sig(), weights=plastic_dV, axis=1)
-            Sig /= sig0
-            plastic_sig /= sig0
 
             stress = "stress={stress:s}".format(**info)
             A = "A={A:s}".format(**info)
@@ -954,7 +956,7 @@ def cli_output_scalar(cli_args=None):
         "-i",
         "--info",
         type=str,
-        default="{:s}.h5".format(System.entry_points["cli_ensembleinfo"]),
+        default="{:s}.h5".format(QuasiStatic.entry_points["cli_ensembleinfo"]),
         help="EnsembleInfo to read normalisation (read-only)",
     )
 
@@ -966,22 +968,18 @@ def cli_output_scalar(cli_args=None):
     assert os.path.isfile(args.file)
     assert os.path.isfile(args.info)
 
-    with h5py.File(args.info, "r") as file:
-        sig0 = file["/normalisation/sig0"][...]
-
-    data = output_scalar(args.file, sig0)
+    data = output_scalar(args.file)
 
     with h5py.File(args.output, "w") as output:
         g5.dump(output, data)
 
 
-def output_spatial(filepath: str, sig0: float):
+def output_spatial(filepath: str):
     """
     Interpret spatial average of an ensemble, collected by :py:func:`cli_collect`.
     Note that this implies interpolation to a regular grid.
 
     :param filepath: File with the ensemble.
-    :param sig0: Stress normalisation.
     :return: Dictionary with output per stress/A (as 'matrix').
     """
 
@@ -1008,8 +1006,8 @@ def output_spatial(filepath: str, sig0: float):
 
             with h5py.File(os.path.join(dirname, meta.attrs["file"]), "r") as simfile:
                 if system is None:
-                    system = System.init(simfile)
-                    dV = system.quad().AsTensor(2, system.quad().dV())
+                    system = QuasiStatic.DimensionlessSystem(simfile)
+                    dV = system.dV(rank=2)
                     plastic = system.plastic()
                     mesh = GooseFEM.Mesh.Quad4.FineLayer(system.coor(), system.conn())
                     mapping = GooseFEM.Mesh.Quad4.Map.FineLayer2Regular(mesh)
@@ -1018,7 +1016,7 @@ def output_spatial(filepath: str, sig0: float):
                     isplastic = np.zeros((system.conn().shape[0]), dtype=bool)
                     isplastic[plastic] = True
                 else:
-                    system.reset_epsy(System.read_epsy(simfile))
+                    system.reset(simfile)
 
             system.setU(root["disp"]["0"][...])
             pinsystem(system, meta.attrs["target_element"], meta.attrs["target_A"])
@@ -1031,7 +1029,7 @@ def output_spatial(filepath: str, sig0: float):
             _elmat = np.roll(elmat, shift, axis=1).ravel()
             s = np.roll(idx - idx_n, shift)
             a = np.roll(idx != idx_n, shift)
-            Sig = system.Sig() / sig0
+            Sig = system.Sig()
             Sig = np.average(Sig, weights=dV, axis=(1,))
 
             def to_regular(field):
@@ -1075,7 +1073,7 @@ def cli_output_spatial(cli_args=None):
         "-i",
         "--info",
         type=str,
-        default="{:s}.h5".format(System.entry_points["cli_ensembleinfo"]),
+        default="{:s}.h5".format(QuasiStatic.entry_points["cli_ensembleinfo"]),
         help="EnsembleInfo to read normalisation (read-only)",
     )
 
@@ -1087,10 +1085,7 @@ def cli_output_spatial(cli_args=None):
     assert os.path.isfile(args.file)
     assert os.path.isfile(args.info)
 
-    with h5py.File(args.info, "r") as file:
-        sig0 = file["/normalisation/sig0"][...]
-
-    data = output_spatial(args.file, sig0)
+    data = output_spatial(args.file)
 
     with h5py.File(args.output, "w") as output:
         for stress in data:
@@ -1105,12 +1100,10 @@ def cli_output_spatial(cli_args=None):
 
 
 def getdynamics_sync_A(
-    system: model.System,
+    system: QuasiStatic.DimensionlessSystem,
     target_element: int,
     target_A: int,
     eps_kick: float,
-    sig0: float,
-    t0: float,
 ) -> dict:
     """
     Run the dynamics of an event, saving the state at the interface at every "A".
@@ -1124,12 +1117,6 @@ def getdynamics_sync_A(
 
     :param target_A:
         Number of blocks to keep unpinned (``target_A / 2`` on both sides of ``target_element``).
-
-    :param sig0
-        Stress normalisation.
-
-    :param t0
-        Time normalisation.
 
     :param eps_kick:
         Strain kick to use.
@@ -1160,10 +1147,11 @@ def getdynamics_sync_A(
             }
     """
 
-    plastic = system.plastic()
-    N = plastic.size
-    dV = system.quad().AsTensor(2, system.quad().dV())
-    plastic_dV = dV[plastic, ...]
+    assert type(system) == QuasiStatic.DimensionlessSystem
+
+    N = system.N
+    dV = system.dV(rank=2)
+    plastic_dV = system.plastic_dV(rank=2)
     pinned = pinsystem(system, target_element, target_A)
     idx_n = system.plastic_CurrentIndex()[:, 0].astype(int)
     system.triggerElementWithLocalSimpleShear(eps_kick, target_element)
@@ -1195,14 +1183,14 @@ def getdynamics_sync_A(
             plastic_sig = np.average(system.plastic_Sig(), weights=plastic_dV, axis=1)
 
             # store to output (broadcast if needed)
-            ret["sig_xx"][a_n:a, :] = plastic_sig[:, 0, 0].reshape(1, -1) / sig0
-            ret["sig_xy"][a_n:a, :] = plastic_sig[:, 0, 1].reshape(1, -1) / sig0
-            ret["sig_yy"][a_n:a, :] = plastic_sig[:, 1, 1].reshape(1, -1) / sig0
+            ret["sig_xx"][a_n:a, :] = plastic_sig[:, 0, 0].reshape(1, -1)
+            ret["sig_xy"][a_n:a, :] = plastic_sig[:, 0, 1].reshape(1, -1)
+            ret["sig_yy"][a_n:a, :] = plastic_sig[:, 1, 1].reshape(1, -1)
             ret["idx"][a_n:a, :] = idx.reshape(1, -1)
-            ret["t"][a_n:a] = system.t() / t0
-            ret["Sig_xx"][a_n:a] = sig[0, 0] / sig0
-            ret["Sig_xy"][a_n:a] = sig[0, 1] / sig0
-            ret["Sig_yy"][a_n:a] = sig[1, 1] / sig0
+            ret["t"][a_n:a] = system.t()
+            ret["Sig_xx"][a_n:a] = sig[0, 0]
+            ret["Sig_xy"][a_n:a] = sig[0, 1]
+            ret["Sig_yy"][a_n:a] = sig[1, 1]
 
         if a >= target_A:
             break
@@ -1258,10 +1246,6 @@ def cli_getdynamics_sync_A(cli_args=None):
 
     assert os.path.isfile(config["info"])
 
-    with h5py.File(config["info"], "r") as file:
-        sig0 = file["/normalisation/sig0"][...]
-        t0 = file["/normalisation/t0"][...]
-
     system = None
 
     with h5py.File(config["output"], "w") as output:
@@ -1275,10 +1259,10 @@ def cli_getdynamics_sync_A(cli_args=None):
 
                 with h5py.File(origsim, "r") as mysim:
                     if system is None:
-                        system = System.init(mysim)
+                        system = QuasiStatic.DimensionlessSystem(mysim)
                         eps_kick = mysim["/run/epsd/kick"][...]
                     else:
-                        system.reset_epsy(System.read_epsy(mysim))
+                        system.reset(mysim)
 
                 system.setU(file["data"][path]["disp"]["0"][...])
 
@@ -1287,8 +1271,6 @@ def cli_getdynamics_sync_A(cli_args=None):
                     target_element=meta.attrs["target_element"],
                     target_A=meta.attrs["target_A"],
                     eps_kick=eps_kick,
-                    sig0=sig0,
-                    t0=t0,
                 )
 
                 for key in ret:
@@ -1335,7 +1317,7 @@ def cli_getdynamics_sync_A_job(cli_args=None):
         "-i",
         "--info",
         type=str,
-        default="{:s}.h5".format(System.entry_points["cli_ensembleinfo"]),
+        default="{:s}.h5".format(QuasiStatic.entry_points["cli_ensembleinfo"]),
         help="EnsembleInfo to read normalisation (read-only)",
     )
 

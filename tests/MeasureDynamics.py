@@ -11,7 +11,10 @@ root = os.path.join(os.path.dirname(__file__), "..")
 if os.path.exists(os.path.join(root, "mycode_front", "_version.py")):
     sys.path.insert(0, os.path.abspath(root))
 
-import mycode_front as my  # noqa: E402
+from mycode_front import QuasiStatic  # noqa: E402
+from mycode_front import MeasureDynamics  # noqa: E402
+from mycode_front import Trigger  # noqa: E402
+from mycode_front import tools  # noqa: E402
 
 dirname = "mytest"
 idname = "id=0.h5"
@@ -33,9 +36,9 @@ class MyTests(unittest.TestCase):
             os.makedirs(dirname)
 
         N = 9
-        my.System.generate(filename, N=N, test_mode=True, dev=True)
-        my.System.cli_run(["--develop", filename])
-        my.System.cli_ensembleinfo([filename, "--output", infoname, "--dev"])
+        QuasiStatic.generate(filename, N=N, test_mode=True, dev=True)
+        QuasiStatic.cli_run(["--develop", filename])
+        QuasiStatic.cli_ensembleinfo([filename, "--output", infoname, "--dev"])
 
     @classmethod
     def tearDownClass(self):
@@ -51,9 +54,9 @@ class MyTests(unittest.TestCase):
         coor = mesh.coor()
         e = mesh.elementsMiddleLayer()
 
-        assert np.all(np.equal(my.MeasureDynamics.elements_at_height(coor, conn, 0), e))
-        assert np.all(np.equal(my.MeasureDynamics.elements_at_height(coor, conn, 1), e + N))
-        assert np.all(np.equal(my.MeasureDynamics.elements_at_height(coor, conn, 2), e + N * 2))
+        assert np.all(np.equal(MeasureDynamics.elements_at_height(coor, conn, 0), e))
+        assert np.all(np.equal(MeasureDynamics.elements_at_height(coor, conn, 1), e + N))
+        assert np.all(np.equal(MeasureDynamics.elements_at_height(coor, conn, 2), e + N * 2))
 
     def test_partial_storage(self):
 
@@ -64,7 +67,7 @@ class MyTests(unittest.TestCase):
         inc = np.argwhere(A == N).ravel()[-1]
 
         with h5py.File(filename, "r") as file:
-            system = my.System.init(file)
+            system = QuasiStatic.System(file)
             u = file[f"/disp/{inc:d}"][...]
 
         plastic = system.plastic()
@@ -73,7 +76,7 @@ class MyTests(unittest.TestCase):
         Sig_p = Sig[plastic, ...]
 
         vector = system.vector()
-        partial = my.tools.PartialDisplacement(
+        partial = tools.PartialDisplacement(
             conn=system.conn(),
             dofs=system.dofs(),
             element_list=plastic,
@@ -100,31 +103,31 @@ class MyTests(unittest.TestCase):
         outname = os.path.join(dirname, f"id=0_reruninc={inc:d}.h5")
         info = os.path.join(dirname, "MeasureDynamicsEnsembleInfo.h5")
         syncA = os.path.join(dirname, "MeasureDynamics_SyncA.h5")
-        my.MeasureDynamics.cli_run(["--dev", "-f", "--inc", inc, "-o", outname, filename])
-        my.MeasureDynamics.cli_ensembleinfo(
+        MeasureDynamics.cli_run(["--dev", "-f", "--inc", inc, "-o", outname, filename])
+        MeasureDynamics.cli_ensembleinfo(
             ["--dev", "-f", "--source", os.path.abspath(dirname), "-o", info, outname]
         )
-        my.MeasureDynamics.cli_spatialaverage_syncA(
+        MeasureDynamics.cli_spatialaverage_syncA(
             ["--dev", "-f", "--source", os.path.abspath(dirname), "-o", syncA, outname]
         )
 
     def test_trigger_run(self):
 
         d = dirname
-        commands = my.Trigger.cli_job_deltasigma(
+        commands = Trigger.cli_job_deltasigma(
             ["--dev", "-f", infoname, "-d", 0.12, "-p", 1, "-o", d, "--nmax", 10]
         )
-        triggername = my.Trigger.cli_run(["--dev"] + commands[-1].split(" ")[1:])
+        triggername = Trigger.cli_run(["--dev"] + commands[-1].split(" ")[1:])
         triggerpack = os.path.join(dirname, "TriggerEnsemblePack.h5")
         triggerinfo = os.path.join(dirname, "TriggerEnsembleInfo.h5")
-        my.Trigger.cli_ensemblepack(["-f", "-o", triggerpack, triggername])
-        my.Trigger.cli_ensembleinfo(["--dev", "-f", "-o", triggerinfo, triggerpack])
+        Trigger.cli_ensemblepack(["-f", "-o", triggerpack, triggername])
+        Trigger.cli_ensembleinfo(["--dev", "-f", "-o", triggerinfo, triggerpack])
 
         with h5py.File(triggerinfo, "r") as file:
             A = file["A"][0]
 
         outname = os.path.join(dirname, "rerun_trigger.h5")
-        my.MeasureDynamics.cli_run(["--dev", "-f", "--inc", 1, "-o", outname, triggername])
+        MeasureDynamics.cli_run(["--dev", "-f", "--inc", 1, "-o", outname, triggername])
 
         with h5py.File(outname, "r") as file:
             a = file["/A"][-1]
@@ -133,7 +136,7 @@ class MyTests(unittest.TestCase):
             doflist = file["/doflist"][...]
 
         with h5py.File(triggername, "r") as file:
-            system = my.System.init(file)
+            system = QuasiStatic.System(file)
             u = file["/disp/1"][...]
             system.setU(u)
             Sig = system.plastic_Sig()
