@@ -12,7 +12,10 @@ root = os.path.join(os.path.dirname(__file__), "..")
 if os.path.exists(os.path.join(root, "mycode_front", "_version.py")):
     sys.path.insert(0, os.path.abspath(root))
 
-import mycode_front as my  # noqa: E402
+from mycode_front import QuasiStatic  # noqa: E402
+from mycode_front import Trigger  # noqa: E402
+from mycode_front import MeasureDynamics  # noqa: E402
+from mycode_front import EventMap  # noqa: E402
 
 dirname = "mytest"
 idname = "id=0.h5"
@@ -34,9 +37,9 @@ class MyTests(unittest.TestCase):
             os.makedirs(dirname)
 
         N = 9
-        my.System.generate(filename, N=N, test_mode=True, classic=False, dev=True)
-        my.System.cli_run(["--dev", filename])
-        my.System.cli_ensembleinfo(["--dev", filename, "--output", infoname])
+        QuasiStatic.generate(filename, N=N, test_mode=True, classic=False, dev=True)
+        QuasiStatic.cli_run(["--dev", filename])
+        QuasiStatic.cli_ensembleinfo(["--dev", filename, "--output", infoname])
 
     @classmethod
     def tearDownClass(self):
@@ -47,28 +50,28 @@ class MyTests(unittest.TestCase):
 
         n = 3
         opts = ["--dev", "-f", infoname, "-n", 4, "-p", 2, "-o", dirname, "--nmax", n, "-r"]
-        commands = my.Trigger.cli_job_strain(opts)
-        commands += my.Trigger.cli_job_strain(opts + ["--element", "2"])
+        commands = Trigger.cli_job_strain(opts)
+        commands += Trigger.cli_job_strain(opts + ["--element", "2"])
 
         output = []
         for command in commands:
-            output.append(my.Trigger.cli_run(command.split(" ")[1:]))
+            output.append(Trigger.cli_run(command.split(" ")[1:]))
 
         triggerpack = os.path.join(dirname, "TriggerPack.h5")
         triggerinfo = os.path.join(dirname, "TriggerInfo.h5")
-        my.Trigger.cli_ensemblepack(["-f", "-o", triggerpack] + output[:2])
-        my.Trigger.cli_ensemblepack(["-a", "-o", triggerpack] + output[2:])
-        my.Trigger.cli_ensembleinfo(["--dev", "-f", "-o", triggerinfo, triggerpack])
+        Trigger.cli_ensemblepack(["-f", "-o", triggerpack] + output[:2])
+        Trigger.cli_ensemblepack(["-a", "-o", triggerpack] + output[2:])
+        Trigger.cli_ensembleinfo(["--dev", "-f", "-o", triggerinfo, triggerpack])
 
-        extra = my.Trigger.cli_job_strain(opts + ["--filter", triggerpack])
+        extra = Trigger.cli_job_strain(opts + ["--filter", triggerpack])
         self.assertFalse(np.any(np.in1d(extra, commands)))
 
     def test_deltasigma(self):
 
         n = 5
         opts = ["--dev", "-f", infoname, "-d", 0.12, "-p", 2, "-o", dirname, "--nmax", n]
-        commands = my.Trigger.cli_job_deltasigma(opts)
-        my.Trigger.cli_job_deltasigma(opts + ["--element", "2"])
+        commands = Trigger.cli_job_deltasigma(opts)
+        Trigger.cli_job_deltasigma(opts + ["--element", "2"])
 
         # check that copying worked
 
@@ -94,31 +97,31 @@ class MyTests(unittest.TestCase):
 
         output = []
         for command in commands:
-            output.append(my.Trigger.cli_run(command.split(" ")[1:]))
+            output.append(Trigger.cli_run(command.split(" ")[1:]))
 
         triggerpack = os.path.join(dirname, "TriggerPack.h5")
         triggerpack_a = os.path.join(dirname, "TriggerPack_a.h5")
         triggerpack_b = os.path.join(dirname, "TriggerPack_b.h5")
         triggerinfo = os.path.join(dirname, "TriggerInfo.h5")
         triggerinfo_b = os.path.join(dirname, "TriggerInfo_b.h5")
-        my.Trigger.cli_ensemblepack(["-f", "-o", triggerpack_a] + output[:2])
-        my.Trigger.cli_ensemblepack(["-f", "-o", triggerpack_b] + output[2:])
-        my.Trigger.cli_ensemblepack_merge(["-f", "-o", triggerpack, triggerpack_a, triggerpack_b])
-        my.Trigger.cli_ensembleinfo(["--dev", "-f", "-o", triggerinfo, triggerpack])
-        my.Trigger.cli_ensembleinfo_merge(["--dev", "-o", triggerinfo_b, triggerinfo, triggerinfo])
+        Trigger.cli_ensemblepack(["-f", "-o", triggerpack_a] + output[:2])
+        Trigger.cli_ensemblepack(["-f", "-o", triggerpack_b] + output[2:])
+        Trigger.cli_ensemblepack_merge(["-f", "-o", triggerpack, triggerpack_a, triggerpack_b])
+        Trigger.cli_ensembleinfo(["--dev", "-f", "-o", triggerinfo, triggerpack])
+        Trigger.cli_ensembleinfo_merge(["--dev", "-o", triggerinfo_b, triggerinfo, triggerinfo])
 
         # check partial re-rendering
 
-        extra = my.Trigger.cli_job_deltasigma(opts + ["--filter", triggerpack])
+        extra = Trigger.cli_job_deltasigma(opts + ["--filter", triggerpack])
         self.assertFalse(np.any(np.in1d(extra, commands)))
 
         # check if restoring works
 
         clonename = os.path.join(dirname, "myclone.h5")
         with h5py.File(triggerinfo, "r") as file:
-            my.Trigger.restore_from_ensembleinfo(file, 0, clonename, dev=True)
+            Trigger.restore_from_ensembleinfo(file, 0, clonename, dev=True)
 
-        my.Trigger.cli_run(["--dev", clonename])
+        Trigger.cli_run(["--dev", clonename])
 
         with h5py.File(output[0], "r") as source, h5py.File(clonename, "r") as dest:
             self.assertTrue(np.allclose(source["/disp/1"][...], dest["/disp/1"][...]))
@@ -127,18 +130,18 @@ class MyTests(unittest.TestCase):
         # create ensemble to rerun dynamics and try to rerun one
 
         outdir = os.path.join(dirname, "dynamics")
-        cmd = my.Trigger.cli_job_rerun_dynamics(
+        cmd = Trigger.cli_job_rerun_dynamics(
             ["--dev", "-f", "--test", "-n", "2", "-s", dirname, "-o", outdir, triggerinfo]
         )
-        my.MeasureDynamics.cli_run(["--dev", "-f"] + cmd[0].split(" ")[1:])
+        MeasureDynamics.cli_run(["--dev", "-f"] + cmd[0].split(" ")[1:])
 
         # create ensemble to rerun EventMap and try to rerun one
 
         outdir = os.path.join(dirname, "eventmap")
-        cmd = my.Trigger.cli_job_rerun_eventmap(
+        cmd = Trigger.cli_job_rerun_eventmap(
             ["--dev", "-f", "--amin", "2", "-n", "2", "-s", dirname, "-o", outdir, triggerinfo]
         )
-        my.EventMap.cli_run(["--dev", "-f"] + cmd[0].split(" ")[1:])
+        EventMap.cli_run(["--dev", "-f"] + cmd[0].split(" ")[1:])
 
 
 if __name__ == "__main__":

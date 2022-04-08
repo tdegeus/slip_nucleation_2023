@@ -24,9 +24,9 @@ import tqdm
 
 from . import EventMap
 from . import MeasureDynamics
+from . import QuasiStatic
 from . import slurm
 from . import storage
-from . import System
 from . import tag
 from . import tools
 from ._version import version
@@ -106,11 +106,11 @@ def cli_run(cli_args=None):
         inc = int(file["/stored"][-1])
         assert not file["/trigger/truncated"][inc]
 
-        meta = System.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
-        system = System.init(file)
-        System._restore_inc(file, system, inc)
+        meta = QuasiStatic.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
+        system = QuasiStatic.System(file)
+        system.restore_inc(file, inc)
         idx_n = system.plastic_CurrentIndex()[:, 0]
-        N = system.plastic().size
+        N = system.N
         system.triggerElementWithLocalSimpleShear(file["/run/epsd/kick"][...], element)
 
         for trial in range(args.retry):
@@ -123,11 +123,11 @@ def cli_run(cli_args=None):
                 break
 
             element += 1
-            System._restore_inc(file, system, inc)
+            system.restore_inc(file, inc)
             system.triggerElementWithLocalSimpleShear(file["/run/epsd/kick"][...], element)
 
         if args.truncate_system_spanning:
-            niter = system.minimise_truncate(idx_n=idx_n, A_truncate=system.plastic().size)
+            niter = system.minimise_truncate(idx_n=idx_n, A_truncate=system.N)
         else:
             niter = system.minimise()
 
@@ -262,8 +262,8 @@ def cli_ensemblepack(cli_args=None):
     event_meta = [
         "/meta/branch_fixed_stress",
         f"/meta/{entry_points['cli_run']}",
-        f"/meta/{System.entry_points['cli_run']}",
-        f"/meta/{System.entry_points['cli_generate']}",
+        f"/meta/{QuasiStatic.entry_points['cli_run']}",
+        f"/meta/{QuasiStatic.entry_points['cli_generate']}",
         "/trigger/branched",
         "/trigger/element",
         "/trigger/truncated",
@@ -297,11 +297,13 @@ def cli_ensemblepack(cli_args=None):
 
                 # copy/check global ensemble data
                 if ifile == 0 and not args.append:
-                    datasets = System.clone(file, output, skip=skip, root="/source")
+                    datasets = QuasiStatic.clone(file, output, skip=skip, root="/source")
                     ensemble_meta = [i for i in ensemble_meta if i in file]
                     g5.copy(file, output, ensemble_meta, root="/ensemble")
                 elif ifile == 0 and args.append:
-                    datasets = System.clone(file, output, skip=skip, root="/source", dry_run=True)
+                    datasets = QuasiStatic.clone(
+                        file, output, skip=skip, root="/source", dry_run=True
+                    )
                     ensemble_meta = [i for i in ensemble_meta if i in file]
 
                 for path in datasets:
@@ -421,12 +423,12 @@ def cli_ensembleinfo(cli_args=None):
             file = pack["event"][filepath]
 
             if i == 0:
-                system = System.init(file)
-                N = system.plastic().size
+                system = QuasiStatic.DimensionlessSystem(file)
+                N = system.N
             elif simid[idx] != simid[index[i - 1]]:
-                system.reset_epsy(System.read_epsy(file))
+                system.reset(file)
 
-            out = System.basic_output(system, file, verbose=False)
+            out = QuasiStatic.basic_output(system, file, verbose=False)
             assert len(out["S"]) >= 2
             assert file["trigger"]["branched"][0]
             assert not file["trigger"]["branched"][1]
@@ -465,7 +467,7 @@ def cli_ensembleinfo(cli_args=None):
         for key in ret:
             output[key] = ret[key]
 
-        System.create_check_meta(output, f"/meta/{progname}", dev=args.develop)
+        QuasiStatic.create_check_meta(output, f"/meta/{progname}", dev=args.develop)
         output["/meta/normalisation/N"] = N
 
 
@@ -549,7 +551,7 @@ def cli_ensembleinfo_merge(cli_args=None):
         for key in ret:
             output[key] = ret[key]
 
-        System.create_check_meta(output, f"/meta/{progname}", dev=args.develop)
+        QuasiStatic.create_check_meta(output, f"/meta/{progname}", dev=args.develop)
 
 
 def restore_from_ensembleinfo(
@@ -579,14 +581,14 @@ def restore_from_ensembleinfo(
 
     with h5py.File(sourcepath, "r") as source, h5py.File(destpath, "w") as dest:
 
-        System.branch_fixed_stress(
+        QuasiStatic.branch_fixed_stress(
             source=source,
             dest=dest,
             inc=inc if inc > 0 else None,
             incc=incc,
             stress=ensembleinfo["stress"][index],
             normalised=True,
-            system=System.init(source),
+            system=QuasiStatic.System(source),
             dev=dev,
         )
 
@@ -686,7 +688,7 @@ def cli_job_rerun_eventmap(cli_args=None):
         incc = file["incc"][...]
         element = file["element"][...]
         sid = [
-            System.interpret_filename(i)["id"]
+            QuasiStatic.interpret_filename(i)["id"]
             for i in tools.h5py_read_unique(file, "file", asstr=True)
         ]
 
@@ -760,7 +762,7 @@ def cli_job_rerun_dynamics(cli_args=None):
         incc = file["incc"][...]
         element = file["element"][...]
         sid = [
-            System.interpret_filename(i)["id"]
+            QuasiStatic.interpret_filename(i)["id"]
             for i in tools.h5py_read_unique(file, "file", asstr=True)
         ]
 
@@ -893,7 +895,7 @@ def _write_configurations(
         with h5py.File(s, "r") as source_file:
 
             if i == 0:
-                system = System.init(source_file)
+                system = QuasiStatic.System(source_file)
                 output = {
                     "N": int(info["/normalisation/N"][...]),
                     "sig0": float(info["/normalisation/sig0"][...]),
@@ -909,15 +911,15 @@ def _write_configurations(
                 output["A"] = info[f"{p:s}/A"][...]
                 output["inc"] = info[f"{p:s}/inc"][...]
                 with h5py.File(tmp, "w") as dest_file:
-                    System.clone(source_file, dest_file)
-                    System._init_run_state(dest_file)
+                    QuasiStatic.clone(source_file, dest_file)
+                    QuasiStatic._init_run_state(dest_file)
                     _writeinitbranch(dest_file, element, meta)
 
             shutil.copy(tmp, d)
 
             with h5py.File(d, "a") as dest_file:
 
-                System.branch_fixed_stress(
+                QuasiStatic.branch_fixed_stress(
                     source=source_file,
                     dest=dest_file,
                     inc=inc[idx],

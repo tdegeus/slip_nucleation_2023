@@ -9,7 +9,6 @@ import os
 import textwrap
 
 import FrictionQPotFEM  # noqa: F401
-import FrictionQPotFEM.UniformSingleLayer2d as model
 import GMatElastoPlasticQPot  # noqa: F401
 import GooseFEM
 import h5py
@@ -17,8 +16,8 @@ import numpy as np
 import tqdm
 from numpy.typing import ArrayLike
 
+from . import QuasiStatic
 from . import storage
-from . import System
 from . import tools
 from ._version import version
 
@@ -127,8 +126,8 @@ def cli_run(cli_args=None):
 
     with h5py.File(args.file, "r") as file:
 
-        system = System.init(file)
-        System._restore_inc(file, system, args.inc - 1)
+        system = QuasiStatic.System(file)
+        system.restore_inc(file, args.inc - 1)
         deps = file["/run/epsd/kick"][...]
         idx_n = system.plastic_CurrentIndex()[:, 0].astype(int)
         maxiter = int((file["/t"][args.inc] - file["/t"][args.inc - 1]) / file["/run/dt"][...])
@@ -154,8 +153,8 @@ def cli_run(cli_args=None):
     )
     dofstore = partial.dof_is_stored()
     doflist = partial.dof_list()
-    dV = system.quad().AsTensor(2, system.quad().dV())
-    N = system.plastic().size
+    dV = system.dV(rank=2)
+    N = system.N
 
     # rerun dynamics and store every other time
 
@@ -164,7 +163,7 @@ def cli_run(cli_args=None):
 
     with h5py.File(args.output, "w") as file:
 
-        meta = System.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
+        meta = QuasiStatic.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
         meta.attrs["file"] = os.path.basename(args.file)
 
         A = 0  # maximal A encountered so far
@@ -252,13 +251,14 @@ def cli_run(cli_args=None):
         meta.attrs["completed"] = 1
 
 
-def basic_output(system: model.System, file: h5py.File, norm: dict, verbose: bool = True) -> dict:
+def basic_output(
+    system: QuasiStatic.DimensionlessSystem, file: h5py.File, verbose: bool = True
+) -> dict:
     """
     Read basic output from simulation.
 
     :param system: The system (modified: all increments visited).
     :param file: Open simulation HDF5 archive (read-only).
-    :param norm: Normalisation, see :py:func:`Sytem.normalisation`.
     :param verbose: Print progress.
 
     :return: Basic information as follows::
@@ -275,14 +275,14 @@ def basic_output(system: model.System, file: h5py.File, norm: dict, verbose: boo
         t: Time [ninc].
     """
 
-    if norm is None:
-        norm = System.normalisation(file)
+    if type(system) != QuasiStatic.DimensionlessSystem:
+        raise TypeError("Please input QuasiStatic.DimensionlessSystem")
 
     doflist = file["/doflist"][...]
     vector = system.vector()
     udof = np.zeros(vector.shape_dofval())
-    dVs = system.quad().dV()[system.plastic(), ...]
-    dV = system.quad().AsTensor(2, dVs)
+    dVs = system.plastic_dV()
+    dV = system.plastic_dV(rank=2)
 
     n = file["/stored"].size
     ret = {}
@@ -312,8 +312,8 @@ def basic_output(system: model.System, file: h5py.File, norm: dict, verbose: boo
         Sig = system.plastic_Sig()
         Epsp = system.plastic_Epsp()
 
-        ret["Epsbar"][i, ...] = file[f"/Eps/{iiter:d}"][...]
-        ret["Sigbar"][i, ...] = file[f"/Sig/{iiter:d}"][...]
+        ret["Epsbar"][i, ...] = file[f"/Eps/{iiter:d}"][...] / system.normalisation["eps0"]
+        ret["Sigbar"][i, ...] = file[f"/Sig/{iiter:d}"][...] / system.normalisation["sig0"]
         ret["Eps"][i, ...] = np.average(Eps, weights=dV, axis=(0, 1))
         ret["Sig"][i, ...] = np.average(Sig, weights=dV, axis=(0, 1))
         ret["epsp"][i] = np.average(Epsp, weights=dVs, axis=(0, 1))
@@ -325,16 +325,7 @@ def basic_output(system: model.System, file: h5py.File, norm: dict, verbose: boo
         ret["A"][i] = np.sum(idx != idx_n)
 
     assert np.all(file["/A"][...] >= ret["A"])
-    ret["t"] = file["/t"][...] / norm["t0"]
-
-    ret["Epsbar"] /= norm["eps0"]
-    ret["Sigbar"] /= norm["sig0"]
-    ret["Eps"] /= norm["eps0"]
-    ret["Sig"] /= norm["sig0"]
-    ret["epsp"] /= norm["eps0"]
-    ret["Eps_moving"] /= norm["eps0"]
-    ret["Sig_moving"] /= norm["sig0"]
-    ret["epsp_moving"] /= norm["eps0"]
+    ret["t"] = file["/t"][...] / system.normalisation["t0"]
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
@@ -343,9 +334,12 @@ def basic_output(system: model.System, file: h5py.File, norm: dict, verbose: boo
     return ret
 
 
-def basic_spatial_sync_A(system: model.System, file: h5py.File, verbose: bool = True) -> dict:
+def basic_spatial_sync_A(
+    system: QuasiStatic.DimensionlessSystem, file: h5py.File, verbose: bool = True
+) -> dict:
     """
     Read basic output from simulation.
+    The output is given at fixed "A" and per block along the interface.
 
     :param system: The system (modified: all increments visited).
     :param file: Open simulation HDF5 archive (read-only).
@@ -359,10 +353,13 @@ def basic_spatial_sync_A(system: model.System, file: h5py.File, verbose: bool = 
         mask: If ``True`` no data was read for that array [N + 1].
     """
 
+    if type(system) != QuasiStatic.DimensionlessSystem:
+        raise TypeError("Please input QuasiStatic.DimensionlessSystem")
+
     doflist = file["/doflist"][...]
     vector = system.vector()
     udof = np.zeros(vector.shape_dofval())
-    N = system.plastic().size
+    N = system.N
 
     ret = {}
     ret["Eps"] = np.empty((N + 1, N, 2, 2), dtype=float)
@@ -448,8 +445,10 @@ def cli_ensembleinfo(cli_args=None):
                 assert os.path.isfile(sourcepath)
 
                 with h5py.File(sourcepath, "r") as source:
-                    system = System.init(source)
-                    norm = System.normalisation(source)
+                    if ifile == 0:
+                        system = QuasiStatic.DimensionlessSystem(source)
+                    else:
+                        system.reset(source)
 
                 if ifile == 0:
                     partial = tools.PartialDisplacement(
@@ -461,9 +460,10 @@ def cli_ensembleinfo(cli_args=None):
                     assert weaklayer
 
                 try:
-                    out = basic_output(system, file, norm=norm, verbose=False)
+                    out = basic_output(system, file, verbose=False)
                 except AssertionError:
                     print(f'Treating "{filepath}" as broken')
+                    continue
 
                 for key in out:
                     output[f"/full/{os.path.basename(filepath)}/{key}"] = out[key]
@@ -517,7 +517,10 @@ def cli_spatialaverage_syncA(cli_args=None):
                 assert os.path.isfile(sourcepath)
 
                 with h5py.File(sourcepath, "r") as source:
-                    system = System.System(source)
+                    if ifile == 0:
+                        system = QuasiStatic.DimensionlessSystem(source)
+                    else:
+                        system.reset(source)
 
                 if ifile == 0:
                     partial = tools.PartialDisplacement(
@@ -532,6 +535,7 @@ def cli_spatialaverage_syncA(cli_args=None):
                     out = basic_spatial_sync_A(system, file, verbose=False)
                 except AssertionError:
                     print(f'Treating "{filepath}" as broken')
+                    continue
 
                 for key in out:
                     output[f"/full/{os.path.basename(filepath)}/{key}"] = out[key]

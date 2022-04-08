@@ -11,7 +11,7 @@ root = os.path.join(os.path.dirname(__file__), "..")
 if os.path.exists(os.path.join(root, "mycode_front", "_version.py")):
     sys.path.insert(0, os.path.abspath(root))
 
-import mycode_front as my  # noqa: E402
+from mycode_front import tools  # noqa: E402
 
 
 class MyTests(unittest.TestCase):
@@ -29,7 +29,7 @@ class MyTests(unittest.TestCase):
         element_is_stored = np.zeros(conn.shape[0], dtype=bool)
         element_is_stored[plastic] = True
 
-        store = my.tools.PartialDisplacement(conn, dofs, element_is_stored=element_is_stored)
+        store = tools.PartialDisplacement(conn, dofs, element_is_stored=element_is_stored)
 
         dof_is_stored = np.zeros(int(np.max(dofs) + 1), dtype=bool)
         dof_is_stored[(2 * 4) + np.arange(2 * 2 * 4)] = True
@@ -73,14 +73,14 @@ class MyTests(unittest.TestCase):
         ]
 
         with h5py.File(filepath, "w") as file:
-            my.tools.h5py_save_unique(a, file, "a", asstr=True)
-            a_r = my.tools.h5py_read_unique(file, "a", asstr=True)
+            tools.h5py_save_unique(a, file, "a", asstr=True)
+            a_r = tools.h5py_read_unique(file, "a", asstr=True)
 
-            my.tools.h5py_save_unique(b, file, "b")
-            b_r = my.tools.h5py_read_unique(file, "b")
+            tools.h5py_save_unique(b, file, "b")
+            b_r = tools.h5py_read_unique(file, "b")
 
-            my.tools.h5py_save_unique([";".join(i) for i in c], file, "c", split=";")
-            c_r = my.tools.h5py_read_unique(file, "c", asstr=True)
+            tools.h5py_save_unique([";".join(i) for i in c], file, "c", split=";")
+            c_r = tools.h5py_read_unique(file, "c", asstr=True)
 
         self.assertEqual(a, a_r)
         self.assertTrue(np.all(np.equal(b, b_r)))
@@ -103,7 +103,7 @@ class MyTests(unittest.TestCase):
                 b: Other text
         """
 
-        my.tools.check_docstring(docstring, dict(a=None, b=None))
+        tools.check_docstring(docstring, dict(a=None, b=None))
 
         docstring = """\
         Foo bar.
@@ -119,7 +119,7 @@ class MyTests(unittest.TestCase):
             Some notes.
         """
 
-        my.tools.check_docstring(docstring, dict(a=None, b=None))
+        tools.check_docstring(docstring, dict(a=None, b=None))
 
         docstring = """\
         Foo bar.
@@ -137,7 +137,7 @@ class MyTests(unittest.TestCase):
             Some notes.
         """
 
-        my.tools.check_docstring(docstring, dict(a=None, b=None))
+        tools.check_docstring(docstring, dict(a=None, b=None))
 
     def test_read_parameters(self):
 
@@ -162,16 +162,16 @@ class MyTests(unittest.TestCase):
             c="30.2",
         )
 
-        self.assertEqual(my.tools.read_parameters(os.path.splitext(b)[0]), string)
-        self.assertEqual(my.tools.read_parameters(a), string)
-        self.assertEqual(my.tools.read_parameters(a, convert=convert), value)
+        self.assertEqual(tools.read_parameters(os.path.splitext(b)[0]), string)
+        self.assertEqual(tools.read_parameters(a), string)
+        self.assertEqual(tools.read_parameters(a, convert=convert), value)
 
     def test_center_avalanche(self):
 
         S = np.array([1, 1, 0, 0, 0])
         T = np.array([0, 0, 1, 1, 0])
 
-        R = my.tools.center_avalanche(S)
+        R = tools.center_avalanche(S)
         C = np.roll(S, R)
 
         self.assertTrue(np.all(C == T))
@@ -182,8 +182,8 @@ class MyTests(unittest.TestCase):
 
         T = np.array([[0, 0, 1, 1, 0], [0, 0, 3, 3, 0], [0, 0, 4, 4, 0], [0, 0, 7, 9, 0]])
 
-        R = my.tools.center_avalanche_per_row(S)
-        C = my.tools.indep_roll(S, R, axis=1)
+        R = tools.center_avalanche_per_row(S)
+        C = tools.indep_roll(S, R, axis=1)
 
         self.assertTrue(np.all(C == T))
 
@@ -207,8 +207,8 @@ class MyTests(unittest.TestCase):
             ]
         )
 
-        R = my.tools.center_avalanche_per_row(S)
-        C = my.tools.indep_roll(S, R, axis=1)
+        R = tools.center_avalanche_per_row(S)
+        C = tools.indep_roll(S, R, axis=1)
 
         self.assertTrue(np.all(C == T))
 
@@ -234,8 +234,8 @@ class MyTests(unittest.TestCase):
             ]
         )
 
-        R = my.tools.center_avalanche_per_row(S)
-        C = my.tools.indep_roll(S, R, axis=1)
+        R = tools.center_avalanche_per_row(S)
+        C = tools.indep_roll(S, R, axis=1)
 
         self.assertTrue(np.all(C == T))
 
@@ -261,8 +261,8 @@ class MyTests(unittest.TestCase):
             ]
         )
 
-        R = my.tools.center_avalanche_per_row(S)
-        C = my.tools.indep_roll(S, R, axis=1)
+        R = tools.center_avalanche_per_row(S)
+        C = tools.indep_roll(S, R, axis=1)
 
         self.assertTrue(np.all(C == T))
 
@@ -286,8 +286,8 @@ class MyTests(unittest.TestCase):
             ]
         )
 
-        R = my.tools.center_avalanche_per_row(S)
-        C = my.tools.indep_roll(S, R, axis=1)
+        R = tools.center_avalanche_per_row(S)
+        C = tools.indep_roll(S, R, axis=1)
 
         self.assertTrue(np.all(C == T))
 
@@ -297,8 +297,8 @@ class MyTests(unittest.TestCase):
 
         T = np.array([[0, 0, 1, 1, 0], [0, 0, 3, 3, 0], [0, 4, 4, 4, 0], [0, 8, 7, 8, 9]])
 
-        R = my.tools.center_avalanche_per_row(S)
-        C = my.tools.indep_roll(S, R, axis=1)
+        R = tools.center_avalanche_per_row(S)
+        C = tools.indep_roll(S, R, axis=1)
 
         self.assertTrue(np.all(C == T))
 
@@ -310,7 +310,7 @@ class MyTests(unittest.TestCase):
         for i in range(a.size + 1):
             a = np.roll(a, 1)
             b = np.roll(b, 1)
-            self.assertTrue(np.all(my.tools.fill_avalanche(a) == b))
+            self.assertTrue(np.all(tools.fill_avalanche(a) == b))
 
         a = np.array([0, 0, 0, 1, 0, 1, 0, 0, 0])
         b = np.array([0, 0, 0, 1, 1, 1, 0, 0, 0])
@@ -318,7 +318,7 @@ class MyTests(unittest.TestCase):
         for i in range(a.size + 1):
             a = np.roll(a, 1)
             b = np.roll(b, 1)
-            self.assertTrue(np.all(my.tools.fill_avalanche(a) == b))
+            self.assertTrue(np.all(tools.fill_avalanche(a) == b))
 
         a = np.array([0, 0, 0, 1, 0, 1, 1, 0, 0])
         b = np.array([0, 0, 0, 1, 1, 1, 1, 0, 0])
@@ -326,7 +326,7 @@ class MyTests(unittest.TestCase):
         for i in range(a.size + 1):
             a = np.roll(a, 1)
             b = np.roll(b, 1)
-            self.assertTrue(np.all(my.tools.fill_avalanche(a) == b))
+            self.assertTrue(np.all(tools.fill_avalanche(a) == b))
 
         a = np.array([0, 0, 0, 1, 0, 1, 0, 1, 0])
         b = np.array([0, 0, 0, 1, 1, 1, 1, 1, 0])
@@ -334,7 +334,7 @@ class MyTests(unittest.TestCase):
         for i in range(a.size + 1):
             a = np.roll(a, 1)
             b = np.roll(b, 1)
-            self.assertTrue(np.all(my.tools.fill_avalanche(a) == b))
+            self.assertTrue(np.all(tools.fill_avalanche(a) == b))
 
         a = np.array([1, 0, 0, 1, 0, 1, 0, 1, 0])
         b = np.array([1, 0, 0, 1, 1, 1, 1, 1, 1])
@@ -342,7 +342,7 @@ class MyTests(unittest.TestCase):
         for i in range(a.size + 1):
             a = np.roll(a, 1)
             b = np.roll(b, 1)
-            self.assertTrue(np.all(my.tools.fill_avalanche(a) == b))
+            self.assertTrue(np.all(tools.fill_avalanche(a) == b))
 
     def test_distance(self):
 
@@ -358,7 +358,7 @@ class MyTests(unittest.TestCase):
 
         D = np.sqrt(D)
 
-        self.assertTrue(np.allclose(D, my.tools.distance(a, b)))
+        self.assertTrue(np.allclose(D, tools.distance(a, b)))
 
     def test_minimal_distance(self):
 
@@ -380,7 +380,7 @@ class MyTests(unittest.TestCase):
 
         closest = np.array([1, 1, 0, 0])
 
-        self.assertTrue(np.all(np.equal(closest, np.argmin(my.tools.distance(a, b), axis=1))))
+        self.assertTrue(np.all(np.equal(closest, np.argmin(tools.distance(a, b), axis=1))))
 
     def test_distance1d(self):
 
@@ -395,7 +395,7 @@ class MyTests(unittest.TestCase):
 
         D = np.sqrt(D)
 
-        self.assertTrue(np.allclose(D, my.tools.distance1d(a, b)))
+        self.assertTrue(np.allclose(D, tools.distance1d(a, b)))
 
     def test_minimal_distance1d(self):
 
@@ -403,7 +403,7 @@ class MyTests(unittest.TestCase):
         b = np.array([3, 0])
         closest = np.array([1, 1, 0, 0])
 
-        self.assertTrue(np.all(np.equal(closest, np.argmin(my.tools.distance1d(a, b), axis=1))))
+        self.assertTrue(np.all(np.equal(closest, np.argmin(tools.distance1d(a, b), axis=1))))
 
     def test_minimal_distance1d_negative(self):
 
@@ -411,7 +411,7 @@ class MyTests(unittest.TestCase):
         b = np.array([-2, -1, 0, 1])
         closest = np.array([0, 0, 0, 1])
 
-        self.assertTrue(np.all(np.equal(closest, np.argmin(my.tools.distance1d(b, a), axis=1))))
+        self.assertTrue(np.all(np.equal(closest, np.argmin(tools.distance1d(b, a), axis=1))))
 
 
 if __name__ == "__main__":

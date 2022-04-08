@@ -18,7 +18,7 @@ jobs:
 
     defaults:
       run:
-        shell: bash -l {0}
+        shell: bash -e -l {0}
 
     name: ${{ matrix.code }}
     runs-on: ubuntu-latest
@@ -49,10 +49,9 @@ jobs:
       run: |
         python slurm.py
         python storage.py
-        python System.py
+        python QuasiStatic.py
         python tag.py
         python tools.py
-        python System.py
         python EventMap.py
         python MeasureDynamics.py
         python Trigger.py

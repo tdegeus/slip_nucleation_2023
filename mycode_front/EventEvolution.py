@@ -10,15 +10,14 @@ from collections import defaultdict
 import click
 import enstat
 import FrictionQPotFEM  # noqa: F401
-import FrictionQPotFEM.UniformSingleLayer2d as model
 import GMatElastoPlasticQPot  # noqa: F401
 import GooseFEM  # noqa: F401
 import h5py
 import numpy as np
 import tqdm
 
+from . import QuasiStatic
 from . import storage
-from . import System
 from . import tag
 from . import tools
 from ._version import version
@@ -46,7 +45,7 @@ def replace_ep(doc):
 
 
 def trigger_and_run(
-    system: model.System,
+    system: QuasiStatic.System,
     element: int,
     deps_kick: float,
     overview_interval: int = 500,
@@ -67,12 +66,6 @@ def trigger_and_run(
     ret = defaultdict(lambda: defaultdict(dict))
 
     ret["disp"]["0"] = system.u()
-
-    # system.t()
-
-    # idx = system.plastic_CurrentIndex()[:, 0].astype(np.int64)
-    # idx_n = np.copy(idx)
-    # idx_last = np.copy(idx)
 
     system.triggerElementWithLocalSimpleShear(deps_kick, element)
 
@@ -104,7 +97,7 @@ def trigger_avalanche_ensembleinfo(
 
     :param ensembleinfo:
         Path to global EnsembleInfo (for normalisation),
-        see :py:func:`mycode_front.System.cli_ensembleinfo`
+        see :py:func:`mycode_front.QuasiStatic.cli_ensembleinfo`
 
     :return:
         A dictionary as follows::
@@ -300,7 +293,7 @@ def cli_ensembleinfo(cli_args=None):
 
     .. note::
 
-        The output of :py:func:`mycode_front.System.cli_ensembleinfo`
+        The output of :py:func:`mycode_front.QuasiStatic.cli_ensembleinfo`
         is needed for normalisation.
     """
 
@@ -427,7 +420,7 @@ def cli_spatialprofile(cli_args=None):
     """
     Collect the spatial profile of triggered avalanches
     (previously known as ``EventEvolution``)
-    in a single matrix, see :py:func:`mycode_front.System.interface_state`.
+    in a single matrix, see :py:func:`mycode_front.QuasiStatic.interface_state`.
     Note that:
     *   System-spanning events are excluded.
     *   The stress state before and after avalanche is stored (if selected).
@@ -435,7 +428,7 @@ def cli_spatialprofile(cli_args=None):
 
     .. note::
 
-        The output of :py:func:`mycode_front.System.cli_ensembleinfo`
+        The output of :py:func:`mycode_front.QuasiStatic.cli_ensembleinfo`
         is needed for normalisation.
     """
 
@@ -494,12 +487,12 @@ def cli_spatialprofile(cli_args=None):
     info = trigger_avalanche_ensembleinfo(args.files, args.ensembleinfo)
     keep = info["A"] < N
 
-    data_0 = System.interface_state(filepaths, read_disp)
+    data_0 = QuasiStatic.interface_state(filepaths, read_disp)
 
     for key in filepaths:
         filepaths[key] = [1 for i in filepaths[key]]
 
-    data_1 = System.interface_state(filepaths, read_disp)
+    data_1 = QuasiStatic.interface_state(filepaths, read_disp)
 
     with h5py.File(args.output, "w") as file:
 
@@ -540,7 +533,7 @@ def enstataverage_sync_A(
 
     :param ensembleinfo:
         Path to global EnsembleInfo (for normalisation),
-        see :py:func:`mycode_front.System.cli_ensembleinfo`.
+        see :py:func:`mycode_front.QuasiStatic.cli_ensembleinfo`.
 
     :param delta_A:
         Compute plastic strain rate based on the plastic strain and time difference between ``A``
@@ -634,7 +627,7 @@ def enstataverage_sync_A(
         sourcepath = os.path.join(sourcedir, asext["id={id}".format(**info)])
 
         with h5py.File(sourcepath, "r") as file:
-            epsy = System.read_epsy(file)
+            epsy = QuasiStatic.read_epsy(file)
             epsy = np.hstack((-epsy[:, 0].reshape(-1, 1), epsy))
 
         with h5py.File(filepath, "r") as file:
@@ -751,7 +744,7 @@ def cli_enstataverage_sync_A(cli_args=None):
 
     .. note::
 
-        The output of :py:func:`mycode_front.System.cli_ensembleinfo`
+        The output of :py:func:`mycode_front.QuasiStatic.cli_ensembleinfo`
         is needed for normalisation.
     """
 

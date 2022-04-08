@@ -1,8 +1,7 @@
 """
 -   Initialise system.
 -   Write IO file.
--   Run simulation.
--   Get basic output.
+-   Run quasi-static simulation and get basic output.
 """
 from __future__ import annotations
 
@@ -60,6 +59,12 @@ file_defaults = dict(
 
 
 class System(model.System):
+    """
+    The system.
+    Other than the underlying system this class takes an open HDF5-file to construct
+    (to which a certain structure is enforced in different parts of the module).
+    """
+
     def __init__(self, file: h5py.File):
         super().__init__(
             file["coor"][...],
@@ -77,49 +82,119 @@ class System(model.System):
         elif "/damping/alpha" in file:
             self.setDampingMatrix(file["damping/alpha"][...])
         else:
-            raise OSError("No damping found")
+            raise OSError('No damping parameter "alpha" found')
 
         if "eta" in file:
             self.setEta(file["eta"][...])
 
         self.setElastic(file["elastic"]["K"][...], file["elastic"]["G"][...])
-        self.setPlastic(file["cusp"]["K"][...], file["cusp"]["G"][...], read_epsy(file))
+
+        y = read_epsy(file)
+        self.N = y.shape[0]
+        self.nchunk = y.shape[1]
+        self.setPlastic(file["cusp"]["K"][...], file["cusp"]["G"][...], y)
+
         self.setDt(file["run"]["dt"][...])
 
-        norm = normalisation(file)
-        self.N = norm["N"]
-        self.eps0 = norm["eps0"]
-        self.sig0 = norm["sig0"]
-        self.t0 = norm["t0"]
+        self.normalisation = normalisation(file)
+
+    def reset(self, file: h5py.File):
+        """
+        Reinitialise system:
+
+        *   Read yield strains from file.
+        *   Set all displacements, velocities, and accelerations to zero.
+
+        .. tip::
+
+            For different realisations (yield strains) for the same ensemble: favour this function
+            over the constructor to avoid reallocation and file-IO.
+        """
+        self.quench()
+        self.setU(np.zeros_like(self.u()))
+        self.reset_epsy(read_epsy(file))
 
     def restore_inc(self, file: h5py.File, inc: int):
+        """
+        Quench, and read time and displacement from a file.
+        """
         self.quench()
         self.setT(file["t"][inc])
         self.setU(file["disp"][str(inc)][...])
 
+    def dV(self, rank: int = 0):
+        """
+        Return integration point 'volume' for all quadrature points of all elements.
+        Broadcast to an integration point tensor if needed.
+        """
+        ret = model.System.quad(self).dV()
+        if rank == 0:
+            return ret
+        return model.System.quad(self).AsTensor(rank, ret)
+
     def plastic_dV(self, rank: int = 0):
+        """
+        Return integration point 'volume' for all quadrature points of plastic elements.
+        Broadcast to an integration point tensor if needed.
+        """
         ret = model.System.quad(self).dV()[self.plastic(), :]
         if rank == 0:
             return ret
         return model.System.quad(self).AsTensor(rank, ret)
 
+
+class DimensionlessSystem(System):
+    """
+    The system with all (plastic) stain, stress, and time output in normalised unit.
+    """
+
+    def __init__(self, file: h5py.File):
+        super().__init__(file)
+        self.eps0 = self.normalisation["eps0"]
+        self.sig0 = self.normalisation["sig0"]
+        self.t0 = self.normalisation["t0"]
+
     def plastic_Epsp(self):
+        """
+        Return the plastic strain for each integration point of plastic elements. **Normalised**
+        """
         return model.System.plastic_Epsp(self) / self.eps0
 
     def plastic_Eps(self):
+        """
+        Return the strain tensor for each integration point of plastic elements. **Normalised**
+        """
         return model.System.plastic_Eps(self) / self.eps0
 
     def plastic_Sig(self):
+        """
+        Return the stress tensor for each integration point of plastic elements. **Normalised**
+        """
         return model.System.plastic_Sig(self) / self.sig0
 
+    def Eps(self):
+        """
+        Return the strain tensor for each integration point of all elements. **Normalised**
+        """
+        return model.System.Eps(self) / self.eps0
+
     def Sig(self):
+        """
+        Return the stress tensor for each integration point of all elements. **Normalised**
+        """
         return model.System.Sig(self) / self.sig0
 
+    def t(self):
+        """
+        Return time. **Normalised**
+        """
+        return model.System.t(self) / self.t0
 
-def dependencies(system: model.System) -> list[str]:
+
+def dependencies(model) -> list[str]:
     """
     Return list with version strings.
-    Compared to model.System.version_dependencies() this adds the version of prrng.
+    Compared to model.version_dependencies() this adds the version of prrng.
     """
     return sorted(list(model.version_dependencies()) + ["prrng=" + prrng.version()])
 
@@ -184,53 +259,6 @@ def read_epsy(file: h5py.File) -> np.ndarray:
     epsy = np.cumsum(epsy, 1)
 
     return epsy
-
-
-def epsy_nchunk(file: h5py.File) -> int:
-    """
-    Return the size of the chunk of yield strains stored.
-    :param file: Opened simulation archive.
-    :return: Size.
-    """
-
-    if isinstance(file["/cusp/epsy"], h5py.Dataset):
-        return file["/cusp/epsy"].shape[1]
-
-    return file["/cusp/epsy/nchunk"][...]
-
-
-def init(file: h5py.File) -> model.System:
-    r"""
-    Initialise system from file.
-
-    :param file: Open simulation HDF5 archive (read-only).
-    :return: The initialised system.
-    """
-
-    system = model.System(
-        file["coor"][...],
-        file["conn"][...],
-        file["dofs"][...],
-        file["dofsP"][...] if "dofsP" in file else file["iip"][...],
-        file["elastic"]["elem"][...],
-        file["cusp"]["elem"][...],
-    )
-
-    system.setMassMatrix(file["rho"][...])
-
-    system.setDampingMatrix(
-        file["alpha"][...] if "alpha" in file else file["damping"]["alpha"][...]
-    )
-
-    if "eta" in file:
-        system.setEta(file["eta"][...])
-
-    system.setElastic(file["elastic"]["K"][...], file["elastic"]["G"][...])
-    system.setPlastic(file["cusp"]["K"][...], file["cusp"]["G"][...], read_epsy(file))
-
-    system.setDt(file["run"]["dt"][...])
-
-    return system
 
 
 def clone(
@@ -311,7 +339,7 @@ def branch_fixed_stress(
     incc: int = None,
     stress: float = None,
     normalised: bool = False,
-    system: model.System = None,
+    system: System = None,
     init_system: bool = False,
     init_dest: bool = True,
     output: ArrayLike = None,
@@ -340,12 +368,14 @@ def branch_fixed_stress(
     :param dev: Allow uncommitted changes.
     """
 
+    assert type(system) == System
+
     funcname = inspect.getframeinfo(inspect.currentframe()).function
 
     if system is None:
-        system = init(source)
+        system = System(source)
     elif init_system:
-        system.reset_epsy(read_epsy(source))
+        system.reset(source)
 
     if output is None:
         output = basic_output(system, source, verbose=False)
@@ -831,20 +861,6 @@ def create_check_meta(
     return meta
 
 
-def _restore_inc(file: h5py.File, system: model.System, inc: int):
-    """
-    Restore an increment.
-
-    :param file: Open simulation HDF5 archive (read-only).
-    :param system: The system,
-    :param inc: Increment number.
-    """
-
-    system.quench()
-    system.setT(file["/t"][inc])
-    system.setU(file[f"/disp/{inc:d}"][...])
-
-
 def run(filepath: str, dev: bool = False, progress: bool = True):
     """
     Run the simulation.
@@ -860,7 +876,7 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
 
     with h5py.File(filepath, "a") as file:
 
-        system = init(file)
+        system = System(file)
         meta = create_check_meta(file, f"/meta/{progname}", dev=dev)
 
         if "completed" in meta.attrs:
@@ -870,11 +886,10 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
         inc = int(file["/stored"][-1])
         kick = file["/kick"][inc]
         deps = file["/run/epsd/kick"][...]
-        _restore_inc(file, system, inc)
-
+        system.restore_inc(file, inc)
         system.initEventDrivenSimpleShear()
 
-        nchunk = epsy_nchunk(file) - 5
+        nchunk = system.nchunk - 5
         pbar = tqdm.tqdm(
             total=nchunk, disable=not progress, desc=f"{basename}: inc = {inc:8d}, niter = {'-':8s}"
         )
@@ -1062,7 +1077,7 @@ def interface_state(filepaths: dict[int], read_disp: dict[str] = None) -> dict[n
         A dictionary with per field a matrix of shape ``[n, N]``,
         with each row corresponding to an increment of a file,
         and the columns corresponding to the spatial distribution.
-        The output consists of the following::
+        The output is dimensionless (see :py:class:`DimensionlessSystem`), and consists of::
             sig_xx: xx-component of the average stress tensor of a block.
             sig_xy: xy-component of the average stress tensor of a block.
             sig_yy: yy-component of the average stress tensor of a block.
@@ -1091,9 +1106,9 @@ def interface_state(filepaths: dict[int], read_disp: dict[str] = None) -> dict[n
         with h5py.File(filepath, "r") as file:
 
             if i == 0:
-                system = System(file)
+                system = DimensionlessSystem(file)
                 dV = system.plastic_dV()
-                dV2 = system.plastic_dV(2)
+                dV2 = system.plastic_dV(rank=2)
                 ret = {
                     "sig_xx": np.empty((n, system.N), dtype=float),
                     "sig_xy": np.empty((n, system.N), dtype=float),
@@ -1105,7 +1120,7 @@ def interface_state(filepaths: dict[int], read_disp: dict[str] = None) -> dict[n
                     "S": np.empty((n, system.N), dtype=int),
                 }
             else:
-                system.reset_epsy(read_epsy(file))
+                system.reset(file)
 
             for j, inc in enumerate(filepaths[filepath]):
 
@@ -1197,24 +1212,21 @@ def normalisation(file: h5py.File):
     return ret
 
 
-def basic_output(
-    system: model.System, file: h5py.File, norm: dict = None, verbose: bool = True
-) -> dict:
+def basic_output(system: DimensionlessSystem, file: h5py.File, verbose: bool = True) -> dict:
     """
     Read basic output from simulation.
 
     :param system: The system (modified: all increments visited).
     :param file: Open simulation HDF5 archive (read-only).
-    :param norm: Normalisation, see :py:func:`normalisation` (read if not specified).
     :param verbose: Print progress.
 
     :return: Basic output as follows::
-        epsd: Macroscopic strain [ninc].
-        sigd: Macroscopic stress [ninc].
+        epsd: Macroscopic strain (dimensionless units) [ninc].
+        sigd: Macroscopic stress (dimensionless units) [ninc].
         S: Number of times a block yielded [ninc].
         A: Number of blocks that yielded at least once [ninc].
         xi: Largest extension corresponding to A [ninc].
-        duration: Duration of the event [ninc].
+        duration: Duration of the event (dimensionless units) [ninc].
         kick: Increment started with a kick (True), or contains only elastic loading (False) [ninc].
         inc: Increment numbers == np.arange(ninc).
         steadystate: Increment number where the steady state starts (int).
@@ -1236,11 +1248,7 @@ def basic_output(
     ninc = incs.size
     assert all(incs == np.arange(ninc))
 
-    if norm is None:
-        ret = normalisation(file)
-    else:
-        ret = dict(norm)
-
+    ret = dict(system.normalisation)
     ret["epsd"] = np.empty((ninc), dtype=float)
     ret["sigd"] = np.empty((ninc), dtype=float)
     ret["S"] = np.zeros((ninc), dtype=int)
@@ -1249,7 +1257,7 @@ def basic_output(
     ret["kick"] = file["kick"][...].astype(bool)
     ret["inc"] = incs
 
-    dV = system.quad().AsTensor(2, system.quad().dV())
+    dV = system.dV(rank=2)
     idx_n = None
 
     for inc in tqdm.tqdm(incs, disable=not verbose):
@@ -1259,8 +1267,8 @@ def basic_output(
         if idx_n is None:
             idx_n = system.plastic_CurrentIndex().astype(int)[:, 0]
 
-        Sig = system.Sig() / ret["sig0"]
-        Eps = system.Eps() / ret["eps0"]
+        Sig = system.Sig()
+        Eps = system.Eps()
         idx = system.plastic_CurrentIndex().astype(int)[:, 0]
 
         ret["S"][inc] = np.sum(idx - idx_n)
@@ -1273,6 +1281,10 @@ def basic_output(
 
     ret["duration"] = np.diff(file["t"][...], prepend=0) / ret["t0"]
     ret["steadystate"] = steadystate(**ret)
+
+    if type(system) == System:
+        ret["epsd"] /= system.normalisation["eps0"]
+        ret["sigd"] /= system.normalisation["sig0"]
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
@@ -1339,12 +1351,11 @@ def cli_ensembleinfo(cli_args=None):
             with h5py.File(filepath, "r") as file:
 
                 if i == 0:
-                    system = init(file)
-                    norm = normalisation(file)
+                    system = DimensionlessSystem(file)
                 else:
-                    system.reset_epsy(read_epsy(file))
+                    system.reset(file)
 
-                out = basic_output(system, file, norm=norm, verbose=False)
+                out = basic_output(system, file, verbose=False)
 
                 for key in fields_full:
                     output[f"/full/{filename}/{key}"] = out[key]
@@ -1405,12 +1416,12 @@ def cli_ensembleinfo(cli_args=None):
             output[f"/loading/{key}"] = combine_load[key]
             output[f"/avalanche/{key}"] = combine_kick[key]
 
-        for key, value in norm.items():
+        for key, value in system.normalisation.items():
             output[f"/normalisation/{key}"] = value
 
         # extract ensemble averages
 
-        ss = np.equal(combine_kick["A"], norm["N"])
+        ss = np.equal(combine_kick["A"], system.N)
         assert all(np.equal(combine_kick["inc"][ss], combine_load["inc"][ss] + 1))
         output["/averages/sigd_top"] = np.mean(combine_load["sigd"][ss])
         output["/averages/sigd_bottom"] = np.mean(combine_kick["sigd"][ss])
@@ -1459,8 +1470,7 @@ def cli_plot(cli_args=None):
     assert os.path.isfile(args.file)
 
     with h5py.File(args.file, "r") as file:
-        system = init(file)
-        data = basic_output(system, file)
+        data = basic_output(DimensionlessSystem(file), file)
 
     fig, ax = plt.subplots()
 

@@ -10,7 +10,8 @@ root = os.path.join(os.path.dirname(__file__), "..")
 if os.path.exists(os.path.join(root, "mycode_front", "_version.py")):
     sys.path.insert(0, os.path.abspath(root))
 
-import mycode_front as my  # noqa: E402
+from mycode_front import QuasiStatic  # noqa: E402
+from mycode_front import EventMap  # noqa: E402
 
 dirname = "mytest"
 idname = "id=0.h5"
@@ -32,9 +33,9 @@ class MyTests(unittest.TestCase):
             os.makedirs(dirname)
 
         N = 9
-        my.System.generate(filename, N=N, test_mode=True, dev=True)
-        my.System.cli_run(["--develop", filename])
-        my.System.cli_ensembleinfo([filename, "--output", infoname, "--dev"])
+        QuasiStatic.generate(filename, N=N, test_mode=True, dev=True)
+        QuasiStatic.cli_run(["--develop", filename])
+        QuasiStatic.cli_ensembleinfo([filename, "--output", infoname, "--dev"])
 
     @classmethod
     def tearDownClass(self):
@@ -50,7 +51,7 @@ class MyTests(unittest.TestCase):
 
         name = os.path.join(dirname, "rerun.h5")
         i = np.argmax(S)
-        my.EventMap.cli_run(["--dev", "-f", "-i", i, "-o", name, filename])
+        EventMap.cli_run(["--dev", "-f", "-i", i, "-o", name, filename])
 
         with h5py.File(name, "r") as file:
             s = file["S"][...]
@@ -58,7 +59,7 @@ class MyTests(unittest.TestCase):
 
         # function call without without check
 
-        my.EventMap.cli_basic_output(
+        EventMap.cli_basic_output(
             ["--dev", "-f", "-o", os.path.join(dirname, "eventcollect.h5"), name]
         )
 
