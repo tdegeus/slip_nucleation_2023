@@ -194,6 +194,8 @@ def cli_generate(cli_args=None):
 
     parser.add_argument("--conda", type=str, default=slurm.default_condabase, help="Env-basename")
     parser.add_argument("--develop", action="store_true", help="Development mode")
+    parser.add_argument("--scale-alpha", type=float, default=1.0, help="Scale general damping")
+    parser.add_argument("--eta", type=float, help="Damping at the interface")
     parser.add_argument("-n", "--nsim", type=int, default=1, help="#simulations")
     parser.add_argument("-N", "--size", type=int, default=2 * (3**6), help="#blocks")
     parser.add_argument("-s", "--start", type=int, default=0, help="Start simulation")
@@ -225,6 +227,8 @@ def cli_generate(cli_args=None):
                 snapshot=Ensemble.snapshot[j],
                 N=args.size,
                 seed=i * args.size,
+                scale_alpha=args.scale_alpha,
+                eta=args.eta,
                 test_mode=args.develop,
                 dev=args.develop,
             )

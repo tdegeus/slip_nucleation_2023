@@ -79,6 +79,9 @@ class System(model.System):
         else:
             raise OSError("No damping found")
 
+        if "eta" in file:
+            self.setEta(file["eta"][...])
+
         self.setElastic(file["elastic"]["K"][...], file["elastic"]["G"][...])
         self.setPlastic(file["cusp"]["K"][...], file["cusp"]["G"][...], read_epsy(file))
         self.setDt(file["run"]["dt"][...])
@@ -420,6 +423,8 @@ def generate(
     filepath: str,
     N: int,
     seed: int = 0,
+    scale_alpha: float = 1.0,
+    eta: float = None,
     init_run: bool = True,
     classic: bool = False,
     test_mode: bool = False,
@@ -431,6 +436,8 @@ def generate(
     :param filepath: The filepath of the input file.
     :param N: The number of blocks.
     :param seed: Base seed to use to generate the disorder.
+    :param scale_alpha: Scale default general damping ``alpha`` by factor.
+    :param eta: Set damping coefficient at the interface.
     :param init_run: Initialise for use with :py:func:`run`.
     :param classic: The yield strain are hard-coded in the file, otherwise prrng is used.
     :param test_mode: Run in test mode (smaller chunk).
@@ -498,7 +505,7 @@ def generate(
     rho = G / c**2.0
     qL = 2.0 * np.pi / L
     qh = 2.0 * np.pi / h
-    alpha = np.sqrt(2.0) * qL * c * rho
+    alpha = np.sqrt(2.0) * qL * c * rho * scale_alpha
     dt = (1.0 / (c * qh)) / 10.0
 
     with h5py.File(filepath, "w") as file:
@@ -551,6 +558,14 @@ def generate(
             alpha * np.ones(nelem),
             desc="Damping coefficient (density) [nelem]",
         )
+
+        if eta is not None:
+            storage.dump_with_atttrs(
+                file,
+                "/eta",
+                eta,
+                desc="Damping coefficient at the interface",
+            )
 
         storage.dump_with_atttrs(
             file,
