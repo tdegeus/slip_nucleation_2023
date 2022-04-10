@@ -217,9 +217,14 @@ def init(file: h5py.File) -> model.System:
     )
 
     system.setMassMatrix(file["rho"][...])
+
     system.setDampingMatrix(
         file["alpha"][...] if "alpha" in file else file["damping"]["alpha"][...]
     )
+
+    if "eta" in file:
+        system.setEta(file["eta"][...])
+
     system.setElastic(file["elastic"]["K"][...], file["elastic"]["G"][...])
     system.setPlastic(file["cusp"]["K"][...], file["cusp"]["G"][...], read_epsy(file))
 
