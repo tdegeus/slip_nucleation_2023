@@ -510,7 +510,11 @@ def cli_ensembleinfo(cli_args=None):
     with h5py.File(args.output, "w") as output:
         for filename in tqdm.tqdm(args.files):
             with h5py.File(filename) as file:
-                out = basic_output(file)
+                try:
+                    out = basic_output(file)
+                except KeyError:
+                    continue
+
                 for key in out:
                     output[g5.join(f"/full/{filename}/{key}")] = out[key]
 
