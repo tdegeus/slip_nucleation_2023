@@ -46,6 +46,7 @@ class MyTests(unittest.TestCase):
 
         Flow.cli_run(["--develop", files[-1]])
         Flow.cli_ensembleinfo(["-o", os.path.join(dirname, "einfo.h5"), files[-1]])
+        Flow.cli_paraview(["-o", os.path.join(dirname, "tmp"), files[-1]])
 
         branch = Flow.cli_branch_velocityjump(["--dev", "-o", dirname, "-i", "250000", files[-1]])
         Flow.cli_run(["--dev", branch[-1]])
