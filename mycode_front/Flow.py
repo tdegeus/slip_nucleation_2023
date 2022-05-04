@@ -12,7 +12,6 @@ import GMatElastoPlasticQPot  # noqa: F401
 import GooseFEM  # noqa: F401
 import GooseHDF5 as g5
 import h5py
-import matplotlib.pyplot as plt
 import numpy as np
 import tqdm
 from numpy.typing import ArrayLike
@@ -22,8 +21,6 @@ from . import slurm
 from . import storage
 from . import tools
 from ._version import version
-
-plt.style.use(["goose", "goose-latex"])
 
 
 entry_points = dict(
@@ -265,12 +262,12 @@ def run_create_extendible(file: h5py.File):
     )
 
     # reaction force
-    storage.create_extendible(file, "/output/fext", np.float64)
+    storage.create_extendible(file, "/output/fext", np.float64, unit="sig0 (normalised stress)")
 
     # averaged on the weak layer
-    storage.create_extendible(file, "/output/sig", np.float64, ndim=2, **flatindex)
-    storage.create_extendible(file, "/output/eps", np.float64, ndim=2, **flatindex)
-    storage.create_extendible(file, "/output/epsp", np.float64)
+    storage.create_extendible(file, "/output/sig", np.float64, ndim=2, unit="sig0", **flatindex)
+    storage.create_extendible(file, "/output/eps", np.float64, ndim=2, unit="eps0", **flatindex)
+    storage.create_extendible(file, "/output/epsp", np.float64, unit="eps0")
 
     # book-keeping
     storage.create_extendible(file, "/output/inc", np.uint32)
@@ -443,7 +440,10 @@ def basic_output(file: h5py.File, interval=400) -> dict:
     dt = norm["dt"]
     t0 = norm["t0"]
     eps0 = norm["eps0"]
+    y = file["/coor"][:, 1]
+    L = np.max(y) - np.min(y)
     inc = file["/output/inc"][...]
+    vtop = gammadot * L / eps0 * t0
 
     data = {}
     sig = file["/output/sig"][...]
@@ -455,20 +455,20 @@ def basic_output(file: h5py.File, interval=400) -> dict:
     data["t"] = inc * dt / t0
     data["epsdot"] = np.diff(data["eps"], prepend=0) / np.diff(data["t"], prepend=1)
     data["epspdot"] = np.diff(data["epsp"], prepend=0) / np.diff(data["t"], prepend=1)
-    data["eps_remote"] = gammadot * dt * inc / eps0
-    data["epsdot_remote"] = np.diff(data["eps_remote"], prepend=0) / np.diff(data["t"], prepend=1)
+    data["epsdotbar"] = vtop / norm["l0"] * np.ones_like(data["eps"])
 
     dinc = np.diff(inc)
     assert np.all(dinc == dinc[0])
     dinc = dinc[0]
 
-    store = ["eps", "sig", "fext", "epsdot", "epspdot", "epsdot_remote"]
+    store = ["eps", "sig", "fext", "epsdot", "epspdot", "epsdotbar"]
 
     n = int((inc.size - inc.size % interval) / interval)
     ret = {}
     for key in store:
         ret[key] = np.zeros(n, dtype=float)
         ret[f"{key}_std"] = np.zeros(n, dtype=float)
+        ret[f"{key}_full"] = data[key]
 
     for i in range(0, inc.size, interval):
         u = i + interval
@@ -684,6 +684,11 @@ def cli_plot(cli_args=None):
     Plot overview of flow simulation.
     """
 
+    import matplotlib.pyplot as plt
+    import GooseMPL as gplt
+
+    plt.style.use(["goose", "goose-latex"])
+
     class MyFmt(
         argparse.RawDescriptionHelpFormatter,
         argparse.ArgumentDefaultsHelpFormatter,
@@ -695,44 +700,60 @@ def cli_plot(cli_args=None):
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
 
-    parser.add_argument("-s", "--save", type=str, help="Save the image")
+    parser.add_argument("-o", "--output", type=str, help="Save the image")
     parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("--sigma-max", type=float, help="Set limit of y-axis of left panel")
     parser.add_argument("file", type=str, help="Simulation file")
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)
 
     with h5py.File(args.file, "r") as file:
-        Eps = file["output"]["eps"][...]
-        Sig = file["output"]["sig"][...]
-        fext = file["output"]["fext"][...]
         out = basic_output(file)
 
     meps = out["eps"][...]
     msig = out["sig"][...]
     mfext = out["fext"][...]
 
-    eps = tools.epsd(xx=Eps[0, :], xy=Eps[1, :], yy=Eps[2, :]).ravel()
-    sig = tools.sigd(xx=Sig[0, :], xy=Sig[1, :], yy=Sig[2, :]).ravel()
+    i = np.argsort(out["eps_full"])
 
-    i = np.argsort(eps)
-    eps = eps[i]
-    sig = sig[i]
-    fext = fext[i]
+    for key in out:
+        if re.match("(.*)(_full)", key):
+            out[key] = out[key][i]
 
-    fig, ax = plt.subplots()
-    ax.plot(eps, sig, c="k", label=r"$\sigma_\text{interface}$")
-    ax.plot(eps, fext, c="r", label=r"$f_\text{ext}$")
+    fig, axes = gplt.subplots(ncols=2)
+
+    ax = axes[0]
+    ax.plot(out["eps_full"], out["sig_full"], c="k", label=r"$\sigma_\text{interface}$")
+    ax.plot(out["eps_full"], out["fext_full"], c="r", label=r"$f_\text{ext}$")
     ax.plot(meps, msig, c="b", marker="o", ls="none", label=r"$\bar{\sigma}_\text{interface}$")
     ax.plot(meps, mfext, c="tab:orange", marker="o", ls="none", label=r"$\bar{f}_\text{ext}$")
+
     ax.set_xlim([0, ax.get_xlim()[-1]])
-    ax.set_ylim([0, ax.get_ylim()[-1]])
+
+    if args.sigma_max is not None:
+        ax.set_ylim([0, args.sigma_max])
+    else:
+        ax.set_ylim([0, ax.get_ylim()[-1]])
+
     ax.set_xlabel(r"$\varepsilon$")
     ax.set_ylabel(r"$\sigma$")
+
     ax.legend()
 
-    if args.save:
-        fig.savefig(args.save)
+    ax = axes[1]
+
+    n = r"\dot{\varepsilon}"
+    ax.plot(out["eps_full"], out["epsdot_full"], c="k", label=rf"${n}_\text{{interface}}$")
+    ax.plot(out["eps_full"], out["epsdotbar_full"], c="r", label=rf"${n}_\text{{applied}}$")
+
+    ax.set_xlabel(r"$\varepsilon$")
+    ax.set_ylabel(r"$\dot{\varepsilon}$")
+
+    ax.legend()
+
+    if args.output:
+        fig.savefig(args.output)
     else:
         plt.show()
 
