@@ -66,6 +66,12 @@ class System(model.System):
     """
 
     def __init__(self, file: h5py.File):
+        """
+        Construct system from file.
+
+        :param file: HDF5-file opened for reading.
+        """
+
         super().__init__(
             file["coor"][...],
             file["conn"][...],
@@ -177,6 +183,19 @@ class DimensionlessSystem(System):
         Return the strain tensor for each integration point of all elements. **Normalised**
         """
         return model.System.Eps(self) / self.eps0
+
+    def Epsdot(self):
+        """
+        Return the strain-rate tensor for each integration point of all elements. **Normalised**
+        """
+        return model.System.Epsdot(self) / self.eps0 * self.t0
+
+    def Epsddot(self):
+        """
+        Return the symmetric gradient of accelerations for each integration point of all elements.
+        **Normalised**
+        """
+        return model.System.Epsddot(self) / self.eps0 * self.t0**2
 
     def Sig(self):
         """

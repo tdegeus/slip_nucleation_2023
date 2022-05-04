@@ -9,6 +9,7 @@ import textwrap
 
 import FrictionQPotFEM  # noqa: F401
 import GMatElastoPlasticQPot  # noqa: F401
+import GMatElastoPlasticQPot.Cartesian2d as GMat
 import GooseFEM  # noqa: F401
 import GooseHDF5 as g5
 import h5py
@@ -28,6 +29,7 @@ entry_points = dict(
     cli_ensembleinfo="Flow_ensembleinfo",
     cli_ensembleinfo_velocityjump="Flow_ensembleinfo_velocityjump",
     cli_generate="Flow_generate",
+    cli_paraview="Flow_paraview",
     cli_plot="Flow_plot",
     cli_plot_velocityjump="Flow_plot_velocityjump",
     cli_run="Flow_run",
@@ -551,7 +553,7 @@ def cli_branch_velocityjump(cli_args=None):
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)
 
-    with h5py.File(args.file, "r") as source:
+    with h5py.File(args.file) as source:
         assert str(args.inc) in source["snapshot"]["u"]
 
     if len(args.gammadot) == 0:
@@ -578,7 +580,7 @@ def cli_branch_velocityjump(cli_args=None):
     if not os.path.isdir(args.outdir):
         os.makedirs(args.outdir)
 
-    with h5py.File(args.file, "r") as source:
+    with h5py.File(args.file) as source:
 
         for out_gammadot, out_path in zip(tqdm.tqdm(out_gammadots), out_paths):
 
@@ -679,6 +681,72 @@ def moving_average_y(x: ArrayLike, y: ArrayLike, n: int) -> ArrayLike:
     return x[s:], moving_average(y, n)
 
 
+def cli_paraview(cli_args=None):
+    """
+    Prepare snapshots to be viewed with ParaView.
+    """
+
+    import XDMFWrite_h5py as xh
+
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+
+    parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
+    parser.add_argument("-o", "--output", type=str, required=True, help="Appended xdmf/h5py")
+    parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("file", type=str, help="Simulation file")
+
+    args = tools._parse(parser, cli_args)
+    assert os.path.isfile(args.file)
+    tools._check_overwrite_file(f"{args.output}.h5", args.force)
+    tools._check_overwrite_file(f"{args.output}.xdmf", args.force)
+
+    with h5py.File(args.file) as file, h5py.File(f"{args.output}.h5", "w") as output:
+
+        system = QuasiStatic.DimensionlessSystem(file)
+
+        output["/coor"] = system.coor()
+        output["/conn"] = system.conn()
+
+        series = xh.TimeSeries()
+
+        for inc in file["/snapshot/inc"][...]:
+
+            if inc == 0 and f"/snapshot/u/{inc:d}" not in file:
+                system.setU(np.zeros_like(system.coor()))
+                system.setV(np.zeros_like(system.coor()))
+                system.setA(np.zeros_like(system.coor()))
+            else:
+                system.setU(file[f"/snapshot/u/{inc:d}"][...])
+                system.setV(file[f"/snapshot/u/{inc:d}"][...])
+                system.setA(file[f"/snapshot/a/{inc:d}"][...])
+
+            output[f"/disp/{inc:d}"] = xh.as3d(system.u())
+            output[f"/Sig/{inc:d}"] = GMat.Sigd(np.mean(system.Sig(), axis=1))
+            output[f"/Eps/{inc:d}"] = GMat.Epsd(np.mean(system.Eps(), axis=1))
+            output[f"/Epsdot/{inc:d}"] = GMat.Epsd(np.mean(system.Epsdot(), axis=1))
+            output[f"/Epsddot/{inc:d}"] = GMat.Epsd(np.mean(system.Epsddot(), axis=1))
+
+            series.push_back(
+                xh.Unstructured(output, "/coor", "/conn", "Quadrilateral"),
+                xh.Attribute(output, f"/disp/{inc:d}", "Node", name="Displacement"),
+                xh.Attribute(output, f"/Sig/{inc:d}", "Cell", name="Stress"),
+                xh.Attribute(output, f"/Eps/{inc:d}", "Cell", name="Strain"),
+                xh.Attribute(output, f"/Epsdot/{inc:d}", "Cell", name="Strain rate"),
+                xh.Attribute(output, f"/Epsddot/{inc:d}", "Cell", name="Symgrad of accelerations"),
+            )
+
+    xh.write(series, f"{args.output}.xdmf")
+
+
 def cli_plot(cli_args=None):
     """
     Plot overview of flow simulation.
@@ -700,15 +768,16 @@ def cli_plot(cli_args=None):
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
 
+    parser.add_argument("--sigma-max", type=float, help="Set limit of y-axis of left panel")
+    parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument("-o", "--output", type=str, help="Save the image")
     parser.add_argument("-v", "--version", action="version", version=version)
-    parser.add_argument("--sigma-max", type=float, help="Set limit of y-axis of left panel")
     parser.add_argument("file", type=str, help="Simulation file")
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)
 
-    with h5py.File(args.file, "r") as file:
+    with h5py.File(args.file) as file:
         out = basic_output(file)
 
     meps = out["eps"][...]
@@ -753,6 +822,7 @@ def cli_plot(cli_args=None):
     ax.legend()
 
     if args.output:
+        tools._check_overwrite_file(args.output, args.force)
         fig.savefig(args.output)
     else:
         plt.show()
