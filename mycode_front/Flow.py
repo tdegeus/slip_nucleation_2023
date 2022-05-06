@@ -276,6 +276,24 @@ def run_create_extendible(file: h5py.File):
     storage.create_extendible(file, "/snapshot/inc", np.uint32)
 
 
+def __velocity_preparation(system, gammadot):
+
+    return system.affineSimpleShear(gammadot)
+
+
+def __velocity_steadystate(system, gammadot):
+
+    conn = system.conn()
+    coor = system.coor()
+    mesh = GooseFEM.Mesh.Quad4.FineLayer(coor=coor, conn=conn)
+    H = np.max(coor[:, 1]) - np.min(coor[:, 0])
+
+    v = np.zeros_like(coor)
+    v[mesh.nodesTopEdge(), 0] = gammadot * H
+
+    return v
+
+
 def run(filepath: str, dev: bool = False, progress: bool = True):
     """
     Run flow simulation.
@@ -304,7 +322,9 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
         output = file["/output/interval"][...]
         restart = file["/restart/interval"][...]
         snapshot = file["/snapshot/interval"][...] if "/snapshot/interval" in file else sys.maxsize
-        v = system.affineSimpleShear(file["/gammadot"][...])
+        v = __velocity_preparation(system, file["/gammadot"][...])
+        init = True
+        i_n = system.plastic_CurrentIndex().astype(int)
 
         boundcheck = file["/boundcheck"][...]
         nchunk = file["/cusp/epsy/nchunk"][...] - boundcheck
@@ -323,6 +343,11 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
         h = system.coor()[top[1], 0] - system.coor()[top[0], 0]
 
         while True:
+
+            if init:
+                if np.all(system.plastic_CurrentIndex().astype(int) - i_n > 1):
+                    v = __velocity_steadystate(system, file["/gammadot"][...])
+                    init = False
 
             n = min(
                 [

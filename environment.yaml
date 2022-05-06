@@ -7,7 +7,7 @@ dependencies:
 - docopt.cpp
 - enstat
 - fmt
-- frictionqpotfem >=0.18.0
+- frictionqpotfem >=0.19.1
 - gmatelastoplasticqpot
 - goosefem
 - goosehdf5 >=0.17.0
@@ -23,7 +23,7 @@ dependencies:
 - pre-commit
 - python
 - python-cppcolormap
-- python-frictionqpotfem >=0.18.0
+- python-frictionqpotfem >=0.19.1
 - python-gmatelastoplasticqpot
 - python-goosefem >=1.1.0
 - python-prrng
