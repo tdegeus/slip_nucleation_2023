@@ -83,12 +83,10 @@ class System(model.System):
 
         self.setMassMatrix(file["rho"][...])
 
+        assert ("alpha" in file and "eta" in file) or ("alpha" in file or "eta" in file)
+
         if "alpha" in file:
             self.setDampingMatrix(file["alpha"][...])
-        elif "/damping/alpha" in file:
-            self.setDampingMatrix(file["damping/alpha"][...])
-        else:
-            raise OSError('No damping parameter "alpha" found')
 
         if "eta" in file:
             self.setEta(file["eta"][...])
@@ -559,7 +557,7 @@ def generate(
     rho = G / c**2.0
     qL = 2.0 * np.pi / L
     qh = 2.0 * np.pi / h
-    alpha = np.sqrt(2.0) * qL * c * rho * scale_alpha
+    alpha = np.sqrt(2.0) * qL * c * rho
     dt = (1.0 / (c * qh)) / 10.0
 
     with h5py.File(filepath, "w") as file:
@@ -606,12 +604,13 @@ def generate(
             desc="Mass density [nelem]",
         )
 
-        storage.dump_with_atttrs(
-            file,
-            "/alpha",
-            alpha * np.ones(nelem),
-            desc="Damping coefficient (density) [nelem]",
-        )
+        if scale_alpha != 0 and scale_alpha is not None:
+            storage.dump_with_atttrs(
+                file,
+                "/alpha",
+                scale_alpha * alpha * np.ones(nelem),
+                desc="Damping coefficient (density) [nelem]",
+            )
 
         if eta is not None:
             storage.dump_with_atttrs(
