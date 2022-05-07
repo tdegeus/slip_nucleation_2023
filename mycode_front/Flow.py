@@ -193,7 +193,7 @@ def cli_generate(cli_args=None):
 
     parser.add_argument("--conda", type=str, default=slurm.default_condabase, help="Env-basename")
     parser.add_argument("--develop", action="store_true", help="Development mode")
-    parser.add_argument("--scale-alpha", type=float, default=1.0, help="Scale general damping")
+    parser.add_argument("--scale-alpha", type=float, help="Scale general damping")
     parser.add_argument("--eta", type=float, help="Damping at the interface")
     parser.add_argument("-n", "--nsim", type=int, default=1, help="#simulations")
     parser.add_argument("-N", "--size", type=int, default=2 * (3**6), help="#blocks")
@@ -203,7 +203,12 @@ def cli_generate(cli_args=None):
     parser.add_argument("outdir", type=str, help="Output directory")
 
     args = tools._parse(parser, cli_args)
-    assert os.path.isdir(args.outdir)
+
+    if not os.path.isdir(args.outdir):
+        os.makedirs(args.outdir)
+
+    if args.scale_alpha is None and args.eta is None:
+        args.scale_alpha = 1.0
 
     Ensemble = DefaultEnsemble
     filenames = []
