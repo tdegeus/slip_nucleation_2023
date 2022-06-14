@@ -577,7 +577,8 @@ def restore_from_ensembleinfo(
         sourcedir = os.path.dirname(ensembleinfo.filename)
         sourcepath = os.path.join(sourcedir, sourcepath)
 
-    assert os.path.isfile(sourcepath)
+    if not os.path.isfile(sourcepath):
+        raise OSError(f'File not found: "{sourcepath}"')
 
     with h5py.File(sourcepath, "r") as source, h5py.File(destpath, "w") as dest:
 
@@ -639,7 +640,7 @@ def __job_rerun(file, sims, basename, executable, args):
 
 def cli_job_rerun_eventmap(cli_args=None):
     """
-    Rerun to measure get an event-map for avalanches after triggers after system spanning events.
+    Rerun to get an event-map for avalanches resulting from triggers after system spanning events.
     """
 
     class MyFmt(
@@ -716,6 +717,7 @@ def cli_job_rerun_eventmap(cli_args=None):
 def cli_job_rerun_dynamics(cli_args=None):
     """
     Rerun to measure the dynamics of system spanning events.
+    Optionally an event-map can be obtained instead.
     """
 
     class MyFmt(
@@ -737,6 +739,7 @@ def cli_job_rerun_dynamics(cli_args=None):
     parser.add_argument("--ibin", type=int, help="Choose one bin")
     parser.add_argument("--test", action="store_true", help="Test mode")
     parser.add_argument("--time", type=str, default="24h", help="Walltime")
+    parser.add_argument("--eventmap", action="store_true", help="Run to get event-map instead")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument("-n", "--nsim", type=int, default=100, help="Number of simulations")
     parser.add_argument("-o", "--outdir", type=str, required=True, help="Output directory")
@@ -797,6 +800,10 @@ def cli_job_rerun_dynamics(cli_args=None):
                 sims["index"].append(index)
 
         executable = MeasureDynamics.entry_points["cli_run"]
+
+        if args.eventmap:
+            executable = EventMap.entry_points["cli_run"]
+
         ret = __job_rerun(file, sims, "TriggerDynamics_conda={conda:s}", executable, args)
 
     if cli_args is not None:
