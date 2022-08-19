@@ -72,35 +72,41 @@ class System(model.System):
         :param file: HDF5-file opened for reading.
         """
 
-        super().__init__(
-            file["coor"][...],
-            file["conn"][...],
-            file["dofs"][...],
-            file["dofsP"][...] if "dofsP" in file else file["iip"][...],
-            file["elastic"]["elem"][...],
-            file["cusp"]["elem"][...],
-        )
-
-        self.setMassMatrix(file["rho"][...])
+        y = read_epsy(file)
+        self.nchunk = y.shape[1] + 1  # not yet allocated elastic
 
         assert ("alpha" in file and "eta" in file) or ("alpha" in file or "eta" in file)
 
-        if "alpha" in file:
-            self.setDampingMatrix(file["alpha"][...])
+        super().__init__(
+            coor=file["coor"][...],
+            conn=file["conn"][...],
+            dofs=file["dofs"][...],
+            iip=file["dofsP"][...] if "dofsP" in file else file["iip"][...],
+            elastic_elem=file["elastic"]["elem"][...],
+            elastic_K=FrictionQPotFEM.moduli_toquad(file["elastic"]["K"][...]),
+            elastic_G=FrictionQPotFEM.moduli_toquad(file["elastic"]["G"][...]),
+            plastic_elem=file["cusp"]["elem"][...],
+            plastic_K=FrictionQPotFEM.moduli_toquad(file["cusp"]["K"][...]),
+            plastic_G=FrictionQPotFEM.moduli_toquad(file["cusp"]["G"][...]),
+            plastic_epsy=FrictionQPotFEM.epsy_initelastic_toquad(y),
+            dt=file["run"]["dt"][...],
+            rho=file["rho"][...][0],
+            alpha=file["alpha"][...][0] if "alpha" in file else 0,
+            eta=file["eta"][...] if "eta" in file else 0,
+        )
 
-        if "eta" in file:
-            self.setEta(file["eta"][...])
-
-        self.setElastic(file["elastic"]["K"][...], file["elastic"]["G"][...])
-
-        y = read_epsy(file)
-        self.N = y.shape[0]
-        self.nchunk = y.shape[1]
-        self.setPlastic(file["cusp"]["K"][...], file["cusp"]["G"][...], y)
-
-        self.setDt(file["run"]["dt"][...])
+        for key in ["rho", "alpha"]:
+            if key in file:
+                if not np.allclose(self.alpha, file[key][...][0]):
+                    if key == "alpha":
+                        self.setDampingMatrix(file[key][...])
+                    else:
+                        self.setMassMatrix(file[key][...])
 
         self.normalisation = normalisation(file)
+        self.eps0 = self.normalisation["eps0"]
+        self.sig0 = self.normalisation["sig0"]
+        self.t0 = self.normalisation["t0"]
 
     def reset(self, file: h5py.File):
         """
@@ -115,97 +121,36 @@ class System(model.System):
             over the constructor to avoid reallocation and file-IO.
         """
         self.quench()
-        self.setU(np.zeros_like(self.u()))
-        self.reset_epsy(read_epsy(file))
+        self.u = np.zeros_like(self.u)
+        self.plastic.epsy = FrictionQPotFEM.epsy_initelastic_toquad(read_epsy(file))
 
-    def restore_inc(self, file: h5py.File, inc: int):
+    def restore_step(self, file: h5py.File, step: int):
         """
         Quench, and read time and displacement from a file.
         """
         self.quench()
-        self.setT(file["t"][inc])
-        self.setU(file["disp"][str(inc)][...])
+        self.t = file["t"][step]
+        self.u = file["disp"][str(step)][...]
 
     def dV(self, rank: int = 0):
         """
         Return integration point 'volume' for all quadrature points of all elements.
         Broadcast to an integration point tensor if needed.
         """
-        ret = model.System.quad(self).dV()
+        ret = self.quad.dV
         if rank == 0:
             return ret
-        return model.System.quad(self).AsTensor(rank, ret)
+        return self.quad.AsTensor(rank, ret)
 
     def plastic_dV(self, rank: int = 0):
         """
         Return integration point 'volume' for all quadrature points of plastic elements.
         Broadcast to an integration point tensor if needed.
         """
-        ret = model.System.quad(self).dV()[self.plastic(), :]
+        ret = self.quad.dV[self.plastic_elem, ...]
         if rank == 0:
             return ret
-        return model.System.quad(self).AsTensor(rank, ret)
-
-
-class DimensionlessSystem(System):
-    """
-    The system with all (plastic) stain, stress, and time output in normalised unit.
-    """
-
-    def __init__(self, file: h5py.File):
-        super().__init__(file)
-        self.eps0 = self.normalisation["eps0"]
-        self.sig0 = self.normalisation["sig0"]
-        self.t0 = self.normalisation["t0"]
-
-    def plastic_Epsp(self):
-        """
-        Return the plastic strain for each integration point of plastic elements. **Normalised**
-        """
-        return model.System.plastic_Epsp(self) / self.eps0
-
-    def plastic_Eps(self):
-        """
-        Return the strain tensor for each integration point of plastic elements. **Normalised**
-        """
-        return model.System.plastic_Eps(self) / self.eps0
-
-    def plastic_Sig(self):
-        """
-        Return the stress tensor for each integration point of plastic elements. **Normalised**
-        """
-        return model.System.plastic_Sig(self) / self.sig0
-
-    def Eps(self):
-        """
-        Return the strain tensor for each integration point of all elements. **Normalised**
-        """
-        return model.System.Eps(self) / self.eps0
-
-    def Epsdot(self):
-        """
-        Return the strain-rate tensor for each integration point of all elements. **Normalised**
-        """
-        return model.System.Epsdot(self) / self.eps0 * self.t0
-
-    def Epsddot(self):
-        """
-        Return the symmetric gradient of accelerations for each integration point of all elements.
-        **Normalised**
-        """
-        return model.System.Epsddot(self) / self.eps0 * self.t0**2
-
-    def Sig(self):
-        """
-        Return the stress tensor for each integration point of all elements. **Normalised**
-        """
-        return model.System.Sig(self) / self.sig0
-
-    def t(self):
-        """
-        Return time. **Normalised**
-        """
-        return model.System.t(self) / self.t0
+        return self.quad.AsTensor(rank, ret)
 
 
 def dependencies(model) -> list[str]:
@@ -385,8 +330,6 @@ def branch_fixed_stress(
     :param dev: Allow uncommitted changes.
     """
 
-    assert type(system) == System
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
 
     if system is None:
@@ -449,14 +392,13 @@ def branch_fixed_stress(
     # apply elastic loading to reach a specific stress
     if inci is not None:
 
-        system.setU(source[f"/disp/{inci:d}"])
-        idx_n = system.plastic_CurrentIndex()
+        system.u = source[f"/disp/{inci:d}"]
+        i_n = np.copy(system.plastic.i)
         d = system.addSimpleShearToFixedStress(stress * output["sig0"])
-        idx = system.plastic_CurrentIndex()
-        assert np.all(idx == idx_n)
+        assert np.all(system.plastic.i == i_n)
         assert d >= 0.0
 
-        dest["/disp/0"] = system.u()
+        dest["/disp/0"] = system.u
 
     assert f"/meta/{funcname}" not in dest
     meta = create_check_meta(dest, f"/meta/{funcname}", dev=dev)
@@ -507,12 +449,11 @@ def generate(
     mesh = GooseFEM.Mesh.Quad4.FineLayer(N, N, h)
     coor = mesh.coor()
     conn = mesh.conn()
-    nelem = mesh.nelem()
+    nelem = mesh.nelem
     plastic = mesh.elementsMiddleLayer()
     elastic = np.setdiff1d(np.arange(nelem), plastic)
 
     # extract node sets to set the boundary conditions
-    mesh.ndim()
     top = mesh.nodesTopEdge()
     bottom = mesh.nodesBottomEdge()
     left = mesh.nodesLeftOpenEdge()
@@ -901,45 +842,49 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
             print(f"{basename}: marked completed, skipping")
             return 1
 
-        inc = int(file["/stored"][-1])
-        kick = file["/kick"][inc]
+        step = int(file["/stored"][-1])
+        kick = file["/kick"][step]
         deps = file["/run/epsd/kick"][...]
-        system.restore_inc(file, inc)
+        system.restore_step(file, step)
         system.initEventDrivenSimpleShear()
 
         nchunk = system.nchunk - 5
         pbar = tqdm.tqdm(
-            total=nchunk, disable=not progress, desc=f"{basename}: inc = {inc:8d}, niter = {'-':8s}"
+            total=nchunk,
+            disable=not progress,
+            desc=f"{basename}: step = {step:8d}, niter = {'-':8s}",
         )
 
-        for inc in range(inc + 1, sys.maxsize):
+        for step in range(step + 1, sys.maxsize):
 
             kick = not kick
             system.eventDrivenStep(deps, kick)
 
             if kick:
 
-                niter = system.minimise_boundcheck(5)
+                inc_n = system.inc
+                ret = system.minimise(nmargin=5)
 
-                if niter == 0:
+                if ret < 0:
                     break
 
                 if progress:
-                    pbar.n = np.max(system.plastic_CurrentIndex())
-                    pbar.set_description(f"{basename}: inc = {inc:8d}, niter = {niter:8d}")
+                    pbar.n = np.max(system.plastic.i)
+                    niter = system.inc - inc_n
+                    pbar.set_description(f"{basename}: step = {step:8d}, niter = {niter:8d}")
                     pbar.refresh()
 
             if not kick:
-                if not system.boundcheck_right(5):
+                if np.any(system.plastic.i >= nchunk):
                     break
 
-            storage.dset_extend1d(file, "/stored", inc, inc)
-            storage.dset_extend1d(file, "/t", inc, system.t())
-            storage.dset_extend1d(file, "/kick", inc, kick)
-            file[f"/disp/{inc:d}"] = system.u()
+            storage.dset_extend1d(file, "/stored", step, step)
+            storage.dset_extend1d(file, "/t", step, system.t)
+            storage.dset_extend1d(file, "/kick", step, kick)
+            file[f"/disp/{step:d}"] = system.u
             file.flush()
 
-        pbar.set_description(f"{basename}: inc = {inc:8d}, {'completed':16s}")
+        pbar.set_description(f"{basename}: step = {step:8d}, {'completed':16s}")
         meta.attrs["completed"] = 1
 
 
@@ -1095,7 +1040,7 @@ def interface_state(filepaths: dict[int], read_disp: dict[str] = None) -> dict[n
         A dictionary with per field a matrix of shape ``[n, N]``,
         with each row corresponding to an increment of a file,
         and the columns corresponding to the spatial distribution.
-        The output is dimensionless (see :py:class:`DimensionlessSystem`), and consists of::
+        The output is dimensionless, and consists of::
             sig_xx: xx-component of the average stress tensor of a block.
             sig_xy: xy-component of the average stress tensor of a block.
             sig_yy: yy-component of the average stress tensor of a block.
@@ -1124,7 +1069,7 @@ def interface_state(filepaths: dict[int], read_disp: dict[str] = None) -> dict[n
         with h5py.File(filepath, "r") as file:
 
             if i == 0:
-                system = DimensionlessSystem(file)
+                system = System(file)
                 dV = system.plastic_dV()
                 dV2 = system.plastic_dV(rank=2)
                 ret = {
@@ -1144,20 +1089,22 @@ def interface_state(filepaths: dict[int], read_disp: dict[str] = None) -> dict[n
 
                 if read_disp:
                     with h5py.File(read_disp[filepath][j], "r") as disp:
-                        system.setU(disp[f"/disp/{inc:d}"][...])
+                        system.u = disp[f"/disp/{inc:d}"][...]
                 else:
-                    system.setU(file[f"/disp/{inc:d}"][...])
+                    system.u = file[f"/disp/{inc:d}"][...]
 
-                Sig = np.average(system.plastic_Sig(), weights=dV2, axis=1)
-                Eps = np.average(system.plastic_Eps(), weights=dV2, axis=1)
+                Sig = np.average(system.plastic.Sig / system.sig0, weights=dV2, axis=1)
+                Eps = np.average(system.plastic.Eps / system.eps0, weights=dV2, axis=1)
                 ret["sig_xx"][i, :] = Sig[:, 0, 0]
                 ret["sig_xy"][i, :] = Sig[:, 0, 1]
                 ret["sig_yy"][i, :] = Sig[:, 1, 1]
                 ret["eps_xx"][i, :] = Eps[:, 0, 0]
                 ret["eps_xy"][i, :] = Eps[:, 0, 1]
                 ret["eps_yy"][i, :] = Eps[:, 1, 1]
-                ret["epsp"][i, :] = np.average(system.plastic_Epsp(), weights=dV, axis=1)
-                ret["S"][i, :] = system.plastic_CurrentIndex()[:, 0]
+                ret["epsp"][i, :] = np.average(
+                    system.plastic.epsp / system.eps0, weights=dV, axis=1
+                )
+                ret["S"][i, :] = system.plastic.i[:, 0]
                 i += 1
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
@@ -1230,7 +1177,7 @@ def normalisation(file: h5py.File):
     return ret
 
 
-def basic_output(system: DimensionlessSystem, file: h5py.File, verbose: bool = True) -> dict:
+def basic_output(system: System, file: h5py.File, verbose: bool = True) -> dict:
     """
     Read basic output from simulation.
 
@@ -1276,33 +1223,29 @@ def basic_output(system: DimensionlessSystem, file: h5py.File, verbose: bool = T
     ret["inc"] = incs
 
     dV = system.dV(rank=2)
-    idx_n = None
+    i_n = None
 
     for inc in tqdm.tqdm(incs, disable=not verbose):
 
-        system.setU(file["disp"][str(inc)][...])
+        system.u = file["disp"][str(inc)][...]
 
-        if idx_n is None:
-            idx_n = system.plastic_CurrentIndex().astype(int)[:, 0]
+        if i_n is None:
+            i_n = np.copy(system.plastic.i.astype(int)[:, 0])
 
-        Sig = system.Sig()
-        Eps = system.Eps()
-        idx = system.plastic_CurrentIndex().astype(int)[:, 0]
+        Sig = system.Sig() / system.sig0
+        Eps = system.Eps() / system.eps0
+        i = system.plastic.i.astype(int)[:, 0]
 
-        ret["S"][inc] = np.sum(idx - idx_n)
-        ret["A"][inc] = np.sum(idx != idx_n)
-        ret["xi"][inc] = np.sum(tools.fill_avalanche(idx != idx_n))
+        ret["S"][inc] = np.sum(i - i_n)
+        ret["A"][inc] = np.sum(i != i_n)
+        ret["xi"][inc] = np.sum(tools.fill_avalanche(i != i_n))
         ret["epsd"][inc] = GMat.Epsd(np.average(Eps, weights=dV, axis=(0, 1)))
         ret["sigd"][inc] = GMat.Sigd(np.average(Sig, weights=dV, axis=(0, 1)))
 
-        idx_n = np.copy(idx)
+        i_n = np.copy(i)
 
     ret["duration"] = np.diff(file["t"][...], prepend=0) / ret["t0"]
     ret["steadystate"] = steadystate(**ret)
-
-    if type(system) == System:
-        ret["epsd"] /= system.normalisation["eps0"]
-        ret["sigd"] /= system.normalisation["sig0"]
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
@@ -1369,7 +1312,7 @@ def cli_ensembleinfo(cli_args=None):
             with h5py.File(filepath, "r") as file:
 
                 if i == 0:
-                    system = DimensionlessSystem(file)
+                    system = System(file)
                 else:
                     system.reset(file)
 
@@ -1488,7 +1431,7 @@ def cli_plot(cli_args=None):
     assert os.path.isfile(args.file)
 
     with h5py.File(args.file, "r") as file:
-        data = basic_output(DimensionlessSystem(file), file)
+        data = basic_output(System(file), file)
 
     fig, ax = plt.subplots()
 
