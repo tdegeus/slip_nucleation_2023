@@ -103,27 +103,27 @@ def cli_run(cli_args=None):
     with h5py.File(args.file, "a") as file:
 
         element = int(file["/trigger/element"][-1])
-        inc = int(file["/stored"][-1])
-        assert not file["/trigger/truncated"][inc]
+        step = int(file["/stored"][-1])
+        assert not file["/trigger/truncated"][step]
 
         meta = QuasiStatic.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
         system = QuasiStatic.System(file)
-        system.restore_inc(file, inc)
-        idx_n = system.plastic_CurrentIndex()[:, 0]
+        system.restore_step(file, step)
+        idx_n = np.copy(system.plastic.i[:, 0])
         N = system.N
         system.triggerElementWithLocalSimpleShear(file["/run/epsd/kick"][...], element)
 
-        for trial in range(args.retry):
+        for _ in range(args.retry):
 
             system.timeSteps(args.niter)
 
-            if np.sum(np.not_equal(system.plastic_CurrentIndex()[:, 0], idx_n)) > 0:
+            if np.sum(np.not_equal(system.plastic.i[:, 0], idx_n)) > 0:
                 break
             if element + 1 == N:
                 break
 
             element += 1
-            system.restore_inc(file, inc)
+            system.restore_step(file, step)
             system.triggerElementWithLocalSimpleShear(file["/run/epsd/kick"][...], element)
 
         if args.truncate_system_spanning:
@@ -131,22 +131,22 @@ def cli_run(cli_args=None):
         else:
             niter = system.minimise()
 
-        inc += 1
-        storage.dset_extend1d(file, "/stored", inc, inc)
-        storage.dset_extend1d(file, "/t", inc, system.t())
-        storage.dset_extend1d(file, "/kick", inc, True)
-        storage.dset_extend1d(file, "/trigger/element", inc, element)
-        storage.dset_extend1d(file, "/trigger/branched", inc, False)
-        storage.dset_extend1d(file, "/trigger/truncated", inc, niter == 0)
-        file[f"/disp/{inc:d}"] = system.u()
+        step += 1
+        storage.dset_extend1d(file, "/stored", step, step)
+        storage.dset_extend1d(file, "/t", step, system.t)
+        storage.dset_extend1d(file, "/kick", step, True)
+        storage.dset_extend1d(file, "/trigger/element", step, element)
+        storage.dset_extend1d(file, "/trigger/branched", step, False)
+        storage.dset_extend1d(file, "/trigger/truncated", step, niter == 0)
+        file[f"/disp/{step:d}"] = system.u
 
         # in case that the event was truncated at a given "A":
         # store state from which a restart from the moment of truncation is possible
         if niter == 0:
-            file["/restart/u"] = system.u()
-            file["/restart/v"] = system.v()
-            file["/restart/a"] = system.a()
-            file["/restart/t"] = system.t()
+            file["/restart/u"] = system.u
+            file["/restart/v"] = system.v
+            file["/restart/a"] = system.a
+            file["/restart/t"] = system.t
 
         meta.attrs["completed"] = 1
         pbar.n = 1
@@ -423,7 +423,7 @@ def cli_ensembleinfo(cli_args=None):
             file = pack["event"][filepath]
 
             if i == 0:
-                system = QuasiStatic.DimensionlessSystem(file)
+                system = QuasiStatic.System(file)
                 N = system.N
             elif simid[idx] != simid[index[i - 1]]:
                 system.reset(file)

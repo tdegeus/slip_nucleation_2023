@@ -65,7 +65,7 @@ def trigger_and_run(
 
     ret = defaultdict(lambda: defaultdict(dict))
 
-    ret["disp"]["0"] = system.u()
+    ret["disp"]["0"] = system.u
 
     system.triggerElementWithLocalSimpleShear(deps_kick, element)
 

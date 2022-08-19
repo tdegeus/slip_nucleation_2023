@@ -54,8 +54,8 @@ def elements_at_height(coor: ArrayLike, conn: ArrayLike, height: float) -> np.nd
 
     mesh = GooseFEM.Mesh.Quad4.FineLayer(coor=coor, conn=conn)
 
-    dy = mesh.elemrow_nhy()
-    normal = mesh.elemrow_type() == -1
+    dy = mesh.elemrow_nhy
+    normal = mesh.elemrow_type == -1
     n = int((dy.size - dy.size % 2) / 2)
     dy = dy[n:]
     normal = normal[n:]
@@ -127,9 +127,9 @@ def cli_run(cli_args=None):
     with h5py.File(args.file, "r") as file:
 
         system = QuasiStatic.System(file)
-        system.restore_inc(file, args.inc - 1)
+        system.restore_step(file, args.inc - 1)
         deps = file["/run/epsd/kick"][...]
-        idx_n = system.plastic_CurrentIndex()[:, 0].astype(int)
+        i_n = np.copy(system.plastic.i[:, 0].astype(int))
         maxiter = int((file["/t"][args.inc] - file["/t"][args.inc - 1]) / file["/run/dt"][...])
 
         if "trigger" in file:
@@ -141,14 +141,13 @@ def cli_run(cli_args=None):
     # variables needed to write output
 
     if args.height is not None:
-        element_list = elements_at_height(system.coor(), system.conn(), args.height)
+        element_list = elements_at_height(system.coor, system.conn, args.height)
     else:
-        element_list = system.plastic()
+        element_list = system.plastic_elem
 
-    vector = system.vector()
     partial = tools.PartialDisplacement(
-        conn=system.conn(),
-        dofs=system.dofs(),
+        conn=system.conn,
+        dofs=system.dofs,
         element_list=element_list,
     )
     dofstore = partial.dof_is_stored()
@@ -178,11 +177,11 @@ def cli_run(cli_args=None):
         stop = False
         last_iiter = -1  # last written increment
 
-        storage.create_extendible(file, "/t", float, desc="Time of each stored time-step")
-        storage.create_extendible(file, "/A", np.uint64, desc="'A' of each stored time-step")
-        storage.create_extendible(file, "/stored", np.uint64, desc="Stored time-steps")
-        storage.create_extendible(file, "/sync-A/stored", np.uint64, desc="Stored time-steps")
-        storage.create_extendible(file, "/sync-t/stored", np.uint64, desc="Stored time-steps")
+        storage.create_extendible(file, "/t", float, desc="Time of each stored step (real units)")
+        storage.create_extendible(file, "/A", np.uint64, desc="'A' of each stored step")
+        storage.create_extendible(file, "/stored", np.uint64, desc="Stored steps")
+        storage.create_extendible(file, "/sync-A/stored", np.uint64, desc="Stored step")
+        storage.create_extendible(file, "/sync-t/stored", np.uint64, desc="Stored step")
         storage.dump_with_atttrs(file, "/doflist", doflist, desc="Index of each of the stored DOFs")
 
         while True:
@@ -192,8 +191,8 @@ def cli_run(cli_args=None):
                 if iiter != last_iiter:
                     file[f"/Eps/{iiter:d}"] = np.average(system.Eps(), weights=dV, axis=(0, 1))
                     file[f"/Sig/{iiter:d}"] = np.average(system.Sig(), weights=dV, axis=(0, 1))
-                    file[f"/u/{iiter:d}"] = vector.AsDofs(system.u())[dofstore]
-                    storage.dset_extend1d(file, "/t", istore, system.t())
+                    file[f"/u/{iiter:d}"] = system.vector.AsDofs(system.u)[dofstore]
+                    storage.dset_extend1d(file, "/t", istore, system.t)
                     storage.dset_extend1d(file, "/A", istore, A)
                     storage.dset_extend1d(file, "/stored", istore, iiter)
                     file.flush()
@@ -221,8 +220,8 @@ def cli_run(cli_args=None):
                 niter = system.timeStepsUntilEvent()
                 iiter += niter
                 stop = niter == 0
-                idx = system.plastic_CurrentIndex()[:, 0].astype(int)
-                a = np.sum(np.not_equal(idx, idx_n))
+                i = system.plastic.i[:, 0].astype(int)
+                a = np.sum(np.not_equal(i, i_n))
                 A = max(A, a)
 
                 if (A >= A_next and A % args.A_step == 0) or A == N:
@@ -241,19 +240,21 @@ def cli_run(cli_args=None):
 
             else:
 
-                niter = system.timeSteps_residualcheck(args.t_step)
-                iiter += niter
-                stop = niter == 0
+                inc_n = system.inc
+                ret = system.minimise(max_iter=args.t_step, max_iter_is_error=False)
+                iiter += system.inc - inc_n
+                stop = ret == 0
                 storage.dset_extend1d(file, "/sync-t/stored", t_istore, iiter)
                 t_istore += 1
                 store = True
 
+        file["Eps"].attrs["desc"] = "Average strain of each stored step (real units)"
+        file["Sig"].attrs["desc"] = "Average stress of each stored step (real units)"
+
         meta.attrs["completed"] = 1
 
 
-def basic_output(
-    system: QuasiStatic.DimensionlessSystem, file: h5py.File, verbose: bool = True
-) -> dict:
+def basic_output(system: QuasiStatic.System, file: h5py.File, verbose: bool = True) -> dict:
     """
     Read basic output from simulation.
 
@@ -275,12 +276,8 @@ def basic_output(
         t: Time [ninc].
     """
 
-    if type(system) != QuasiStatic.DimensionlessSystem:
-        raise TypeError("Please input QuasiStatic.DimensionlessSystem")
-
     doflist = file["/doflist"][...]
-    vector = system.vector()
-    udof = np.zeros(vector.shape_dofval())
+    udof = np.zeros(system.vector.shape_dofval())
     dVs = system.plastic_dV()
     dV = system.plastic_dV(rank=2)
 
@@ -297,35 +294,35 @@ def basic_output(
     ret["S"] = np.empty(n, dtype=int)
     ret["A"] = np.empty(n, dtype=int)
 
-    for i, iiter in enumerate(file["/stored"][...]):
+    for step, iiter in enumerate(file["/stored"][...]):
 
         udof[doflist] = file[f"/u/{iiter:d}"]
-        system.setU(vector.AsNode(udof))
+        system.u = system.vector.AsNode(udof)
 
-        if i == 0:
-            idx_n = system.plastic_CurrentIndex().astype(int)[:, 0]
+        if step == 0:
+            i_n = np.copy(system.plastic.i.astype(int)[:, 0])
 
-        idx = system.plastic_CurrentIndex().astype(int)[:, 0]
-        c = idx != idx_n
+        i = system.plastic.i.astype(int)[:, 0]
+        c = i != i_n
 
-        Eps = system.plastic_Eps()
-        Sig = system.plastic_Sig()
-        Epsp = system.plastic_Epsp()
+        Eps = system.plastic.Eps / system.eps0
+        Sig = system.plastic.Sig / system.sig0
+        epsp = system.plastic.epsp / system.eps0
 
-        ret["Epsbar"][i, ...] = file[f"/Eps/{iiter:d}"][...] / system.normalisation["eps0"]
-        ret["Sigbar"][i, ...] = file[f"/Sig/{iiter:d}"][...] / system.normalisation["sig0"]
-        ret["Eps"][i, ...] = np.average(Eps, weights=dV, axis=(0, 1))
-        ret["Sig"][i, ...] = np.average(Sig, weights=dV, axis=(0, 1))
-        ret["epsp"][i] = np.average(Epsp, weights=dVs, axis=(0, 1))
+        ret["Epsbar"][step, ...] = file[f"/Eps/{iiter:d}"][...] / system.eps0
+        ret["Sigbar"][step, ...] = file[f"/Sig/{iiter:d}"][...] / system.sig0
+        ret["Eps"][step, ...] = np.average(Eps, weights=dV, axis=(0, 1))
+        ret["Sig"][step, ...] = np.average(Sig, weights=dV, axis=(0, 1))
+        ret["epsp"][step] = np.average(epsp, weights=dVs, axis=(0, 1))
         if np.sum(c) > 0:
-            ret["Eps_moving"][i, ...] = np.average(Eps[c], weights=dV[c], axis=(0, 1))
-            ret["Sig_moving"][i, ...] = np.average(Sig[c], weights=dV[c], axis=(0, 1))
-            ret["epsp_moving"][i] = np.average(Epsp[c], weights=dVs[c], axis=(0, 1))
-        ret["S"][i] = np.sum(idx - idx_n)
-        ret["A"][i] = np.sum(idx != idx_n)
+            ret["Eps_moving"][step, ...] = np.average(Eps[c], weights=dV[c], axis=(0, 1))
+            ret["Sig_moving"][step, ...] = np.average(Sig[c], weights=dV[c], axis=(0, 1))
+            ret["epsp_moving"][step] = np.average(epsp[c], weights=dVs[c], axis=(0, 1))
+        ret["S"][step] = np.sum(i - i_n)
+        ret["A"][step] = np.sum(i != i_n)
 
     assert np.all(file["/A"][...] >= ret["A"])
-    ret["t"] = file["/t"][...] / system.normalisation["t0"]
+    ret["t"] = file["/t"][...] / system.t0
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
@@ -334,9 +331,7 @@ def basic_output(
     return ret
 
 
-def basic_spatial_sync_A(
-    system: QuasiStatic.DimensionlessSystem, file: h5py.File, verbose: bool = True
-) -> dict:
+def basic_spatial_sync_A(system: QuasiStatic.System, file: h5py.File, verbose: bool = True) -> dict:
     """
     Read basic output from simulation.
     The output is given at fixed "A" and per block along the interface.
@@ -353,12 +348,8 @@ def basic_spatial_sync_A(
         mask: If ``True`` no data was read for that array [N + 1].
     """
 
-    if type(system) != QuasiStatic.DimensionlessSystem:
-        raise TypeError("Please input QuasiStatic.DimensionlessSystem")
-
     doflist = file["/doflist"][...]
-    vector = system.vector()
-    udof = np.zeros(vector.shape_dofval())
+    udof = np.zeros(system.vector.shape_dofval())
     N = system.N
 
     ret = {}
@@ -368,26 +359,25 @@ def basic_spatial_sync_A(
     ret["s"] = np.empty((N + 1, N), dtype=int)
     ret["mask"] = np.ones((N + 1), dtype=bool)
 
-    for i, iiter in enumerate(file["/stored"][...]):
+    for step, iiter in enumerate(file["/stored"][...]):
 
         udof[doflist] = file[f"/u/{iiter:d}"]
-        system.setU(vector.AsNode(udof))
+        system.u = system.vector.AsNode(udof)
 
-        if i == 0:
-            idx_n = system.plastic_CurrentIndex().astype(int)[:, 0]
+        if step == 0:
+            i_n = np.copy(system.plastic.i.astype(int)[:, 0])
 
-        idx = system.plastic_CurrentIndex().astype(int)[:, 0]
-
-        A = np.sum(idx != idx_n)
+        i = system.plastic.i.astype(int)[:, 0]
+        A = np.sum(i != i_n)
 
         if not ret["mask"][A]:
             continue
 
         ret["mask"][A] = False
-        ret["Eps"][A, ...] = np.mean(system.plastic_Eps(), axis=1)
-        ret["Sig"][A, ...] = np.mean(system.plastic_Sig(), axis=1)
-        ret["epsp"][A, ...] = np.mean(system.plastic_Epsp(), axis=1)
-        ret["s"][A, ...] = idx - idx_n
+        ret["Eps"][A, ...] = np.mean(system.plastic.Eps / system.eps0, axis=1)
+        ret["Sig"][A, ...] = np.mean(system.plastic.Sig / system.sig0, axis=1)
+        ret["epsp"][A, ...] = np.mean(system.plastic.epsp / system.eps0, axis=1)
+        ret["s"][A, ...] = i - i_n
 
         if A >= N:
             break
@@ -446,17 +436,17 @@ def cli_ensembleinfo(cli_args=None):
 
                 with h5py.File(sourcepath, "r") as source:
                     if ifile == 0:
-                        system = QuasiStatic.DimensionlessSystem(source)
+                        system = QuasiStatic.System(source)
                     else:
                         system.reset(source)
 
                 if ifile == 0:
                     partial = tools.PartialDisplacement(
-                        conn=system.conn(),
-                        dofs=system.dofs(),
+                        conn=system.conn,
+                        dofs=system.dofs,
                         dof_list=file["/doflist"][...],
                     )
-                    weaklayer = np.all(np.in1d(system.plastic(), partial.element_list()))
+                    weaklayer = np.all(np.in1d(system.plastic_elem, partial.element_list()))
                     assert weaklayer
 
                 try:
@@ -518,17 +508,17 @@ def cli_spatialaverage_syncA(cli_args=None):
 
                 with h5py.File(sourcepath, "r") as source:
                     if ifile == 0:
-                        system = QuasiStatic.DimensionlessSystem(source)
+                        system = QuasiStatic.System(source)
                     else:
                         system.reset(source)
 
                 if ifile == 0:
                     partial = tools.PartialDisplacement(
-                        conn=system.conn(),
-                        dofs=system.dofs(),
+                        conn=system.conn,
+                        dofs=system.dofs,
                         dof_list=file["/doflist"][...],
                     )
-                    weaklayer = np.all(np.in1d(system.plastic(), partial.element_list()))
+                    weaklayer = np.all(np.in1d(system.plastic_elem, partial.element_list()))
                     assert weaklayer
 
                 try:

@@ -288,8 +288,8 @@ def __velocity_preparation(system, gammadot):
 
 def __velocity_steadystate(system, gammadot):
 
-    conn = system.conn()
-    coor = system.coor()
+    conn = system.conn
+    coor = system.coor
     mesh = GooseFEM.Mesh.Quad4.FineLayer(coor=coor, conn=conn)
     H = np.max(coor[:, 1]) - np.min(coor[:, 0])
 
@@ -313,7 +313,7 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
 
     with h5py.File(filepath, "a") as file:
 
-        system = QuasiStatic.DimensionlessSystem(file)
+        system = QuasiStatic.System(file)
         meta = QuasiStatic.create_check_meta(file, f"/meta/{progname}", dev=dev)
         dV = system.plastic_dV(rank=2)
 
@@ -329,28 +329,28 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
         snapshot = file["/snapshot/interval"][...] if "/snapshot/interval" in file else sys.maxsize
         v = __velocity_preparation(system, file["/gammadot"][...])
         init = True
-        i_n = system.plastic_CurrentIndex().astype(int)
+        i_n = np.copy(system.plastic.i.astype(int))
 
         boundcheck = file["/boundcheck"][...]
-        nchunk = file["/cusp/epsy/nchunk"][...] - boundcheck
+        nchunk = file["/cusp/epsy/nchunk"][...] + 2 - boundcheck
         pbar = tqdm.tqdm(total=nchunk, disable=not progress, desc=filepath)
 
         if "/restart/u" in file:
-            system.setU(file["/restart/u"][...])
-            system.setV(file["/restart/v"][...])
-            system.setA(file["/restart/a"][...])
+            system.u = file["/restart/u"][...]
+            system.v = file["/restart/v"][...]
+            system.a = file["/restart/a"][...]
             inc = int(file["/restart/inc"][...])
-            pbar.n = np.max(system.plastic_CurrentIndex())
+            pbar.n = np.max(system.plastic.i)
             pbar.refresh()
 
-        mesh = GooseFEM.Mesh.Quad4.FineLayer(system.coor(), system.conn())
+        mesh = GooseFEM.Mesh.Quad4.FineLayer(system.coor, system.conn)
         top = mesh.nodesTopEdge()
-        h = system.coor()[top[1], 0] - system.coor()[top[0], 0]
+        h = system.coor[top[1], 0] - system.coor[top[0], 0]
 
         while True:
 
             if init:
-                if np.all(system.plastic_CurrentIndex().astype(int) - i_n > 1):
+                if np.all(system.plastic.i.astype(int) - i_n > 1):
                     v = __velocity_steadystate(system, file["/gammadot"][...])
                     init = False
 
@@ -362,10 +362,12 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
                 ]
             )
 
-            if not system.flowSteps_boundcheck(n, v, boundcheck):
+            ret = system.flowSteps(n, v, nmargin=boundcheck)
+
+            if ret < 0:
                 break
 
-            pbar.n = np.max(system.plastic_CurrentIndex())
+            pbar.n = np.max(system.plastic.i)
             pbar.refresh()
             inc += n
 
@@ -377,9 +379,9 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
                     file[key].resize((i + 1,))
 
                 file["/snapshot/inc"][i] = inc
-                file[f"/snapshot/u/{inc:d}"] = system.u()
-                file[f"/snapshot/v/{inc:d}"] = system.v()
-                file[f"/snapshot/a/{inc:d}"] = system.a()
+                file[f"/snapshot/u/{inc:d}"] = system.u
+                file[f"/snapshot/v/{inc:d}"] = system.v
+                file[f"/snapshot/a/{inc:d}"] = system.a
                 file.flush()
 
             if inc % output == 0:
@@ -392,25 +394,25 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
                 for key in ["/output/sig", "/output/eps"]:
                     file[key].resize((3, i + 1))
 
-                Eps_weak = np.average(system.plastic_Eps(), weights=dV, axis=(0, 1))
-                Sig_weak = np.average(system.plastic_Sig(), weights=dV, axis=(0, 1))
+                Eps_weak = np.average(system.plastic.Eps / system.eps0, weights=dV, axis=(0, 1))
+                Sig_weak = np.average(system.plastic.Sig / system.sig0, weights=dV, axis=(0, 1))
 
-                fext = system.fext()[top, 0]
+                fext = system.fext[top, 0]
                 fext[0] += fext[-1]
                 fext = np.mean(fext[:-1]) / h / system.normalisation["sig0"]
 
                 file["/output/inc"][i] = inc
                 file["/output/fext"][i] = fext
-                file["/output/epsp"][i] = np.mean(system.plastic_Epsp())
+                file["/output/epsp"][i] = np.mean(system.plastic.epsp / system.eps0)
                 file["/output/eps"][:, i] = Eps_weak.ravel()[[0, 1, 3]]
                 file["/output/sig"][:, i] = Sig_weak.ravel()[[0, 1, 3]]
                 file.flush()
 
             if inc % restart == 0:
 
-                storage.dump_overwrite(file, "/restart/u", system.u())
-                storage.dump_overwrite(file, "/restart/v", system.v())
-                storage.dump_overwrite(file, "/restart/a", system.a())
+                storage.dump_overwrite(file, "/restart/u", system.u)
+                storage.dump_overwrite(file, "/restart/v", system.v)
+                storage.dump_overwrite(file, "/restart/a", system.a)
                 storage.dump_overwrite(file, "/restart/inc", inc)
                 file.flush()
 
@@ -741,29 +743,33 @@ def cli_paraview(cli_args=None):
 
     with h5py.File(args.file) as file, h5py.File(f"{args.output}.h5", "w") as output:
 
-        system = QuasiStatic.DimensionlessSystem(file)
+        system = QuasiStatic.System(file)
 
-        output["/coor"] = system.coor()
-        output["/conn"] = system.conn()
+        output["/coor"] = system.coor
+        output["/conn"] = system.conn
 
         series = xh.TimeSeries()
 
         for inc in file["/snapshot/inc"][...]:
 
             if inc == 0 and f"/snapshot/u/{inc:d}" not in file:
-                system.setU(np.zeros_like(system.coor()))
-                system.setV(np.zeros_like(system.coor()))
-                system.setA(np.zeros_like(system.coor()))
+                system.u = np.zeros_like(system.coor)
+                system.v = np.zeros_like(system.coor)
+                system.a = np.zeros_like(system.coor)
             else:
-                system.setU(file[f"/snapshot/u/{inc:d}"][...])
-                system.setV(file[f"/snapshot/u/{inc:d}"][...])
-                system.setA(file[f"/snapshot/a/{inc:d}"][...])
+                system.u = file[f"/snapshot/u/{inc:d}"][...]
+                system.v = file[f"/snapshot/v/{inc:d}"][...]
+                system.a = file[f"/snapshot/a/{inc:d}"][...]
 
-            output[f"/disp/{inc:d}"] = xh.as3d(system.u())
-            output[f"/Sig/{inc:d}"] = GMat.Sigd(np.mean(system.Sig(), axis=1))
-            output[f"/Eps/{inc:d}"] = GMat.Epsd(np.mean(system.Eps(), axis=1))
-            output[f"/Epsdot/{inc:d}"] = GMat.Epsd(np.mean(system.Epsdot(), axis=1))
-            output[f"/Epsddot/{inc:d}"] = GMat.Epsd(np.mean(system.Epsddot(), axis=1))
+            output[f"/disp/{inc:d}"] = xh.as3d(system.u)
+            output[f"/Sig/{inc:d}"] = GMat.Sigd(np.mean(system.Sig() / system.sig0, axis=1))
+            output[f"/Eps/{inc:d}"] = GMat.Epsd(np.mean(system.Eps() / system.eps0, axis=1))
+            output[f"/Epsdot/{inc:d}"] = GMat.Epsd(
+                np.mean(system.Epsdot() / system.eps0 * system.t0, axis=1)
+            )
+            output[f"/Epsddot/{inc:d}"] = GMat.Epsd(
+                np.mean(system.Epsddot() / system.eps0 * system.t0**2, axis=1)
+            )
 
             series.push_back(
                 xh.Unstructured(output, "/coor", "/conn", "Quadrilateral"),

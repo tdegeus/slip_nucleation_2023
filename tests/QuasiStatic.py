@@ -77,8 +77,11 @@ class MyTests(unittest.TestCase):
             sigd = file[f"/full/{idname}/sigd"][...]
             incs = file[f"/full/{idname}/inc"][...]
 
-        self.assertTrue(np.allclose(epsd[1:], historic["epsd"][3:]))
-        self.assertTrue(np.allclose(sigd[1:], historic["sigd"][3:]))
+        ref_eps = historic["epsd"][3:]
+        ref_sig = historic["sigd"][3:]
+
+        self.assertTrue(np.allclose(epsd[1:][: len(ref_eps)], ref_eps))
+        self.assertTrue(np.allclose(sigd[1:][: len(ref_sig)], ref_sig))
 
         # function call without without check
         QuasiStatic.interface_state({filename: incs[-2:]})

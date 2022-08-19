@@ -62,8 +62,6 @@ def runinc_event_basic(system: QuasiStatic.System, file: h5py.File, inc: int, Sm
         S: Size (signed) of the yielding event.
     """
 
-    assert type(system) == QuasiStatic.System
-
     stored = file["/stored"][...]
 
     if Smax is None:
@@ -71,9 +69,9 @@ def runinc_event_basic(system: QuasiStatic.System, file: h5py.File, inc: int, Sm
 
     assert inc - 1 in stored
 
-    system.restore_inc(file, inc - 1)
-    idx_n = system.plastic_CurrentIndex()[:, 0].astype(int)
-    idx_t = system.plastic_CurrentIndex()[:, 0].astype(int)
+    system.restore_step(file, inc - 1)
+    i_n = np.copy(system.plastic.i[:, 0].astype(int))
+    i_t = np.copy(system.plastic.i[:, 0].astype(int))
     deps = file["/run/epsd/kick"][...]
 
     if "trigger" in file:
@@ -88,22 +86,20 @@ def runinc_event_basic(system: QuasiStatic.System, file: h5py.File, inc: int, Sm
 
     while True:
 
-        niter = system.timeStepsUntilEvent()
+        ret = system.timeStepsUntilEvent()
+        i = system.plastic.i[:, 0].astype(int)
 
-        idx = system.plastic_CurrentIndex()[:, 0].astype(int)
-        t = system.t()
-
-        for r in np.argwhere(idx != idx_t):
+        for r in np.argwhere(i != i_t):
             R += [r]
-            T += [t * np.ones(r.shape)]
-            S += [(idx - idx_t)[r]]
+            T += [system.t * np.ones(r.shape)]
+            S += [(i - i_t)[r]]
 
-        idx_t = np.copy(idx)
+        i_t = np.copy(i)
 
-        if np.sum(idx - idx_n) >= Smax:
+        if np.sum(i - i_n) >= Smax:
             break
 
-        if niter == 0:
+        if ret == 0:
             break
 
     ret = dict(r=np.array(R).ravel(), t=np.array(T).ravel(), S=np.array(S).ravel())
