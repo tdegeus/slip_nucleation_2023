@@ -56,4 +56,3 @@ jobs:
         python MeasureDynamics.py
         python Trigger.py
         python Flow.py
-        python PinAndTrigger.py
