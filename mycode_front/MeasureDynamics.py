@@ -345,9 +345,11 @@ def basic_spatial_sync_A(system: QuasiStatic.System, file: h5py.File, verbose: b
         Sig: Stress tensor [N + 1, N, 2, 2].
         epsp: Plastic strain [N + 1, N].
         s: Number of times a block yielded [N + 1, N].
+        t: Elapsed time since start of the step [N + 1].
         mask: If ``True`` no data was read for that array [N + 1].
     """
 
+    t = file["t"][...]
     doflist = file["/doflist"][...]
     udof = np.zeros(system.vector.shape_dofval())
     N = system.N
@@ -357,6 +359,7 @@ def basic_spatial_sync_A(system: QuasiStatic.System, file: h5py.File, verbose: b
     ret["Sig"] = np.empty((N + 1, N, 2, 2), dtype=float)
     ret["epsp"] = np.empty((N + 1, N), dtype=float)
     ret["s"] = np.empty((N + 1, N), dtype=int)
+    ret["t"] = np.zeros((N + 1), dtype=float)
     ret["mask"] = np.ones((N + 1), dtype=bool)
 
     for step, iiter in enumerate(file["/stored"][...]):
@@ -374,6 +377,7 @@ def basic_spatial_sync_A(system: QuasiStatic.System, file: h5py.File, verbose: b
             continue
 
         ret["mask"][A] = False
+        ret["t"][A] = t[step] / system.t0
         ret["Eps"][A, ...] = np.mean(system.plastic.Eps / system.eps0, axis=1)
         ret["Sig"][A, ...] = np.mean(system.plastic.Sig / system.sig0, axis=1)
         ret["epsp"][A, ...] = np.mean(system.plastic.epsp / system.eps0, axis=1)
