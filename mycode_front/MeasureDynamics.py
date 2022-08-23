@@ -283,16 +283,16 @@ def basic_output(system: QuasiStatic.System, file: h5py.File, verbose: bool = Tr
 
     n = file["/stored"].size
     ret = {}
-    ret["Epsbar"] = np.empty((n, 2, 2), dtype=float)
-    ret["Sigbar"] = np.empty((n, 2, 2), dtype=float)
-    ret["Eps"] = np.empty((n, 2, 2), dtype=float)
-    ret["Sig"] = np.empty((n, 2, 2), dtype=float)
-    ret["epsp"] = np.empty(n, dtype=float)
+    ret["Epsbar"] = np.zeros((n, 2, 2), dtype=float)
+    ret["Sigbar"] = np.zeros((n, 2, 2), dtype=float)
+    ret["Eps"] = np.zeros((n, 2, 2), dtype=float)
+    ret["Sig"] = np.zeros((n, 2, 2), dtype=float)
+    ret["epsp"] = np.zeros(n, dtype=float)
     ret["Eps_moving"] = np.zeros((n, 2, 2), dtype=float)
     ret["Sig_moving"] = np.zeros((n, 2, 2), dtype=float)
     ret["epsp_moving"] = np.zeros(n, dtype=float)
-    ret["S"] = np.empty(n, dtype=int)
-    ret["A"] = np.empty(n, dtype=int)
+    ret["S"] = np.zeros(n, dtype=int)
+    ret["A"] = np.zeros(n, dtype=int)
 
     for step, iiter in enumerate(file["/stored"][...]):
 
@@ -340,7 +340,7 @@ def basic_spatial_sync_A(system: QuasiStatic.System, file: h5py.File, verbose: b
     :param file: Open simulation HDF5 archive (read-only).
     :param verbose: Print progress.
 
-    :return: Basic information per A::
+    :return: Basic information [A, block, ...]::
         Eps: Strain tensor [N + 1, N, 2, 2].
         Sig: Stress tensor [N + 1, N, 2, 2].
         epsp: Plastic strain [N + 1, N].
@@ -410,8 +410,8 @@ def cli_ensembleinfo(cli_args=None):
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
-    parser.add_argument("-p", "--sourcedir", type=str, default=".", help="Source directory")
-    parser.add_argument("files", nargs="*", type=str, help="Files to read")
+    parser.add_argument("-p", "--sourcedir", type=str, default=".", help="Directory with sim files")
+    parser.add_argument("files", nargs="*", type=str, help="See " + entry_points["cli_run"])
 
     args = tools._parse(parser, cli_args)
     assert len(args.files) > 0
@@ -446,8 +446,7 @@ def cli_ensembleinfo(cli_args=None):
                         dofs=system.dofs,
                         dof_list=file["/doflist"][...],
                     )
-                    weaklayer = np.all(np.in1d(system.plastic_elem, partial.element_list()))
-                    assert weaklayer
+                    assert np.all(np.in1d(system.plastic_elem, partial.element_list()))
 
                 try:
                     out = basic_output(system, file, verbose=False)
@@ -463,7 +462,7 @@ def cli_ensembleinfo(cli_args=None):
 
 def cli_spatialaverage_syncA(cli_args=None):
     """
-    Get spatial average of growing events.
+    Collect data to get the spatial average of growing events.
     """
 
     class MyFmt(
@@ -483,7 +482,7 @@ def cli_spatialaverage_syncA(cli_args=None):
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
     parser.add_argument("-p", "--sourcedir", type=str, default=".", help="Source directory")
-    parser.add_argument("files", nargs="*", type=str, help="Files to read")
+    parser.add_argument("files", nargs="*", type=str, help="See " + entry_points["cli_run"])
 
     args = tools._parse(parser, cli_args)
     assert len(args.files) > 0
@@ -518,8 +517,7 @@ def cli_spatialaverage_syncA(cli_args=None):
                         dofs=system.dofs,
                         dof_list=file["/doflist"][...],
                     )
-                    weaklayer = np.all(np.in1d(system.plastic_elem, partial.element_list()))
-                    assert weaklayer
+                    assert np.all(np.in1d(system.plastic_elem, partial.element_list()))
 
                 try:
                     out = basic_spatial_sync_A(system, file, verbose=False)

@@ -716,8 +716,16 @@ def cli_job_rerun_eventmap(cli_args=None):
 
 def cli_job_rerun_dynamics(cli_args=None):
     """
-    Rerun to measure the dynamics of system spanning events.
+    Create job to rerun and measure the dynamics of system spanning (A == N) events.
     Optionally an event-map can be obtained instead.
+
+    Possible usage:
+
+        :py:func:`cli_job_rerun_dynamics`
+            -o ../Dynamics/bin=1/src
+            --ibin=1
+            -s ../Run
+            Trigger_EnsembleInfo.h5
     """
 
     class MyFmt(
@@ -731,20 +739,47 @@ def cli_job_rerun_dynamics(cli_args=None):
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
 
-    parser.add_argument("--bins", type=int, default=7, help="Number of stress bins")
-    parser.add_argument("--conda", type=str, default=slurm.default_condabase, help="Env-basename")
+    # development mode
     parser.add_argument("--develop", action="store_true", help="Development mode")
-    parser.add_argument("--group", type=int, default=5, help="#simulations to group")
-    parser.add_argument("--skip", type=int, default=0, help="Number bins to skip")
-    parser.add_argument("--ibin", type=int, help="Choose one bin")
     parser.add_argument("--test", action="store_true", help="Test mode")
-    parser.add_argument("--time", type=str, default="24h", help="Walltime")
+
+    # job settings
+    parser.add_argument("--group", type=int, default=5, help="Job: #simulations to group")
+    parser.add_argument("--time", type=str, default="24h", help="Job: walltime")
+    parser.add_argument(
+        "--conda",
+        type=str,
+        default=slurm.default_condabase,
+        help="Job: basename of conda environement",
+    )
+
+    # ensemble definition
+    parser.add_argument("--bins", type=int, default=7, help="Number of stress bins")
+    parser.add_argument("--skip", type=int, default=0, help="Number bins to skip")
+    parser.add_argument("--ibin", type=int, help="Choose specific bin")
+    parser.add_argument(
+        "-n",
+        "--nsim",
+        type=int,
+        default=100,
+        help="Number of simulations to preform (first nsim in order of distance to target stress)",
+    )
     parser.add_argument("--eventmap", action="store_true", help="Run to get event-map instead")
+
+    # paths
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
-    parser.add_argument("-n", "--nsim", type=int, default=100, help="Number of simulations")
     parser.add_argument("-o", "--outdir", type=str, required=True, help="Output directory")
-    parser.add_argument("-s", "--sourcedir", type=str, default=".", help="Path to sim-dir.")
-    parser.add_argument("ensembleinfo", type=str, help="File to read")
+    parser.add_argument(
+        "-s",
+        "--sourcedir",
+        type=str,
+        default=".",
+        help="Directory with quasi-static simulations on which pushes were based",
+    )
+
+    parser.add_argument(
+        "ensembleinfo", type=str, help="Input, see " + entry_points["cli_ensembleinfo"]
+    )
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.ensembleinfo)
