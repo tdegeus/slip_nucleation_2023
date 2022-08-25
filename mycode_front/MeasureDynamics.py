@@ -8,6 +8,7 @@ import inspect
 import os
 import textwrap
 
+import enstat
 import FrictionQPotFEM  # noqa: F401
 import GMatElastoPlasticQPot  # noqa: F401
 import GooseFEM
@@ -24,12 +25,14 @@ from ._version import version
 entry_points = dict(
     cli_run="MeasureDynamics_run",
     cli_ensembleinfo="MeasureDynamics_EnsembleInfo",
-    cli_spatialaverage_syncA="MeasureDynamics_SpatialAverage_syncA",
+    cli_spatialaverage_syncA_raw="MeasureDynamics_SpatialAverage_syncA_raw",
+    cli_spatialaverage_syncA_data="MeasureDynamics_SpatialAverage_syncA_data",
 )
 
 file_defaults = dict(
     cli_ensembleinfo="MeasureDynamics_EnsembleInfo.h5",
-    cli_spatialaverage_syncA="MeasureDynamics_SpatialAverage_syncA.h5",
+    cli_spatialaverage_syncA_raw="MeasureDynamics_SpatialAverage_syncA_raw.h5",
+    cli_spatialaverage_syncA_data="MeasureDynamics_SpatialAverage_syncA_data.h5",
 )
 
 
@@ -78,21 +81,20 @@ def elements_at_height(coor: ArrayLike, conn: ArrayLike, height: float) -> np.nd
 
 def cli_run(cli_args=None):
     """
-    Rerun one increment and store output at different events sizes and/or times.
-    By default output is stored at given event sizes ``A`` (interval controlled by ``--A-step``)
-    and then at given time-steps (interval controlled by ``--t-step``)
-    since the event was system spanning.
-    The default behaviour can be modified as follows:
+    Rerun an event and store output at different increments that are selected at:
+    *   Given event sizes ``A`` unit the event is system spanning (``--A-step`` controls interval).
+    *   Given time-steps if no longer checking at ``A`` (interval controlled by ``--t-step``).
 
-    *   ``--t-step=0``: Stop when ``A = N``
-    *   ``--A-step=0``: Store are fixed time intervals
+    Customisation:
+    *   ``--t-step=0``: Break simulation when ``A = N``.
+    *   ``--A-step=0``: Store at fixed time intervals from the beginning.
 
     By default, the macroscopic stress and stain and displacements at the weak layer are stored.
-    Using the latter the full state of the interface can be restored
+    Using the latter the full state **of the interface** can be restored
     (but nowhere else in the system).
+
     In stead, if ``--height`` is used, the displacements field for an element row at a given height
     above the interface is selected (see :py:func:`elements_at_height`).
-    In that case the state of the interface cannot be restored.
     """
 
     class MyFmt(
@@ -177,21 +179,35 @@ def cli_run(cli_args=None):
         stop = False
         last_iiter = -1  # last written increment
 
+        storage.create_extendible(file, "/stored", np.uint64, desc="Index of stored steps")
         storage.create_extendible(file, "/t", float, desc="Time of each stored step (real units)")
         storage.create_extendible(file, "/A", np.uint64, desc="'A' of each stored step")
-        storage.create_extendible(file, "/stored", np.uint64, desc="Stored steps")
-        storage.create_extendible(file, "/sync-A/stored", np.uint64, desc="Stored step")
-        storage.create_extendible(file, "/sync-t/stored", np.uint64, desc="Stored step")
+        storage.create_extendible(file, "/sync-A/stored", np.uint64, desc="Steps stored at sync-A")
+        storage.create_extendible(file, "/sync-t/stored", np.uint64, desc="Steps stored at sync-t")
         storage.dump_with_atttrs(file, "/doflist", doflist, desc="Index of each of the stored DOFs")
+
+        file.create_group("u")
+        file.create_group("Eps")
+        file.create_group("Sig")
+
+        file["u"].attrs["desc"] = 'Displacement of selected DOFs (see "/doflist")'
+        file["u"].attrs["goal"] = "Reconstruct (part of) the system at that instance"
+        file["u"].attrs["groups"] = 'Items in "/stored"'
+
+        file["Eps"].attrs["desc"] = "Macroscopic strain tensor"
+        file["Eps"].attrs["groups"] = 'Items in "/stored"'
+
+        file["Sig"].attrs["desc"] = "Macroscopic stress tensor"
+        file["Sig"].attrs["groups"] = 'Items in "/stored"'
 
         while True:
 
             if store:
 
                 if iiter != last_iiter:
+                    file[f"/u/{iiter:d}"] = system.vector.AsDofs(system.u)[dofstore]
                     file[f"/Eps/{iiter:d}"] = np.average(system.Eps(), weights=dV, axis=(0, 1))
                     file[f"/Sig/{iiter:d}"] = np.average(system.Sig(), weights=dV, axis=(0, 1))
-                    file[f"/u/{iiter:d}"] = system.vector.AsDofs(system.u)[dofstore]
                     storage.dset_extend1d(file, "/t", istore, system.t)
                     storage.dset_extend1d(file, "/A", istore, A)
                     storage.dset_extend1d(file, "/stored", istore, iiter)
@@ -464,9 +480,10 @@ def cli_ensembleinfo(cli_args=None):
         output["/stored"] = [os.path.basename(i) for i in args.files]
 
 
-def cli_spatialaverage_syncA(cli_args=None):
+def cli_spatialaverage_syncA_raw(cli_args=None):
     """
     Collect data to get the spatial average of growing events.
+    The output can be removed as long as the raw data is kept.
     """
 
     class MyFmt(
@@ -533,3 +550,87 @@ def cli_spatialaverage_syncA(cli_args=None):
                     output[f"/full/{os.path.basename(filepath)}/{key}"] = out[key]
 
         output["/stored"] = [os.path.basename(i) for i in args.files]
+
+
+def cli_spatialaverage_syncA_data(cli_args=None):
+    """
+    Treat raw data from :py:func:`cli_spatialaverage_syncA_raw` to get the spatial averages.
+    """
+
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    entry_points[funcname]
+    output = file_defaults[funcname]
+
+    parser.add_argument("--develop", action="store_true", help="Development mode")
+    parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
+    parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
+    parser.add_argument("raw", type=str, help="See " + entry_points["cli_spatialaverage_syncA_raw"])
+
+    args = tools._parse(parser, cli_args)
+    assert os.path.isfile(args.raw)
+    tools._check_overwrite_file(args.output, args.force)
+
+    with h5py.File(args.raw) as raw:
+
+        for i, simid in enumerate(tqdm.tqdm(raw["full"])):
+
+            spatial = dict(
+                eps_xx=raw["full"][simid]["Eps"][...][..., 0, 0],
+                eps_xy=raw["full"][simid]["Eps"][...][..., 0, 1],
+                eps_yy=raw["full"][simid]["Eps"][...][..., 1, 1],
+                sig_xx=raw["full"][simid]["Sig"][...][..., 0, 0],
+                sig_xy=raw["full"][simid]["Sig"][...][..., 0, 1],
+                sig_yy=raw["full"][simid]["Sig"][...][..., 1, 1],
+                epsp=raw["full"][simid]["epsp"][...],
+                s=raw["full"][simid]["s"][...],
+            )
+            t = raw["full"][simid]["t"][...]
+            mask = raw["full"][simid]["mask"][...]
+            istart = np.argmin(t[~mask])
+            t = t - t[istart]
+            spatial["epsp"] = spatial["epsp"] - spatial["epsp"][istart, :]
+
+            shift = tools.center_avalanche_per_row(spatial["s"])
+            for key in spatial:
+                spatial[key] = tools.indep_roll(spatial[key], shift, axis=1)
+
+            if i == 0:
+                average = {
+                    key: enstat.static(shape=spatial[key].shape, dtype=spatial[key].dtype)
+                    for key in spatial
+                }
+                averate_t = enstat.static(shape=t.shape, dtype=t.dtype)
+                N = spatial["epsp"].shape[1]
+
+            for key in spatial:
+                average[key].add_sample(spatial[key], mask=mask)
+            averate_t.add_sample(t, mask=mask)
+
+    with h5py.File(args.output, "w") as output:
+
+        Eps = np.empty([N + 1, N, 2, 2])
+        Eps[..., 0, 0] = average["eps_xx"].mean()
+        Eps[..., 0, 1] = average["eps_xy"].mean()
+        Eps[..., 1, 0] = average["eps_xy"].mean()
+        Eps[..., 1, 1] = average["eps_yy"].mean()
+
+        Sig = np.empty([N + 1, N, 2, 2])
+        Sig[..., 0, 0] = average["sig_xx"].mean()
+        Sig[..., 0, 1] = average["sig_xy"].mean()
+        Sig[..., 1, 0] = average["sig_xy"].mean()
+        Sig[..., 1, 1] = average["sig_yy"].mean()
+
+        output["Eps"] = Eps
+        output["Sig"] = Sig
+        output["s"] = average["s"].mean()
+        output["epsp"] = average["epsp"].mean()
+        output["t"] = averate_t.mean()

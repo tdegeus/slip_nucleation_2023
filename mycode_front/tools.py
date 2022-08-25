@@ -449,7 +449,7 @@ def center_avalanche_per_row(arr):
     """
 
     assert arr.ndim == 2
-    m, n = arr.shape
+    n = arr.shape[1]
     shift = np.floor(n / 2 - _center_of_mass_per_row(arr)).astype(int)
     return np.where(shift < 0, n + shift, shift)
 
