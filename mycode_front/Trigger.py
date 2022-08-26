@@ -617,7 +617,7 @@ def __job_rerun(file, sims, basename, executable, args):
     ret = []
     height = " "
 
-    if hasattr(args, 'height'):
+    if hasattr(args, "height"):
         height = " " + " ".join(["--height=" + str(h) for h in args.height]) + " "
 
     for i in tqdm.tqdm(range(len(sims["replica"]))):
@@ -771,7 +771,12 @@ def cli_job_rerun_dynamics(cli_args=None):
         help="Number of simulations to preform (first nsim in order of distance to target stress)",
     )
     parser.add_argument("--eventmap", action="store_true", help="Run to get event-map instead")
-    parser.add_argument("--height", type=float, action="append", help="Add element row(s), see " + MeasureDynamics.entry_points["cli_run"])
+    parser.add_argument(
+        "--height",
+        type=float,
+        action="append",
+        help="Add element row(s), see " + MeasureDynamics.entry_points["cli_run"],
+    )
 
     # paths
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")

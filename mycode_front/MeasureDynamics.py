@@ -9,6 +9,7 @@ import os
 import textwrap
 
 import enstat
+import GooseHDF5
 import FrictionQPotFEM  # noqa: F401
 import GMatElastoPlasticQPot  # noqa: F401
 import GooseFEM
@@ -25,14 +26,12 @@ from ._version import version
 entry_points = dict(
     cli_run="MeasureDynamics_run",
     cli_ensembleinfo="MeasureDynamics_EnsembleInfo",
-    cli_spatialaverage_syncA_raw="MeasureDynamics_SpatialAverage_syncA_raw",
-    cli_spatialaverage_syncA_data="MeasureDynamics_SpatialAverage_syncA_data",
+    cli_weaklayer_syncA="MeasureDynamics_Average_syncA",
 )
 
 file_defaults = dict(
     cli_ensembleinfo="MeasureDynamics_EnsembleInfo.h5",
-    cli_spatialaverage_syncA_raw="MeasureDynamics_SpatialAverage_syncA_raw.h5",
-    cli_spatialaverage_syncA_data="MeasureDynamics_SpatialAverage_syncA_data.h5",
+    cli_weaklayer_syncA="MeasureDynamics_Average_syncA.h5",
 )
 
 
@@ -82,19 +81,27 @@ def elements_at_height(coor: ArrayLike, conn: ArrayLike, height: float) -> np.nd
 def cli_run(cli_args=None):
     """
     Rerun an event and store output at different increments that are selected at:
-    *   Given event sizes ``A`` unit the event is system spanning (``--A-step`` controls interval).
-    *   Given time-steps if no longer checking at ``A`` (interval controlled by ``--t-step``).
+    *   Given event sizes "A" unit the event is system spanning (``--A-step`` controls interval).
+    *   Given time-steps if no longer checking at "A" (interval controlled by ``--t-step``).
 
     Customisation:
     *   ``--t-step=0``: Break simulation when ``A = N``.
     *   ``--A-step=0``: Store at fixed time intervals from the beginning.
 
-    By default, the macroscopic stress and stain and displacements at the weak layer are stored.
-    Using the latter the full state **of the interface** can be restored
-    (but nowhere else in the system).
-
-    In stead, if ``--height`` is used, the displacements field for an element row at a given height
-    above the interface is selected (see :py:func:`elements_at_height`).
+    Storage:
+    *   An exact copy of the input file.
+    *   The macroscopic stress tensor ("/dynamics/Sig/{iiter:d}").
+    *   The macroscopic strain tensor ("/dynamics/Eps/{iiter:d}").
+    *   The displacement ("/dynamics/u/{iiter:d}") of a selection of DOFs ("/dynamics/doflist") from:
+        - elements along the weak layer,
+        - element row(s) at (a) given height(s) above the weak layer.
+        The mechanical state can be fully restored for the saved elements (but nowhere else).
+    *   Metadata:
+        - "/dynamics/t": Time.
+        - "/dynamics/A": Actual number of blocks that yielded at least once.
+        - "/dynamics/stored": The stored "iiter".
+        - "/dynamics/sync-A": List of "iiter" stored due to given "A".
+        - "/dynamics/sync-t": List of "iiter" stored due to given "t" after checking for "A".
     """
 
     class MyFmt(
@@ -116,17 +123,66 @@ def cli_run(cli_args=None):
     parser.add_argument("-i", "--inc", required=True, type=int, help="Increment number")
     parser.add_argument("-o", "--output", type=str, required=True, help="Output file")
     parser.add_argument("-v", "--version", action="version", version=version)
-    parser.add_argument("-y", "--height", type=float, help="Select element row")
+    parser.add_argument("--height", type=float, action="append", help="Add element row(s)")
     parser.add_argument("file", type=str, help="Simulation from which to run (read-only)")
 
     args = tools._parse(parser, cli_args)
+    args.height = [] if args.height is None else args.height
     assert os.path.isfile(args.file)
     tools._check_overwrite_file(args.output, args.force)
     assert args.A_step > 0 or args.t_step > 0
 
-    # restore state
+    # copy file
 
-    with h5py.File(args.file, "r") as file:
+    if os.path.realpath(args.file) != os.path.realpath(args.output):
+
+        with h5py.File(args.file) as src, h5py.File(args.output, "w") as dest:
+            paths = GooseHDF5.getdatasets(src, fold="/disp")
+            assert "/disp/..." in paths
+            paths.remove("/disp/...")
+            GooseHDF5.copy(src, dest, paths, expand_soft=False)
+            dest[f"/disp/{args.inc - 1:d}"] = src[f"/disp/{args.inc - 1:d}"][:]
+
+    with h5py.File(args.output, "a") as file:
+
+        # metadata & storage preparation
+
+        meta = QuasiStatic.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
+        meta.attrs["file"] = os.path.basename(args.file)
+
+        storage.create_extendible(
+            file, "/dynamics/stored", np.uint64, desc='"iiter" of stored steps'
+        )
+
+        storage.create_extendible(
+            file, "/dynamics/t", float, desc="Time of each stored step (real units)"
+        )
+
+        storage.create_extendible(file, "/dynamics/A", np.uint64, desc='"A" of each stored step')
+
+        storage.create_extendible(
+            file, "/dynamics/sync-A", np.uint64, desc="Steps stored due to sync-A"
+        )
+
+        storage.create_extendible(
+            file, "/dynamics/sync-t", np.uint64, desc="Steps stored due to sync-t"
+        )
+
+        file["dynamics"].create_group("u")
+        file["dynamics"].create_group("Eps")
+        file["dynamics"].create_group("Sig")
+
+        file["/dynamics/u"].attrs["desc"] = 'Displacement of selected DOFs (see "/doflist")'
+        file["/dynamics/u"].attrs["goal"] = "Reconstruct (part of) the system at that instance"
+        file["/dynamics/u"].attrs["groups"] = 'Items in "/stored"'
+
+        file["/dynamics/Eps"].attrs["desc"] = "Macroscopic strain tensor"
+        file["/dynamics/Eps"].attrs["groups"] = 'Items in "/stored"'
+
+        file["/dynamics/Sig"].attrs["desc"] = "Macroscopic stress tensor"
+        file["/dynamics/Sig"].attrs["groups"] = 'Items in "/stored"'
+
+        # restore state
 
         system = QuasiStatic.System(file)
         system.restore_step(file, args.inc - 1)
@@ -140,32 +196,37 @@ def cli_run(cli_args=None):
         else:
             kick = file["/kick"][args.inc]
 
-    # variables needed to write output
+        # variables needed to write output
 
-    if args.height is not None:
-        element_list = elements_at_height(system.coor, system.conn, args.height)
-    else:
-        element_list = system.plastic_elem
+        element_list = list(system.plastic_elem)
 
-    partial = tools.PartialDisplacement(
-        conn=system.conn,
-        dofs=system.dofs,
-        element_list=element_list,
-    )
-    dofstore = partial.dof_is_stored()
-    doflist = partial.dof_list()
-    dV = system.dV(rank=2)
-    N = system.N
+        for height in args.height:
+            element_list += list(elements_at_height(system.coor, system.conn, height))
 
-    # rerun dynamics and store every other time
+        partial = tools.PartialDisplacement(
+            conn=system.conn,
+            dofs=system.dofs,
+            element_list=np.unique(element_list),
+        )
 
-    pbar = tqdm.tqdm(total=maxiter)
-    pbar.set_description(args.output)
+        del element_list
 
-    with h5py.File(args.output, "w") as file:
+        keepdof = partial.dof_is_stored()
+        dV = system.dV(rank=2)
+        N = system.N
 
-        meta = QuasiStatic.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
-        meta.attrs["file"] = os.path.basename(args.file)
+        storage.dump_with_atttrs(
+            file,
+            "/dynamics/doflist",
+            partial.dof_list(),
+            desc='List of stored DOFs (order corresponds to "u"',
+            components=["weaklayer"] + ["height=" + str(h) for h in args.height],
+        )
+
+        # rerun dynamics and store every other time
+
+        pbar = tqdm.tqdm(total=maxiter)
+        pbar.set_description(args.output)
 
         A = 0  # maximal A encountered so far
         A_next = 0  # next A at which to write output
@@ -177,43 +238,26 @@ def cli_run(cli_args=None):
         iiter = 0  # total number of elapsed iterations
         istore = 0  # index of the number of storage steps
         stop = False
-        last_iiter = -1  # last written increment
-
-        storage.create_extendible(file, "/stored", np.uint64, desc="Index of stored steps")
-        storage.create_extendible(file, "/t", float, desc="Time of each stored step (real units)")
-        storage.create_extendible(file, "/A", np.uint64, desc="'A' of each stored step")
-        storage.create_extendible(file, "/sync-A/stored", np.uint64, desc="Steps stored at sync-A")
-        storage.create_extendible(file, "/sync-t/stored", np.uint64, desc="Steps stored at sync-t")
-        storage.dump_with_atttrs(file, "/doflist", doflist, desc="Index of each of the stored DOFs")
-
-        file.create_group("u")
-        file.create_group("Eps")
-        file.create_group("Sig")
-
-        file["u"].attrs["desc"] = 'Displacement of selected DOFs (see "/doflist")'
-        file["u"].attrs["goal"] = "Reconstruct (part of) the system at that instance"
-        file["u"].attrs["groups"] = 'Items in "/stored"'
-
-        file["Eps"].attrs["desc"] = "Macroscopic strain tensor"
-        file["Eps"].attrs["groups"] = 'Items in "/stored"'
-
-        file["Sig"].attrs["desc"] = "Macroscopic stress tensor"
-        file["Sig"].attrs["groups"] = 'Items in "/stored"'
+        last_stored_iiter = -1  # last written increment
 
         while True:
 
             if store:
 
-                if iiter != last_iiter:
-                    file[f"/u/{iiter:d}"] = system.vector.AsDofs(system.u)[dofstore]
-                    file[f"/Eps/{iiter:d}"] = np.average(system.Eps(), weights=dV, axis=(0, 1))
-                    file[f"/Sig/{iiter:d}"] = np.average(system.Sig(), weights=dV, axis=(0, 1))
-                    storage.dset_extend1d(file, "/t", istore, system.t)
-                    storage.dset_extend1d(file, "/A", istore, A)
-                    storage.dset_extend1d(file, "/stored", istore, iiter)
+                if iiter != last_stored_iiter:
+                    file[f"/dynamics/u/{iiter:d}"] = system.vector.AsDofs(system.u)[keepdof]
+                    file[f"/dynamics/Eps/{iiter:d}"] = np.average(
+                        system.Eps(), weights=dV, axis=(0, 1)
+                    )
+                    file[f"/dynamics/Sig/{iiter:d}"] = np.average(
+                        system.Sig(), weights=dV, axis=(0, 1)
+                    )
+                    storage.dset_extend1d(file, "/dynamics/t", istore, system.t)
+                    storage.dset_extend1d(file, "/dynamics/A", istore, A)
+                    storage.dset_extend1d(file, "/dynamics/stored", istore, iiter)
                     file.flush()
                     istore += 1
-                    last_iiter = iiter
+                    last_stored_iiter = iiter
                 store = False
                 pbar.n = iiter
                 pbar.refresh()
@@ -241,13 +285,13 @@ def cli_run(cli_args=None):
                 A = max(A, a)
 
                 if (A >= A_next and A % args.A_step == 0) or A == N:
-                    storage.dset_extend1d(file, "/sync-A/stored", A_istore, iiter)
+                    storage.dset_extend1d(file, "/dynamics/sync-A", A_istore, iiter)
                     A_istore += 1
                     store = True
                     A_next += args.A_step
 
                 if A == N:
-                    storage.dset_extend1d(file, "/sync-t/stored", t_istore, iiter)
+                    storage.dset_extend1d(file, "/dynamics/sync-t", t_istore, iiter)
                     t_istore += 1
                     store = True
                     A_check = False
@@ -260,12 +304,9 @@ def cli_run(cli_args=None):
                 ret = system.minimise(max_iter=args.t_step, max_iter_is_error=False)
                 iiter += system.inc - inc_n
                 stop = ret == 0
-                storage.dset_extend1d(file, "/sync-t/stored", t_istore, iiter)
+                storage.dset_extend1d(file, "/dynamics/sync-t", t_istore, iiter)
                 t_istore += 1
                 store = True
-
-        file["Eps"].attrs["desc"] = "Average strain of each stored step (real units)"
-        file["Sig"].attrs["desc"] = "Average stress of each stored step (real units)"
 
         meta.attrs["completed"] = 1
 
@@ -480,10 +521,13 @@ def cli_ensembleinfo(cli_args=None):
         output["/stored"] = [os.path.basename(i) for i in args.files]
 
 
-def cli_spatialaverage_syncA_raw(cli_args=None):
+def cli_weaklayer_syncA(cli_args=None):
     """
-    Collect data to get the spatial average of growing events.
-    The output can be removed as long as the raw data is kept.
+    Compute the spatial average of growing events.
+    At each "A" the avalanche is aligned and the ensemble average is taken.
+    This approximates:
+    *   The average is taken at different times, with the synchochronisation different at each "A".
+    *   The alignment of avalanches is different at each "A".
     """
 
     class MyFmt(

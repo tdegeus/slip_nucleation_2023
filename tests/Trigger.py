@@ -131,7 +131,20 @@ class MyTests(unittest.TestCase):
 
         outdir = os.path.join(dirname, "dynamics")
         cmd = Trigger.cli_job_rerun_dynamics(
-            ["--dev", "-f", "--test", "-n", "2", "--height", 2, "-s", dirname, "-o", outdir, triggerinfo]
+            [
+                "--dev",
+                "-f",
+                "--test",
+                "-n",
+                "2",
+                "--height",
+                2,
+                "-s",
+                dirname,
+                "-o",
+                outdir,
+                triggerinfo,
+            ]
         )
         MeasureDynamics.cli_run(["--dev", "-f"] + cmd[0].split(" ")[1:])
 
