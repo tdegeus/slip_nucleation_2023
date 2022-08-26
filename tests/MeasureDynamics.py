@@ -115,11 +115,11 @@ class MyTests(unittest.TestCase):
         outname = os.path.join(dirname, f"id=0_reruninc={inc:d}.h5")
         info = os.path.join(dirname, "MeasureDynamicsEnsembleInfo.h5")
         syncA = os.path.join(dirname, "MeasureDynamics_SyncA.h5")
-        MeasureDynamics.cli_run(["--dev", "-f", "--inc", inc, "-o", outname, filename])
+        MeasureDynamics.cli_run(["--dev", "-f", "--height", 2, "--inc", inc, "-o", outname, filename])
         MeasureDynamics.cli_ensembleinfo(
             ["--dev", "-f", "--source", os.path.abspath(dirname), "-o", info, outname]
         )
-        MeasureDynamics.cli_spatialaverage_syncA(
+        MeasureDynamics.cli_spatialaverage_syncA_raw(
             ["--dev", "-f", "--source", os.path.abspath(dirname), "-o", syncA, outname]
         )
 
