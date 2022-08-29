@@ -6,7 +6,7 @@ dependencies:
 - cmake
 - cpppath
 - docopt.cpp
-- enstat
+- enstat >=0.5.0
 - fmt
 - frictionqpotfem >=0.20.1
 - gmatelastic >=0.5.0

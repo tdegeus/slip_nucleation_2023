@@ -113,16 +113,12 @@ class MyTests(unittest.TestCase):
         inc = np.argwhere(A == N).ravel()[-1]
 
         outname = os.path.join(dirname, f"id=0_reruninc={inc:d}.h5")
-        info = os.path.join(dirname, "MeasureDynamicsEnsembleInfo.h5")
-        syncA = os.path.join(dirname, "MeasureDynamics_SyncA.h5")
+        average = os.path.join(dirname, "MeasureDynamics_Average.h5")
         MeasureDynamics.cli_run(
             ["--dev", "-f", "--height", 2, "--inc", inc, "-o", outname, filename]
         )
-        MeasureDynamics.cli_ensembleinfo(
-            ["--dev", "-f", "--source", os.path.abspath(dirname), "-o", info, outname]
-        )
-        MeasureDynamics.cli_spatialaverage_syncA_raw(
-            ["--dev", "-f", "--source", os.path.abspath(dirname), "-o", syncA, outname]
+        MeasureDynamics.cli_average(
+            ["--dev", "-f", "-o", average, outname]
         )
 
     def test_trigger_run(self):
@@ -143,10 +139,10 @@ class MyTests(unittest.TestCase):
         MeasureDynamics.cli_run(["--dev", "-f", "--inc", 1, "-o", outname, triggername])
 
         with h5py.File(outname, "r") as file:
-            a = file["/A"][-1]
-            iiter = file["/stored"][-1]
-            ustore = file[f"/u/{iiter:d}"][...]
-            doflist = file["/doflist"][...]
+            a = file["/dynamics/A"][-1]
+            iiter = file["/dynamics/stored"][-1]
+            ustore = file[f"/dynamics/u/{iiter:d}"][...]
+            doflist = file["/dynamics/doflist"][...]
 
         with h5py.File(triggername, "r") as file:
             system = QuasiStatic.System(file)

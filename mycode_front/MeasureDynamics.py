@@ -25,13 +25,11 @@ from ._version import version
 
 entry_points = dict(
     cli_run="MeasureDynamics_run",
-    cli_ensembleinfo="MeasureDynamics_EnsembleInfo",
-    cli_weaklayer_syncA="MeasureDynamics_Average_syncA",
+    cli_average="MeasureDynamics_average",
 )
 
 file_defaults = dict(
-    cli_ensembleinfo="MeasureDynamics_EnsembleInfo.h5",
-    cli_weaklayer_syncA="MeasureDynamics_Average_syncA.h5",
+    cli_average="MeasureDynamics_average.h5",
 )
 
 
@@ -306,6 +304,226 @@ def cli_run(cli_args=None):
         meta.attrs["completed"] = 1
 
 
+def cli_average(cli_args=None):
+    """
+    ???
+    """
+
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    output = file_defaults[funcname]
+
+    parser.add_argument("--develop", action="store_true", help="Development mode")
+    parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
+    parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
+    parser.add_argument("files", nargs="*", type=str, help="See " + entry_points["cli_run"])
+
+    args = tools._parse(parser, cli_args)
+    assert len(args.files) > 0
+    assert all([os.path.isfile(file) for file in args.files])
+    tools._check_overwrite_file(args.output, args.force)
+
+    # get duration of each event and allocate binning on duration since system spanning
+
+    t_start = []
+    t_end = []
+
+    for ifile, filepath in enumerate(args.files):
+
+        with h5py.File(filepath, "r") as file:
+
+            if ifile == 0:
+
+                system = QuasiStatic.System(file)
+                N = system.N
+                dV = system.dV()
+                dV2 = system.dV(rank=2)
+
+                height = file[f"/meta/{entry_points['cli_run']}"].attrs["height"]
+                t_step = file[f"/meta/{entry_points['cli_run']}"].attrs["t-step"]
+                dt = float(file["/run/dt"][...])
+
+                element_list = list(system.plastic_elem)
+                height_elem = []
+
+                for h in height:
+                    elem = elements_at_height(system.coor, system.conn, h)
+                    element_list += list(elem)
+                    height_elem.append(elem)
+
+                partial = tools.PartialDisplacement(
+                    conn=system.conn,
+                    dofs=system.dofs,
+                    element_list=np.unique(element_list),
+                )
+
+                doflist = partial.dof_list()
+
+            else:
+
+                assert N == system.N
+                assert height == file[f"/meta/{entry_points['cli_run']}"].attrs["height"]
+                assert t_step == file[f"/meta/{entry_points['cli_run']}"].attrs["t-step"]
+                assert dt == float(file["/run/dt"][...])
+                assert np.all(doflist, file["/dynamics/doflist"][...])
+
+            t = file["/dynamics/t"][...] / system.t0
+            A = file["/dynamics/A"][...]
+            t = np.sort(t) - np.min(t[A == N])
+            t_start.append(t[0])
+            t_end.append(t[-1])
+
+    Dt = t_step * dt
+    t_bin = np.arange(np.min(t_start) - Dt, np.max(t_end) + 2 * Dt, Dt)
+    t_bin = t_bin - np.min(t_bin[t_bin > 0])
+    t_mid = 0.5 * (t_bin[1:] + t_bin[:-1])
+
+    def allocate(n, height):
+        ret = dict(
+            delta_t = enstat.static(shape=[n]),
+            macroscopic = {
+                "Eps": enstat.static(shape=[n, 2, 2]),
+                "Sig": enstat.static(shape=[n, 2, 2]),
+            },
+            weak = {
+                "Eps": enstat.static(shape=[n, 2, 2]),
+                "Sig": enstat.static(shape=[n, 2, 2]),
+                "epsp": enstat.static(shape=[n]),
+                "Eps_moving": enstat.static(shape=[n, 2, 2]),
+                "Sig_moving": enstat.static(shape=[n, 2, 2]),
+                "epsp_moving": enstat.static(shape=[n]),
+            }
+        )
+
+        for i in range(len(height)):
+            ret[i] = {
+                "Eps": enstat.static(shape=[n, 2, 2]),
+                "Sig": enstat.static(shape=[n, 2, 2]),
+            }
+
+        return ret
+
+    def add_my_sample(average, index, data):
+        average.first[index, ...] += data
+        average.second[index, ...] += data ** 2
+        average.norm[index, ...] += 1
+
+    synct = allocate(t_bin.size - 1, height)
+    syncA = allocate(N + 1, height)
+    syncA["align"] = dict(
+        eps_xx = enstat.static(shape=[N + 1, N]),
+        eps_xy = enstat.static(shape=[N + 1, N]),
+        eps_yy = enstat.static(shape=[N + 1, N]),
+        sig_xx = enstat.static(shape=[N + 1, N]),
+        sig_xy = enstat.static(shape=[N + 1, N]),
+        sig_yy = enstat.static(shape=[N + 1, N]),
+        epsp = enstat.static(shape=[N + 1, N]),
+        s = enstat.static(shape=[N + 1, N]),
+    )
+
+    # averages
+
+    with h5py.File(args.output, "w") as output:
+
+        fmt = "{:" + str(max(len(i) for i in args.files)) + "s}"
+        pbar = tqdm.tqdm(args.files)
+        pbar.set_description(fmt.format(""))
+
+        for ifile, filepath in enumerate(pbar):
+
+            pbar.set_description(fmt.format(filepath), refresh=True)
+
+            with h5py.File(filepath, "r") as file:
+
+                if ifile > 0:
+                    system.reset(file)
+
+                # determine duration bin, ensure that only one measurement per bin is added
+                # (take the one closest to the middle of the bin)
+
+                t = file["/dynamics/t"][...] / system.t0
+                A = file["/dynamics/A"][...]
+                final_step_syncA = np.max(file["/dynamics/sync-A"][...])
+                delta_t = t - np.min(t[A == N])
+                t_ibin = np.digitize(delta_t, t_bin) - 1
+                d = np.abs(delta_t - t_mid[t_ibin])
+
+                for ibin in np.unique(t_ibin):
+                    idx = np.argwhere(t_ibin == ibin).ravel()
+                    if len(idx) <= 1:
+                        continue
+                    jdx = idx[np.argmin(d[idx])]
+                    t_ibin[idx] = -1
+                    t_ibin[jdx] = ibin
+
+                del d
+
+                # add averages
+
+                Epsbar = storage.symtens2_read(file, "/dynamics/Epsbar") / system.eps0
+                Sigbar = storage.symtens2_read(file, "/dynamics/Sigbar") / system.sig0
+
+                keep = t_ibin >= 0
+                add_my_sample(synct["delta_t"], t_ibin[keep], delta_t[keep])
+                add_my_sample(synct["macroscopic"]["Eps"], t_ibin[keep], Epsbar[keep])
+                add_my_sample(synct["macroscopic"]["Sig"], t_ibin[keep], Sigbar[keep])
+
+                for step, iiter in enumerate(file["/dynamics/stored"][...]):
+
+                    udof = np.zeros(system.vector.shape_dofval())
+                    udof[doflist] = file[f"/dynamics/u/{iiter:d}"]
+                    system.u = system.vector.AsNode(udof)
+
+                    if step == 0:
+                        i_n = np.copy(system.plastic.i.astype(int)[:, 0])
+
+                    i = system.plastic.i.astype(int)[:, 0]
+                    broken = i != i_n
+                    assert np.sum(broken) == file["/dynamics/A"][step]
+
+                    # synct
+
+                    if t_ibin[step] >= 0:
+
+                        Eps = system.Eps() / system.eps0
+                        Sig = system.Sig() / system.sig0
+
+                        plas = system.plastic_elem
+                        moving = plas[broken]
+
+                        add_my_sample(synct["weak"]["Eps"], t_ibin[step], np.average(Eps[plas, ...], weights=dV2[plas, ...], axis=(0, 1)))
+                        add_my_sample(synct["weak"]["Sig"], t_ibin[step], np.average(Sig[plas, ...], weights=dV2[plas, ...], axis=(0, 1)))
+                        add_my_sample(synct["weak"]["epsp"], t_ibin[step], np.average(system.plastic.epsp, weights=dV[plas, ...], axis=(0, 1)))
+
+                        if np.sum(broken) > 0:
+                            add_my_sample(synct["weak"]["Eps_moving"], t_ibin[step], np.average(Eps[moving, ...], weights=dV2[moving, ...], axis=(0, 1)))
+                            add_my_sample(synct["weak"]["Sig_moving"], t_ibin[step], np.average(Sig[moving, ...], weights=dV2[moving, ...], axis=(0, 1)))
+                            add_my_sample(synct["weak"]["epsp_moving"], t_ibin[step], np.average(system.plastic.epsp[broken], weights=dV[moving, ...], axis=(0, 1)))
+
+                        for i in range(len(height)):
+                            add_my_sample(synct[i]["Eps"], t_ibin[step], np.average(Eps[height_elem[i], ...], weights=dV2[height_elem[i], ...], axis=(0, 1)))
+                            add_my_sample(synct[i]["Sig"], t_ibin[step], np.average(Sig[height_elem[i], ...], weights=dV2[height_elem[i], ...], axis=(0, 1)))
+
+                    # syncA
+
+                    if step > final_step_syncA:
+                        continue
+
+                    roll = tools.center_avalanche(broken)
+
+
+
+
+
+
 def basic_output(system: QuasiStatic.System, file: h5py.File, verbose: bool = True) -> dict:
     """
     Read basic output from simulation.
@@ -460,7 +678,6 @@ def cli_ensembleinfo(cli_args=None):
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
-    entry_points[funcname]
     output = file_defaults[funcname]
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
@@ -516,7 +733,7 @@ def cli_ensembleinfo(cli_args=None):
         output["/stored"] = [os.path.basename(i) for i in args.files]
 
 
-def cli_weaklayer_syncA(cli_args=None):
+def cli_average_bak(cli_args=None):
     """
     Compute the spatial average of growing events.
     At each "A" the avalanche is aligned and the ensemble average is taken.
@@ -535,7 +752,6 @@ def cli_weaklayer_syncA(cli_args=None):
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
-    entry_points[funcname]
     output = file_defaults[funcname]
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
@@ -606,7 +822,6 @@ def cli_spatialaverage_syncA_data(cli_args=None):
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
-    entry_points[funcname]
     output = file_defaults[funcname]
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
