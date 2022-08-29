@@ -117,9 +117,7 @@ class MyTests(unittest.TestCase):
         MeasureDynamics.cli_run(
             ["--dev", "-f", "--height", 2, "--inc", inc, "-o", outname, filename]
         )
-        MeasureDynamics.cli_average(
-            ["--dev", "-f", "-o", average, outname]
-        )
+        MeasureDynamics.cli_average(["--dev", "-f", "-o", average, outname])
 
     def test_trigger_run(self):
 
