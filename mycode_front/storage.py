@@ -91,6 +91,7 @@ def symtens2_read(file: h5py.File, key: str) -> np.ndarray:
     ret = np.zeros((dset.shape[1], 2, 2))
     ret[:, 0, 0] = dset[0, :]
     ret[:, 0, 1] = dset[1, :]
+    ret[:, 1, 0] = dset[1, :]
     ret[:, 1, 1] = dset[2, :]
     return ret
 

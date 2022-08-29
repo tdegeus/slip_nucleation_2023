@@ -3,6 +3,7 @@ import shutil
 import sys
 import unittest
 
+import GMatTensor.Cartesian2d as tensor
 import h5py
 import numpy as np
 
@@ -17,6 +18,30 @@ class MyTests(unittest.TestCase):
     """
     Tests
     """
+
+    def test_symtens2(self):
+
+        dirname = "mytest"
+        filename = "foo.h5"
+        filepath = os.path.join(dirname, filename)
+        key = "foo"
+
+        if not os.path.isdir(dirname):
+            os.makedirs(dirname)
+
+        data = np.random.random([50, 2, 2])
+        data = tensor.A4_ddot_B2(tensor.Array1d([50]).I4s, data)
+
+        with h5py.File(filepath, "w") as file:
+
+            storage.symtens2_create(file, key, np.float64)
+
+            for i in range(data.shape[0]):
+                storage.symtens2_extend(file, key, i, data[i, ...])
+
+            self.assertTrue(np.allclose(data, storage.symtens2_read(file, key)))
+
+        shutil.rmtree(dirname)
 
     def test_extend1d(self):
 
