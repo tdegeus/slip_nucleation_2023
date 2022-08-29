@@ -104,6 +104,31 @@ class MyTests(unittest.TestCase):
         self.assertFalse(np.allclose(Sig, system.Sig() / system.sig0))
         self.assertTrue(np.allclose(Sig_p, system.Sig()[plastic, ...] / system.sig0))
 
+    def test_AlignedAverage(self):
+
+        N = 10
+        elem = np.arange(N)
+        nitem = 10
+        V = np.random.random((N + 1, N, 2, 2))
+        A = np.random.random((nitem, N + 1, N, 2, 2))
+        M = np.random.random((nitem, N)) < 0.5
+
+        av = MeasureDynamics.AlignedAverage(shape=[N + 1, N, 2, 2], elements=elem, dV=V)
+
+        for i in range(nitem):
+            av.add_subsample(i, A[i, ...], roll=0, broken=~M[i, ...])
+
+        # todo: test
+
+        av = MeasureDynamics.AlignedAverage(
+            shape=[N + 1, N, 2, 2], elements=elem[: int(N / 2)], dV=V
+        )
+
+        for i in range(nitem):
+            av.add_subsample(i, A[i, ...], roll=0, broken=~M[i, ...])
+
+        # todo: test
+
     def test_rerun(self):
 
         with h5py.File(infoname, "r") as file:
