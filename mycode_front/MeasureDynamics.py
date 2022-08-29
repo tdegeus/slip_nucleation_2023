@@ -352,12 +352,12 @@ def cli_average(cli_args=None):
                 dt = float(file["/run/dt"][...])
 
                 element_list = list(system.plastic_elem)
-                height_elem = []
+                eh = []
 
                 for h in height:
                     elem = elements_at_height(system.coor, system.conn, h)
                     element_list += list(elem)
-                    height_elem.append(elem)
+                    eh.append(elem)
 
                 partial = tools.PartialDisplacement(
                     conn=system.conn,
@@ -418,7 +418,8 @@ def cli_average(cli_args=None):
 
     synct = allocate(t_bin.size - 1, height)
     syncA = allocate(N + 1, height)
-    syncA["align"] = dict(
+    syncA["align"] = {}
+    syncA["align"]["weak"] = dict(
         eps_xx=enstat.static(shape=[N + 1, N]),
         eps_xy=enstat.static(shape=[N + 1, N]),
         eps_yy=enstat.static(shape=[N + 1, N]),
@@ -428,6 +429,15 @@ def cli_average(cli_args=None):
         epsp=enstat.static(shape=[N + 1, N]),
         s=enstat.static(shape=[N + 1, N]),
     )
+    for i in range(len(height)):
+        syncA["align"][i] = dict(
+            eps_xx=enstat.static(shape=[N + 1, N]),
+            eps_xy=enstat.static(shape=[N + 1, N]),
+            eps_yy=enstat.static(shape=[N + 1, N]),
+            sig_xx=enstat.static(shape=[N + 1, N]),
+            sig_xy=enstat.static(shape=[N + 1, N]),
+            sig_yy=enstat.static(shape=[N + 1, N]),
+        )
 
     # averages
 
@@ -449,9 +459,9 @@ def cli_average(cli_args=None):
                 # determine duration bin, ensure that only one measurement per bin is added
                 # (take the one closest to the middle of the bin)
 
-                t = file["/dynamics/t"][...] / system.t0
+                steps_syncA = file["/dynamics/sync-A"][...]
                 A = file["/dynamics/A"][...]
-                final_step_syncA = np.max(file["/dynamics/sync-A"][...])
+                t = file["/dynamics/t"][...] / system.t0
                 delta_t = t - np.min(t[A == N])
                 t_ibin = np.digitize(delta_t, t_bin) - 1
                 d = np.abs(delta_t - t_mid[t_ibin])
@@ -489,15 +499,18 @@ def cli_average(cli_args=None):
                     broken = i != i_n
                     assert np.sum(broken) == file["/dynamics/A"][step]
 
-                    # synct
-
-                    if t_ibin[step] >= 0:
+                    if iiter in steps_syncA or t_ibin[step] >= 0:
 
                         Eps = system.Eps() / system.eps0
                         Sig = system.Sig() / system.sig0
 
                         plas = system.plastic_elem
+                        epsp = system.plastic.epsp
                         moving = plas[broken]
+
+                    # synct
+
+                    if t_ibin[step] >= 0:
 
                         add_my_sample(
                             synct["weak"]["Eps"],
@@ -512,7 +525,7 @@ def cli_average(cli_args=None):
                         add_my_sample(
                             synct["weak"]["epsp"],
                             t_ibin[step],
-                            np.average(system.plastic.epsp, weights=dV[plas, ...], axis=(0, 1)),
+                            np.average(epsp, weights=dV[plas, ...], axis=(0, 1)),
                         )
 
                         if np.sum(broken) > 0:
@@ -529,39 +542,120 @@ def cli_average(cli_args=None):
                             add_my_sample(
                                 synct["weak"]["epsp_moving"],
                                 t_ibin[step],
-                                np.average(
-                                    system.plastic.epsp[broken],
-                                    weights=dV[moving, ...],
-                                    axis=(0, 1),
-                                ),
+                                np.average(epsp[broken], weights=dV[moving, ...], axis=(0, 1)),
                             )
 
                         for i in range(len(height)):
                             add_my_sample(
                                 synct[i]["Eps"],
                                 t_ibin[step],
-                                np.average(
-                                    Eps[height_elem[i], ...],
-                                    weights=dV2[height_elem[i], ...],
-                                    axis=(0, 1),
-                                ),
+                                np.average(Eps[eh[i], ...], weights=dV2[eh[i], ...], axis=(0, 1)),
                             )
                             add_my_sample(
                                 synct[i]["Sig"],
                                 t_ibin[step],
-                                np.average(
-                                    Sig[height_elem[i], ...],
-                                    weights=dV2[height_elem[i], ...],
-                                    axis=(0, 1),
-                                ),
+                                np.average(Sig[eh[i], ...], weights=dV2[eh[i], ...], axis=(0, 1)),
                             )
 
                     # syncA
 
-                    if step > final_step_syncA:
+                    if iiter not in steps_syncA:
                         continue
 
                     roll = tools.center_avalanche(broken)
+
+                    add_my_sample(
+                        syncA["weak"]["Eps"],
+                        A[step],
+                        np.average(Eps[plas, ...], weights=dV2[plas, ...], axis=(0, 1)),
+                    )
+                    add_my_sample(
+                        syncA["weak"]["Sig"],
+                        A[step],
+                        np.average(Sig[plas, ...], weights=dV2[plas, ...], axis=(0, 1)),
+                    )
+                    add_my_sample(
+                        syncA["weak"]["epsp"],
+                        A[step],
+                        np.average(epsp, weights=dV[plas, ...], axis=(0, 1)),
+                    )
+
+                    if np.sum(broken) > 0:
+                        add_my_sample(
+                            syncA["weak"]["Eps_moving"],
+                            A[step],
+                            np.average(Eps[moving, ...], weights=dV2[moving, ...], axis=(0, 1)),
+                        )
+                        add_my_sample(
+                            syncA["weak"]["Sig_moving"],
+                            A[step],
+                            np.average(Sig[moving, ...], weights=dV2[moving, ...], axis=(0, 1)),
+                        )
+                        add_my_sample(
+                            syncA["weak"]["epsp_moving"],
+                            A[step],
+                            np.average(epsp[broken], weights=dV[moving, ...], axis=(0, 1)),
+                        )
+
+                    for i in range(len(height)):
+                        add_my_sample(
+                            syncA[i]["Eps"],
+                            A[step],
+                            np.average(Eps[eh[i], ...], weights=dV2[eh[i], ...], axis=(0, 1)),
+                        )
+                        add_my_sample(
+                            syncA[i]["Sig"],
+                            A[step],
+                            np.average(Sig[eh[i], ...], weights=dV2[eh[i], ...], axis=(0, 1)),
+                        )
+
+                    d = np.average(Eps[plas, ...], weights=dV2[plas, ...], axis=1)
+                    add_my_sample(syncA["align"]["weak"]["eps_xx"], A[step], np.roll(d[..., 0, 0], roll))
+                    add_my_sample(syncA["align"]["weak"]["eps_xy"], A[step], np.roll(d[..., 0, 1], roll))
+                    add_my_sample(syncA["align"]["weak"]["eps_yy"], A[step], np.roll(d[..., 1, 1], roll))
+
+                    d = np.average(Sig[plas, ...], weights=dV2[plas, ...], axis=1)
+                    add_my_sample(syncA["align"]["weak"]["sig_xx"], A[step], np.roll(d[..., 0, 0], roll))
+                    add_my_sample(syncA["align"]["weak"]["sig_xy"], A[step], np.roll(d[..., 0, 1], roll))
+                    add_my_sample(syncA["align"]["weak"]["sig_yy"], A[step], np.roll(d[..., 1, 1], roll))
+
+                    d = np.average(epsp, weights=dV[plas, ...], axis=1)
+                    add_my_sample(syncA["align"]["weak"]["epsp"], A[step], np.roll(d, roll))
+                    add_my_sample(syncA["align"]["weak"]["s"], A[step], np.roll(i - i_n, roll))
+
+                    for i in range(len(height)):
+
+                        assert np.all(np.diff(eh[i]) == 1)
+
+                        c = np.average(Eps[eh[i], ...], weights=dV2[eh[i], ...], axis=1)
+                        n = int(plas.size / len(eh[i]))
+                        d_xx = np.empty(plas.size)
+                        d_xy = np.empty(plas.size)
+                        d_yy = np.empty(plas.size)
+                        for j in range(n):
+                            d_xx[j::n] = c[..., 0, 0]
+                            d_xy[j::n] = c[..., 0, 1]
+                            d_yy[j::n] = c[..., 1, 1]
+
+                        add_my_sample(syncA["align"]["weak"]["eps_xx"], A[step], np.roll(d_xx, roll))
+                        add_my_sample(syncA["align"]["weak"]["eps_xy"], A[step], np.roll(d_xy, roll))
+                        add_my_sample(syncA["align"]["weak"]["eps_yy"], A[step], np.roll(d_yy, roll))
+
+                        c = np.average(Sig[eh[i], ...], weights=dV2[eh[i], ...], axis=1)
+                        n = int(plas.size / len(eh[i]))
+                        d_xx = np.empty(plas.size)
+                        d_xy = np.empty(plas.size)
+                        d_yy = np.empty(plas.size)
+                        for j in range(n):
+                            d_xx[j::n] = c[..., 0, 0]
+                            d_xy[j::n] = c[..., 0, 1]
+                            d_yy[j::n] = c[..., 1, 1]
+
+                        add_my_sample(syncA["align"]["weak"]["sig_xx"], A[step], np.roll(d_xx, roll))
+                        add_my_sample(syncA["align"]["weak"]["sig_xy"], A[step], np.roll(d_xy, roll))
+                        add_my_sample(syncA["align"]["weak"]["sig_yy"], A[step], np.roll(d_yy, roll))
+
+
 
 
 def basic_output(system: QuasiStatic.System, file: h5py.File, verbose: bool = True) -> dict:
