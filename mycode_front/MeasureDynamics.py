@@ -9,10 +9,10 @@ import os
 import textwrap
 
 import enstat
-import GooseHDF5
 import FrictionQPotFEM  # noqa: F401
 import GMatElastoPlasticQPot  # noqa: F401
 import GooseFEM
+import GooseHDF5
 import h5py
 import numpy as np
 import tqdm
@@ -388,19 +388,19 @@ def cli_average(cli_args=None):
 
     def allocate(n, height):
         ret = dict(
-            delta_t = enstat.static(shape=[n]),
-            macroscopic = {
+            delta_t=enstat.static(shape=[n]),
+            macroscopic={
                 "Eps": enstat.static(shape=[n, 2, 2]),
                 "Sig": enstat.static(shape=[n, 2, 2]),
             },
-            weak = {
+            weak={
                 "Eps": enstat.static(shape=[n, 2, 2]),
                 "Sig": enstat.static(shape=[n, 2, 2]),
                 "epsp": enstat.static(shape=[n]),
                 "Eps_moving": enstat.static(shape=[n, 2, 2]),
                 "Sig_moving": enstat.static(shape=[n, 2, 2]),
                 "epsp_moving": enstat.static(shape=[n]),
-            }
+            },
         )
 
         for i in range(len(height)):
@@ -413,20 +413,20 @@ def cli_average(cli_args=None):
 
     def add_my_sample(average, index, data):
         average.first[index, ...] += data
-        average.second[index, ...] += data ** 2
+        average.second[index, ...] += data**2
         average.norm[index, ...] += 1
 
     synct = allocate(t_bin.size - 1, height)
     syncA = allocate(N + 1, height)
     syncA["align"] = dict(
-        eps_xx = enstat.static(shape=[N + 1, N]),
-        eps_xy = enstat.static(shape=[N + 1, N]),
-        eps_yy = enstat.static(shape=[N + 1, N]),
-        sig_xx = enstat.static(shape=[N + 1, N]),
-        sig_xy = enstat.static(shape=[N + 1, N]),
-        sig_yy = enstat.static(shape=[N + 1, N]),
-        epsp = enstat.static(shape=[N + 1, N]),
-        s = enstat.static(shape=[N + 1, N]),
+        eps_xx=enstat.static(shape=[N + 1, N]),
+        eps_xy=enstat.static(shape=[N + 1, N]),
+        eps_yy=enstat.static(shape=[N + 1, N]),
+        sig_xx=enstat.static(shape=[N + 1, N]),
+        sig_xy=enstat.static(shape=[N + 1, N]),
+        sig_yy=enstat.static(shape=[N + 1, N]),
+        epsp=enstat.static(shape=[N + 1, N]),
+        s=enstat.static(shape=[N + 1, N]),
     )
 
     # averages
@@ -499,18 +499,62 @@ def cli_average(cli_args=None):
                         plas = system.plastic_elem
                         moving = plas[broken]
 
-                        add_my_sample(synct["weak"]["Eps"], t_ibin[step], np.average(Eps[plas, ...], weights=dV2[plas, ...], axis=(0, 1)))
-                        add_my_sample(synct["weak"]["Sig"], t_ibin[step], np.average(Sig[plas, ...], weights=dV2[plas, ...], axis=(0, 1)))
-                        add_my_sample(synct["weak"]["epsp"], t_ibin[step], np.average(system.plastic.epsp, weights=dV[plas, ...], axis=(0, 1)))
+                        add_my_sample(
+                            synct["weak"]["Eps"],
+                            t_ibin[step],
+                            np.average(Eps[plas, ...], weights=dV2[plas, ...], axis=(0, 1)),
+                        )
+                        add_my_sample(
+                            synct["weak"]["Sig"],
+                            t_ibin[step],
+                            np.average(Sig[plas, ...], weights=dV2[plas, ...], axis=(0, 1)),
+                        )
+                        add_my_sample(
+                            synct["weak"]["epsp"],
+                            t_ibin[step],
+                            np.average(system.plastic.epsp, weights=dV[plas, ...], axis=(0, 1)),
+                        )
 
                         if np.sum(broken) > 0:
-                            add_my_sample(synct["weak"]["Eps_moving"], t_ibin[step], np.average(Eps[moving, ...], weights=dV2[moving, ...], axis=(0, 1)))
-                            add_my_sample(synct["weak"]["Sig_moving"], t_ibin[step], np.average(Sig[moving, ...], weights=dV2[moving, ...], axis=(0, 1)))
-                            add_my_sample(synct["weak"]["epsp_moving"], t_ibin[step], np.average(system.plastic.epsp[broken], weights=dV[moving, ...], axis=(0, 1)))
+                            add_my_sample(
+                                synct["weak"]["Eps_moving"],
+                                t_ibin[step],
+                                np.average(Eps[moving, ...], weights=dV2[moving, ...], axis=(0, 1)),
+                            )
+                            add_my_sample(
+                                synct["weak"]["Sig_moving"],
+                                t_ibin[step],
+                                np.average(Sig[moving, ...], weights=dV2[moving, ...], axis=(0, 1)),
+                            )
+                            add_my_sample(
+                                synct["weak"]["epsp_moving"],
+                                t_ibin[step],
+                                np.average(
+                                    system.plastic.epsp[broken],
+                                    weights=dV[moving, ...],
+                                    axis=(0, 1),
+                                ),
+                            )
 
                         for i in range(len(height)):
-                            add_my_sample(synct[i]["Eps"], t_ibin[step], np.average(Eps[height_elem[i], ...], weights=dV2[height_elem[i], ...], axis=(0, 1)))
-                            add_my_sample(synct[i]["Sig"], t_ibin[step], np.average(Sig[height_elem[i], ...], weights=dV2[height_elem[i], ...], axis=(0, 1)))
+                            add_my_sample(
+                                synct[i]["Eps"],
+                                t_ibin[step],
+                                np.average(
+                                    Eps[height_elem[i], ...],
+                                    weights=dV2[height_elem[i], ...],
+                                    axis=(0, 1),
+                                ),
+                            )
+                            add_my_sample(
+                                synct[i]["Sig"],
+                                t_ibin[step],
+                                np.average(
+                                    Sig[height_elem[i], ...],
+                                    weights=dV2[height_elem[i], ...],
+                                    axis=(0, 1),
+                                ),
+                            )
 
                     # syncA
 
@@ -518,10 +562,6 @@ def cli_average(cli_args=None):
                         continue
 
                     roll = tools.center_avalanche(broken)
-
-
-
-
 
 
 def basic_output(system: QuasiStatic.System, file: h5py.File, verbose: bool = True) -> dict:
