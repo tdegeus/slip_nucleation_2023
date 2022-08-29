@@ -90,8 +90,8 @@ def cli_run(cli_args=None):
 
     Storage:
     *   An exact copy of the input file.
-    *   The macroscopic stress tensor ("/dynamics/Sig/{iiter:d}").
-    *   The macroscopic strain tensor ("/dynamics/Eps/{iiter:d}").
+    *   The macroscopic stress tensor ("/dynamics/Sigbar/{iiter:d}").
+    *   The macroscopic strain tensor ("/dynamics/Epsbar/{iiter:d}").
     *   The displacement ("/dynamics/u/{iiter:d}") of a selection of DOFs ("/dynamics/doflist") from:
         - elements along the weak layer,
         - element row(s) at (a) given height(s) above the weak layer.
@@ -118,7 +118,7 @@ def cli_run(cli_args=None):
 
     parser.add_argument("--A-step", type=int, default=1, help="Control sync-A storage")
     parser.add_argument("--develop", action="store_true", help="Development mode")
-    parser.add_argument("--t-step", type=int, default=500, help="Control sync-A storage")
+    parser.add_argument("--t-step", type=int, default=500, help="Control sync-t storage")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument("-i", "--inc", required=True, type=int, help="Increment number")
     parser.add_argument("-o", "--output", type=str, required=True, help="Output file")
@@ -137,7 +137,7 @@ def cli_run(cli_args=None):
     if os.path.realpath(args.file) != os.path.realpath(args.output):
 
         with h5py.File(args.file) as src, h5py.File(args.output, "w") as dest:
-            paths = GooseHDF5.getdatasets(src, fold="/disp")
+            paths = list(GooseHDF5.getdatasets(src, fold="/disp"))
             assert "/disp/..." in paths
             paths.remove("/disp/...")
             GooseHDF5.copy(src, dest, paths, expand_soft=False)
@@ -149,6 +149,9 @@ def cli_run(cli_args=None):
 
         meta = QuasiStatic.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
         meta.attrs["file"] = os.path.basename(args.file)
+        meta.attrs["A-step"] = args.A_step
+        meta.attrs["t-step"] = args.t_step
+        meta.attrs["height"] = args.height
 
         storage.create_extendible(
             file, "/dynamics/stored", np.uint64, desc='"iiter" of stored steps'
@@ -158,7 +161,9 @@ def cli_run(cli_args=None):
             file, "/dynamics/t", float, desc="Time of each stored step (real units)"
         )
 
-        storage.create_extendible(file, "/dynamics/A", np.uint64, desc='"A" of each stored step')
+        storage.create_extendible(
+            file, "/dynamics/A", np.uint64, desc='Size "A" of each stored step'
+        )
 
         storage.create_extendible(
             file, "/dynamics/sync-A", np.uint64, desc="Steps stored due to sync-A"
@@ -168,19 +173,13 @@ def cli_run(cli_args=None):
             file, "/dynamics/sync-t", np.uint64, desc="Steps stored due to sync-t"
         )
 
-        file["dynamics"].create_group("u")
-        file["dynamics"].create_group("Eps")
-        file["dynamics"].create_group("Sig")
+        storage.symtens2_create(file, "/dynamics/Epsbar", float, desc="Macroscopic strain tensor")
+        storage.symtens2_create(file, "/dynamics/Sigbar", float, desc="Macroscopic stress tensor")
 
-        file["/dynamics/u"].attrs["desc"] = 'Displacement of selected DOFs (see "/doflist")'
-        file["/dynamics/u"].attrs["goal"] = "Reconstruct (part of) the system at that instance"
-        file["/dynamics/u"].attrs["groups"] = 'Items in "/stored"'
-
-        file["/dynamics/Eps"].attrs["desc"] = "Macroscopic strain tensor"
-        file["/dynamics/Eps"].attrs["groups"] = 'Items in "/stored"'
-
-        file["/dynamics/Sig"].attrs["desc"] = "Macroscopic stress tensor"
-        file["/dynamics/Sig"].attrs["groups"] = 'Items in "/stored"'
+        file_u = file["dynamics"].create_group("u")
+        file_u.attrs["desc"] = 'Displacement of selected DOFs (see "/doflist")'
+        file_u.attrs["goal"] = "Reconstruct (part of) the system at that instance"
+        file_u.attrs["groups"] = 'Items in "/stored"'
 
         # restore state
 
@@ -199,7 +198,6 @@ def cli_run(cli_args=None):
         # variables needed to write output
 
         element_list = list(system.plastic_elem)
-
         for height in args.height:
             element_list += list(elements_at_height(system.coor, system.conn, height))
 
@@ -220,7 +218,6 @@ def cli_run(cli_args=None):
             "/dynamics/doflist",
             partial.dof_list(),
             desc='List of stored DOFs (order corresponds to "u"',
-            components=["weaklayer"] + ["height=" + str(h) for h in args.height],
         )
 
         # rerun dynamics and store every other time
@@ -246,12 +243,10 @@ def cli_run(cli_args=None):
 
                 if iiter != last_stored_iiter:
                     file[f"/dynamics/u/{iiter:d}"] = system.vector.AsDofs(system.u)[keepdof]
-                    file[f"/dynamics/Eps/{iiter:d}"] = np.average(
-                        system.Eps(), weights=dV, axis=(0, 1)
-                    )
-                    file[f"/dynamics/Sig/{iiter:d}"] = np.average(
-                        system.Sig(), weights=dV, axis=(0, 1)
-                    )
+                    Epsbar = np.average(system.Eps(), weights=dV, axis=(0, 1))
+                    Sigbar = np.average(system.Sig(), weights=dV, axis=(0, 1))
+                    storage.symtens2_extend(file, "/dynamics/Epsbar", istore, Epsbar)
+                    storage.symtens2_extend(file, "/dynamics/Sigbar", istore, Sigbar)
                     storage.dset_extend1d(file, "/dynamics/t", istore, system.t)
                     storage.dset_extend1d(file, "/dynamics/A", istore, A)
                     storage.dset_extend1d(file, "/dynamics/stored", istore, iiter)
