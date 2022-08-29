@@ -615,6 +615,10 @@ def __job_rerun(file, sims, basename, executable, args):
 
     commands = []
     ret = []
+    height = " "
+
+    if hasattr(args, "height"):
+        height = " " + " ".join(["--height=" + str(h) for h in args.height]) + " "
 
     for i in tqdm.tqdm(range(len(sims["replica"]))):
         index = sims["index"][i]
@@ -623,8 +627,8 @@ def __job_rerun(file, sims, basename, executable, args):
         restore_from_ensembleinfo(file, index, replica, args.sourcedir, args.develop)
         o = os.path.relpath(output, args.outdir)
         r = os.path.relpath(replica, args.outdir)
-        commands += [f"{executable} -i 1 -o {o} {r}"]
-        ret += [f"{executable} -i 1 -o {output} {replica}"]
+        commands += [f"{executable} -i 1" + height + f"-o {o} {r}"]
+        ret += [f"{executable} -i 1" + height + f"-o {output} {replica}"]
 
     slurm.serial_group(
         commands,
@@ -722,8 +726,10 @@ def cli_job_rerun_dynamics(cli_args=None):
     Possible usage:
 
         :py:func:`cli_job_rerun_dynamics`
-            -o ../Dynamics/bin=1/src
             --ibin=1
+            --nsim=100
+            --height=20
+            -o ../Dynamics/bin=1/src
             -s ../Run
             Trigger_EnsembleInfo.h5
     """
@@ -765,6 +771,12 @@ def cli_job_rerun_dynamics(cli_args=None):
         help="Number of simulations to preform (first nsim in order of distance to target stress)",
     )
     parser.add_argument("--eventmap", action="store_true", help="Run to get event-map instead")
+    parser.add_argument(
+        "--height",
+        type=float,
+        action="append",
+        help="Add element row(s), see " + MeasureDynamics.entry_points["cli_run"],
+    )
 
     # paths
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
@@ -783,6 +795,8 @@ def cli_job_rerun_dynamics(cli_args=None):
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.ensembleinfo)
+    assert not args.eventmap or (args.eventmap and args.height is None)
+    args.height = [] if args.height is None else args.height
 
     with h5py.File(args.ensembleinfo) as file:
 
