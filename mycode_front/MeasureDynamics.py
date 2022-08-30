@@ -16,6 +16,7 @@ import GooseHDF5
 import h5py
 import numpy as np
 import tqdm
+import XDMFWrite_h5py as xh
 from numpy.typing import ArrayLike
 
 from . import QuasiStatic
@@ -26,11 +27,13 @@ from ._version import version
 
 entry_points = dict(
     cli_average_systemspanning="MeasureDynamics_average_systemspanning",
+    cli_plot_height="MeasureDynamics_plot_height",
     cli_run="MeasureDynamics_run",
 )
 
 file_defaults = dict(
     cli_average_systemspanning="MeasureDynamics_average_systemspanning.h5",
+    cli_plot_height="MeasureDynamics_plot_height",
 )
 
 
@@ -75,6 +78,66 @@ def elements_at_height(coor: ArrayLike, conn: ArrayLike, height: float) -> np.nd
             i += 1
 
     return mesh.elementsLayer(n + i)
+
+
+def cli_plot_height(cli_args=None):
+    """
+    Plot geometry with elements at certain heights marked.
+    """
+
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+
+    # developer options
+    parser.add_argument("-v", "--version", action="version", version=version)
+
+    # output
+    parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
+    parser.add_argument(
+        "-o", "--output", type=str, default=file_defaults[funcname], help="Basename of output"
+    )
+
+    # input
+    parser.add_argument("--height", type=float, action="append", help="Add element row(s)")
+    parser.add_argument("file", type=str, help="Simulation from which to run (read-only)")
+
+    args = tools._parse(parser, cli_args)
+    args.height = [] if args.height is None else args.height
+    assert os.path.isfile(args.file)
+    tools._check_overwrite_file(args.output + ".h5", args.force)
+    tools._check_overwrite_file(args.output + ".xdmf", args.force)
+
+    with h5py.File(args.file) as file:
+        system = QuasiStatic.System(file)
+        coor = np.copy(system.coor)
+        conn = np.copy(system.conn)
+
+    element_list = [system.plastic_elem]
+    name = ["weak"]
+    for height in args.height:
+        element_list.append(elements_at_height(coor, conn, height))
+        name.append(str(height))
+
+    with h5py.File(args.output + ".h5", "w") as file:
+        file["/coor"] = coor
+        file["/conn"] = conn
+        opts = []
+        for i in range(len(element_list)):
+            e = np.zeros(conn.shape[0], dtype=np.bool)
+            e[element_list[i]] = True
+            file[f"/elements/{i:d}"] = e
+            opts += [xh.Attribute(file, f"/elements/{i:d}", "Cell", name[i])]
+
+        grid = xh.Grid(xh.Unstructured(file, "/coor", "/conn", "Quadrilateral"), *opts)
+        xh.write(grid, args.output + ".xdmf")
 
 
 def cli_run(cli_args=None):
