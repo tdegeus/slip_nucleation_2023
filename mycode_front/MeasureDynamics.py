@@ -640,6 +640,7 @@ def cli_average_systemspanning(cli_args=None):
 
                 if item == 0:
                     i_n = np.copy(system.plastic.i.astype(int)[:, 0])
+                    epsp_n = np.copy(system.plastic.epsp)
 
                 i = system.plastic.i.astype(int)[:, 0]
                 broken = i != i_n
@@ -652,7 +653,7 @@ def cli_average_systemspanning(cli_args=None):
 
                 # convert epsp: [N, nip] -> [nelem, nip] (for simplicity below)
                 epsp = np.zeros(Eps.shape[:2], dtype=float)
-                epsp[system.plastic_elem] = system.plastic.epsp
+                epsp[system.plastic_elem] = (system.plastic.epsp - epsp_n) / system.eps0
 
                 # convert s: [N] -> [nelem, nip] (for simplicity below)
                 if item in items_syncA:
