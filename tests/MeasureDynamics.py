@@ -3,6 +3,7 @@ import shutil
 import sys
 import unittest
 
+import enstat
 import GooseFEM
 import h5py
 import numpy as np
@@ -107,27 +108,36 @@ class MyTests(unittest.TestCase):
     def test_AlignedAverage(self):
 
         N = 10
+        nip = 4
         elem = np.arange(N)
         nitem = 10
-        V = np.random.random((N + 1, N, 2, 2))
-        A = np.random.random((nitem, N + 1, N, 2, 2))
-        M = np.random.random((nitem, N)) < 0.5
+        V = np.random.random((N, nip, 2, 2))
+        D = np.random.random((nitem, N + 1, N, nip, 2, 2))
+        M = np.random.random((nitem, N + 1, N)) < 0.5
 
         av = MeasureDynamics.AlignedAverage(shape=[N + 1, N, 2, 2], elements=elem, dV=V)
+        check_00 = [enstat.static(shape=[N]) for i in range(N + 1)]
+        check_01 = [enstat.static(shape=[N]) for i in range(N + 1)]
+        check_10 = [enstat.static(shape=[N]) for i in range(N + 1)]
+        check_11 = [enstat.static(shape=[N]) for i in range(N + 1)]
 
         for i in range(nitem):
-            av.add_subsample(i, A[i, ...], roll=0, broken=~M[i, ...])
+            for a in range(N + 1):
+                av.add_subsample(i, D[i, a, ...], roll=0, broken=~M[i, a, ...])
+                d = np.average(D[i, a, ...], weights=V, axis=1)
+                check_00[i].add_sample(d[..., 0, 0], mask=M[i, a, ...])
+                check_01[i].add_sample(d[..., 0, 1], mask=M[i, a, ...])
+                check_10[i].add_sample(d[..., 1, 0], mask=M[i, a, ...])
+                check_11[i].add_sample(d[..., 1, 1], mask=M[i, a, ...])
 
-        # todo: test
+        res = np.empty([N + 1, N, 2, 2])
+        for a in range(N + 1):
+            res[a, :, 0, 0] = check_00[a].mean()
+            res[a, :, 0, 1] = check_01[a].mean()
+            res[a, :, 1, 0] = check_10[a].mean()
+            res[a, :, 1, 1] = check_11[a].mean()
 
-        av = MeasureDynamics.AlignedAverage(
-            shape=[N + 1, N, 2, 2], elements=elem[: int(N / 2)], dV=V
-        )
-
-        for i in range(nitem):
-            av.add_subsample(i, A[i, ...], roll=0, broken=~M[i, ...])
-
-        # todo: test
+        self.assertTrue(np.allclose(av.mean(), res, equal_nan=True))
 
     def test_rerun(self):
 
