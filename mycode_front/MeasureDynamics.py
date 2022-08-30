@@ -152,27 +152,26 @@ def cli_run(cli_args=None):
         meta.attrs["height"] = args.height
 
         storage.create_extendible(
-            file, "/dynamics/stored", np.uint64, desc="List with stored increments"
+            file, "/dynamics/stored", np.uint64, desc="List with stored items"
         )
-
         storage.create_extendible(
-            file, "/dynamics/t", float, desc="Time of each stored increment (real units)"
+            file, "/dynamics/t", float, desc="Time of each stored item (real units)"
         )
-
         storage.create_extendible(
-            file, "/dynamics/A", np.uint64, desc='Size "A" of each stored increment'
+            file, "/dynamics/A", np.uint64, desc='Size "A" of each stored item'
         )
-
         storage.create_extendible(
             file, "/dynamics/sync-A", np.uint64, desc="Items stored due to sync-A"
         )
-
         storage.create_extendible(
             file, "/dynamics/sync-t", np.uint64, desc="Items stored due to sync-t"
         )
-
-        storage.symtens2_create(file, "/dynamics/Epsbar", float, desc="Macroscopic strain tensor")
-        storage.symtens2_create(file, "/dynamics/Sigbar", float, desc="Macroscopic stress tensor")
+        storage.symtens2_create(
+            file, "/dynamics/Epsbar", float, desc="Macroscopic strain tensor per item (real units)"
+        )
+        storage.symtens2_create(
+            file, "/dynamics/Sigbar", float, desc="Macroscopic stress tensor per item (real units)"
+        )
 
         file_u = file["dynamics"].create_group("u")
         file_u.attrs["desc"] = 'Displacement of selected DOFs (see "/doflist")'
@@ -215,7 +214,7 @@ def cli_run(cli_args=None):
             file,
             "/dynamics/doflist",
             partial.dof_list(),
-            desc='List of stored DOFs (order corresponds to "u"',
+            desc='List of stored DOFs (same order as "u")',
         )
 
         # rerun dynamics and store every other time
@@ -313,17 +312,25 @@ class BasicAverage(enstat.static):
     """
 
     def __init__(self, shape, elements=None, dV=None):
+        """
+        :param shape: Shape of the averaged field: ``[nitem, ...]``.
+        :param elements: Optional: list of elements to take from input data.
+        :param dV: Optional: volume of each integration point, selected: ``dV[elements, :]``.
+        """
+
         super().__init__(shape=shape)
+
         self.elem = elements
         self.dV = None if dV is None else dV[self.elem, ...]
+
         if self.elem is not None:
             assert np.all(np.equal(self.elem, np.sort(self.elem)))
 
     def add_subsample(self, index, data, moving=None):
         """
-        :param index: Item to add to the average.
+        :param index: Index of the item to add to the average.
         :param data: Data to add to the average.
-        :param moving: Optional: the index of moving blocks.
+        :param moving: Optional: the index of moving blocks (index relative to ``elements``).
         """
 
         if self.dV is not None:
@@ -350,7 +357,13 @@ class AlignedAverage(BasicAverage):
         super().__init__(shape=shape, elements=elements, dV=dV)
         self.n = int(shape[1] / self.elem.size)
 
-    def add_subsample(self, index, data, roll, broken):
+    def add_subsample(self, index, data, roll, broken=None):
+        """
+        :param index: Index of the item to add to the average.
+        :param data: Data to add to the average.
+        :param roll: Roll to apply to align the data.
+        :param broken: Array with per weak element whether the element is broken.
+        """
 
         data = np.average(data[self.elem, ...], weights=self.dV, axis=1)
 
@@ -361,11 +374,16 @@ class AlignedAverage(BasicAverage):
             data = tmp
 
         data = np.roll(data, roll, axis=0)
-        incl = np.roll(broken, roll)
 
-        self.first[index, incl, ...] += data[incl]
-        self.second[index, incl, ...] += data[incl] ** 2
-        self.norm[index, incl, ...] += 1
+        if broken is None:
+            self.first[index, ...] += data
+            self.second[index, ...] += data**2
+            self.norm[index, ...] += 1
+        else:
+            incl = np.roll(broken, roll)
+            self.first[index, incl, ...] += data[incl]
+            self.second[index, incl, ...] += data[incl] ** 2
+            self.norm[index, incl, ...] += 1
 
 
 def cli_average(cli_args=None):
@@ -416,12 +434,8 @@ def cli_average(cli_args=None):
                 dt = float(file["/run/dt"][...])
 
                 element_list = [system.plastic_elem]
-                eh = []
-
                 for h in height:
-                    elem = elements_at_height(system.coor, system.conn, h)
-                    element_list.append(elem)
-                    eh.append(elem)
+                    element_list.append(elements_at_height(system.coor, system.conn, h))
 
                 partial = tools.PartialDisplacement(
                     conn=system.conn,
@@ -450,6 +464,8 @@ def cli_average(cli_args=None):
     t_bin = t_bin - np.min(t_bin[t_bin > 0]) - 0.5 * Dt
     t_mid = 0.5 * (t_bin[1:] + t_bin[:-1])
 
+    # allocate averages
+
     def allocate(n, element_list, dV, dV2):
 
         ret = dict(
@@ -473,6 +489,7 @@ def cli_average(cli_args=None):
 
     synct = allocate(t_bin.size - 1, element_list, dV, dV2)
     syncA = allocate(N + 1, element_list, dV, dV2)
+
     syncA["align"] = {}
     for i in range(len(element_list)):
         syncA["align"][i] = {
@@ -501,6 +518,9 @@ def cli_average(cli_args=None):
 
                 # determine duration bin, ensure that only one measurement per bin is added
                 # (take the one closest to the middle of the bin)
+
+                nitem = file["/dynamics/stored"].size
+                assert np.all(np.equal(file["/dynamics/stored"][...], np.arange(nitem)))
 
                 items_syncA = file["/dynamics/sync-A"][...]
                 A = file["/dynamics/A"][...]
@@ -532,13 +552,10 @@ def cli_average(cli_args=None):
                 syncA["Epsbar"].add_subsample(A[items_syncA], Epsbar[items_syncA])
                 syncA["Sigbar"].add_subsample(A[items_syncA], Sigbar[items_syncA])
 
-                assert np.all(
-                    np.equal(
-                        file["/dynamics/stored"][...], np.arange(file["/dynamics/stored"].size)
-                    )
-                )
+                for item in range(nitem):
 
-                for item in range(file["/dynamics/stored"].size):
+                    if item not in items_syncA and t_ibin[item] < 0 and item > 0:
+                        continue
 
                     udof = np.zeros(system.vector.shape_dofval())
                     udof[doflist] = file[f"/dynamics/u/{item:d}"]
@@ -549,22 +566,20 @@ def cli_average(cli_args=None):
 
                     i = system.plastic.i.astype(int)[:, 0]
                     broken = i != i_n
+                    moving = np.argwhere(broken).ravel()
                     assert np.sum(broken) == file["/dynamics/A"][item]
 
-                    if item in items_syncA or t_ibin[item] >= 0:
+                    Eps = system.Eps() / system.eps0
+                    Sig = system.Sig() / system.sig0
 
-                        Eps = system.Eps() / system.eps0
-                        Sig = system.Sig() / system.sig0
+                    # convert epsp: [N, nip] -> [nelem, nip] (for simplicity below)
+                    epsp = np.zeros(Eps.shape[:2], dtype=float)
+                    epsp[system.plastic_elem] = system.plastic.epsp
 
-                        system.plastic_elem
-
-                        epsp = np.empty(Eps.shape[0:2], dtype=float)
-                        epsp[system.plastic_elem] = system.plastic.epsp
-
-                        s = np.empty(epsp.shape, np.int64)
+                    # convert s: [N] -> [nelem, nip] (for simplicity below)
+                    if item in items_syncA:
+                        s = np.zeros(epsp.shape, np.int64)
                         s[system.plastic_elem] = (i - i_n).reshape(-1, 1)
-
-                        moving = np.argwhere(broken).ravel()
 
                     # synct
 
@@ -594,9 +609,11 @@ def cli_average(cli_args=None):
 
                         roll = tools.center_avalanche(broken)
 
-                        for i in range(len(element_list)):
-                            syncA["align"][i]["Eps"].add_subsample(A[item], Eps, roll, broken)
-                            syncA["align"][i]["Sig"].add_subsample(A[item], Sig, roll, broken)
+                        for i in range(1, len(element_list)):
+                            syncA["align"][i]["Eps"].add_subsample(A[item], Eps, roll)
+                            syncA["align"][i]["Sig"].add_subsample(A[item], Sig, roll)
 
+                        syncA["align"][0]["Eps"].add_subsample(A[item], Eps, roll, broken)
+                        syncA["align"][0]["Sig"].add_subsample(A[item], Sig, roll, broken)
                         syncA["align"][0]["epsp"].add_subsample(A[item], epsp, roll, broken)
                         syncA["align"][0]["s"].add_subsample(A[item], s, roll, broken)
