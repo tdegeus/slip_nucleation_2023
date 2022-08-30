@@ -20,16 +20,17 @@ from numpy.typing import ArrayLike
 
 from . import QuasiStatic
 from . import storage
+from . import tag
 from . import tools
 from ._version import version
 
 entry_points = dict(
+    cli_average_systemspanning="MeasureDynamics_average_systemspanning",
     cli_run="MeasureDynamics_run",
-    cli_average="MeasureDynamics_average",
 )
 
 file_defaults = dict(
-    cli_average="MeasureDynamics_average.h5",
+    cli_average_systemspanning="MeasureDynamics_average_systemspanning.h5",
 )
 
 
@@ -184,6 +185,7 @@ def cli_run(cli_args=None):
         system.restore_step(file, args.inc - 1)
         deps = file["/run/epsd/kick"][...]
         i_n = np.copy(system.plastic.i[:, 0].astype(int))
+        i = np.copy(i_n)
         maxiter = int((file["/t"][args.inc] - file["/t"][args.inc - 1]) / file["/run/dt"][...])
 
         if "trigger" in file:
@@ -245,7 +247,7 @@ def cli_run(cli_args=None):
                     storage.symtens2_extend(file, "/dynamics/Epsbar", istore, Epsbar)
                     storage.symtens2_extend(file, "/dynamics/Sigbar", istore, Sigbar)
                     storage.dset_extend1d(file, "/dynamics/t", istore, system.t)
-                    storage.dset_extend1d(file, "/dynamics/A", istore, A)
+                    storage.dset_extend1d(file, "/dynamics/A", istore, np.sum(np.not_equal(i, i_n)))
                     storage.dset_extend1d(file, "/dynamics/stored", istore, istore)
                     file.flush()
                     istore += 1
@@ -305,7 +307,7 @@ def cli_run(cli_args=None):
 
 class BasicAverage(enstat.static):
     """
-    Support class for :py:func:`cli_average`.
+    Support class for :py:func:`cli_average_systemspanning`.
     This class writes on item at a time using :py:func:`BasicAverage.add_subsample`,
     and it does so by selecting the relevant elements from a field and
     computing the relevant volume average.
@@ -337,6 +339,8 @@ class BasicAverage(enstat.static):
             if moving is None:
                 data = np.average(data[self.elem, ...], weights=self.dV, axis=(0, 1))
             else:
+                if len(moving) == 0:
+                    return
                 data = np.average(
                     data[self.elem[moving], ...], weights=self.dV[moving, ...], axis=(0, 1)
                 )
@@ -348,7 +352,7 @@ class BasicAverage(enstat.static):
 
 class AlignedAverage(BasicAverage):
     """
-    Support class for :py:func:`cli_average`.
+    Support class for :py:func:`cli_average_systemspanning`.
     Similar to :py:class:`BasicAverage`, but it aligns blocks and averages per blocks
     (not on all elements).
     """
@@ -386,9 +390,16 @@ class AlignedAverage(BasicAverage):
             self.norm[index, incl, ...] += 1
 
 
-def cli_average(cli_args=None):
+def cli_average_systemspanning(cli_args=None):
     """
-    ???
+    Compute averages from output of :py:func:`cli_run`:
+
+    -   'Simple' averages (macroscopic, per element row, on moving blocks):
+
+        *   For bins of time compared to the time when the event is system-spanning.
+        *   For fixed ``A``.
+
+    -   'Aligned' averages (for different element rows), for fixed A.
     """
 
     class MyFmt(
@@ -448,13 +459,16 @@ def cli_average(cli_args=None):
             else:
 
                 assert N == system.N
-                assert height == file[f"/meta/{entry_points['cli_run']}"].attrs["height"]
+                assert np.all(
+                    np.equal(height, file[f"/meta/{entry_points['cli_run']}"].attrs["height"])
+                )
                 assert t_step == file[f"/meta/{entry_points['cli_run']}"].attrs["t-step"]
                 assert dt == float(file["/run/dt"][...])
-                assert np.all(doflist, file["/dynamics/doflist"][...])
+                assert np.all(np.equal(doflist, file["/dynamics/doflist"][...]))
 
             t = file["/dynamics/t"][...] / system.t0
             A = file["/dynamics/A"][...]
+            assert np.sum(A == N) > 0
             t = np.sort(t) - np.min(t[A == N])
             t_start.append(t[0])
             t_end.append(t[-1])
@@ -501,119 +515,141 @@ def cli_average(cli_args=None):
 
     # averages
 
-    with h5py.File(args.output, "w") as output:
+    fmt = "{:" + str(max(len(i) for i in args.files)) + "s}"
+    pbar = tqdm.tqdm(args.files)
+    pbar.set_description(fmt.format(""))
 
-        fmt = "{:" + str(max(len(i) for i in args.files)) + "s}"
-        pbar = tqdm.tqdm(args.files)
-        pbar.set_description(fmt.format(""))
+    for ifile, filepath in enumerate(pbar):
 
-        for ifile, filepath in enumerate(pbar):
+        pbar.set_description(fmt.format(filepath), refresh=True)
 
-            pbar.set_description(fmt.format(filepath), refresh=True)
+        with h5py.File(filepath, "r") as file:
 
-            with h5py.File(filepath, "r") as file:
+            if ifile > 0:
+                system.reset(file)
 
-                if ifile > 0:
-                    system.reset(file)
+            # determine duration bin, ensure that only one measurement per bin is added
+            # (take the one closest to the middle of the bin)
 
-                # determine duration bin, ensure that only one measurement per bin is added
-                # (take the one closest to the middle of the bin)
+            ver = file[f"/meta/{entry_points['cli_run']}"].attrs["version"]
 
-                nitem = file["/dynamics/stored"].size
-                assert np.all(np.equal(file["/dynamics/stored"][...], np.arange(nitem)))
+            nitem = file["/dynamics/stored"].size
+            assert np.all(np.equal(file["/dynamics/stored"][...], np.arange(nitem)))
 
-                items_syncA = file["/dynamics/sync-A"][...]
-                A = file["/dynamics/A"][...]
-                t = file["/dynamics/t"][...] / system.t0
-                delta_t = t - np.min(t[A == N])
-                t_ibin = np.digitize(delta_t, t_bin) - 1
-                d = np.abs(delta_t - t_mid[t_ibin])
+            items_syncA = file["/dynamics/sync-A"][...]
+            A = file["/dynamics/A"][...]
+            t = file["/dynamics/t"][...] / system.t0
+            delta_t = t - np.min(t[A == N])
+            t_ibin = np.digitize(delta_t, t_bin) - 1
+            d = np.abs(delta_t - t_mid[t_ibin])
 
-                for ibin in np.unique(t_ibin):
-                    idx = np.argwhere(t_ibin == ibin).ravel()
-                    if len(idx) <= 1:
-                        continue
-                    jdx = idx[np.argmin(d[idx])]
-                    t_ibin[idx] = -1
-                    t_ibin[jdx] = ibin
+            for ibin in np.unique(t_ibin):
+                idx = np.argwhere(t_ibin == ibin).ravel()
+                if len(idx) <= 1:
+                    continue
+                jdx = idx[np.argmin(d[idx])]
+                t_ibin[idx] = -1
+                t_ibin[jdx] = ibin
 
-                del d
+            del d
 
-                # add averages
+            # add averages
 
-                Epsbar = storage.symtens2_read(file, "/dynamics/Epsbar") / system.eps0
-                Sigbar = storage.symtens2_read(file, "/dynamics/Sigbar") / system.sig0
+            Epsbar = storage.symtens2_read(file, "/dynamics/Epsbar") / system.eps0
+            Sigbar = storage.symtens2_read(file, "/dynamics/Sigbar") / system.sig0
 
-                keep = t_ibin >= 0
-                synct["delta_t"].add_subsample(t_ibin[keep], delta_t[keep])
-                synct["Epsbar"].add_subsample(t_ibin[keep], Epsbar[keep])
-                synct["Sigbar"].add_subsample(t_ibin[keep], Sigbar[keep])
-                syncA["delta_t"].add_subsample(A[items_syncA], delta_t[items_syncA])
-                syncA["Epsbar"].add_subsample(A[items_syncA], Epsbar[items_syncA])
-                syncA["Sigbar"].add_subsample(A[items_syncA], Sigbar[items_syncA])
+            keep = t_ibin >= 0
+            synct["delta_t"].add_subsample(t_ibin[keep], delta_t[keep])
+            synct["Epsbar"].add_subsample(t_ibin[keep], Epsbar[keep])
+            synct["Sigbar"].add_subsample(t_ibin[keep], Sigbar[keep])
+            syncA["delta_t"].add_subsample(A[items_syncA], delta_t[items_syncA])
+            syncA["Epsbar"].add_subsample(A[items_syncA], Epsbar[items_syncA])
+            syncA["Sigbar"].add_subsample(A[items_syncA], Sigbar[items_syncA])
 
-                for item in range(nitem):
+            for item in tqdm.tqdm(range(nitem)):
 
-                    if item not in items_syncA and t_ibin[item] < 0 and item > 0:
-                        continue
+                if item not in items_syncA and t_ibin[item] < 0 and item > 0:
+                    continue
 
-                    udof = np.zeros(system.vector.shape_dofval())
-                    udof[doflist] = file[f"/dynamics/u/{item:d}"]
-                    system.u = system.vector.AsNode(udof)
+                udof = np.zeros(system.vector.shape_dofval())
+                udof[doflist] = file[f"/dynamics/u/{item:d}"]
+                system.u = system.vector.AsNode(udof)
 
-                    if item == 0:
-                        i_n = np.copy(system.plastic.i.astype(int)[:, 0])
+                if item == 0:
+                    i_n = np.copy(system.plastic.i.astype(int)[:, 0])
 
-                    i = system.plastic.i.astype(int)[:, 0]
-                    broken = i != i_n
-                    moving = np.argwhere(broken).ravel()
+                i = system.plastic.i.astype(int)[:, 0]
+                broken = i != i_n
+                moving = np.argwhere(broken).ravel()
+                if tag.greater(ver, "12.3"):
                     assert np.sum(broken) == file["/dynamics/A"][item]
 
-                    Eps = system.Eps() / system.eps0
-                    Sig = system.Sig() / system.sig0
+                Eps = system.Eps() / system.eps0
+                Sig = system.Sig() / system.sig0
 
-                    # convert epsp: [N, nip] -> [nelem, nip] (for simplicity below)
-                    epsp = np.zeros(Eps.shape[:2], dtype=float)
-                    epsp[system.plastic_elem] = system.plastic.epsp
+                # convert epsp: [N, nip] -> [nelem, nip] (for simplicity below)
+                epsp = np.zeros(Eps.shape[:2], dtype=float)
+                epsp[system.plastic_elem] = system.plastic.epsp
 
-                    # convert s: [N] -> [nelem, nip] (for simplicity below)
-                    if item in items_syncA:
-                        s = np.zeros(epsp.shape, np.int64)
-                        s[system.plastic_elem] = (i - i_n).reshape(-1, 1)
+                # convert s: [N] -> [nelem, nip] (for simplicity below)
+                if item in items_syncA:
+                    s = np.zeros(epsp.shape, np.int64)
+                    s[system.plastic_elem] = (i - i_n).reshape(-1, 1)
 
-                    # synct
+                # synct
 
-                    if t_ibin[item] >= 0:
+                if t_ibin[item] >= 0:
 
-                        for i in range(len(element_list)):
-                            synct[i]["Eps"].add_subsample(t_ibin[item], Eps)
-                            synct[i]["Sig"].add_subsample(t_ibin[item], Sig)
+                    for i in range(len(element_list)):
+                        synct[i]["Eps"].add_subsample(t_ibin[item], Eps)
+                        synct[i]["Sig"].add_subsample(t_ibin[item], Sig)
 
-                        synct[0]["epsp"].add_subsample(t_ibin[item], epsp)
-                        synct[0]["epsp_moving"].add_subsample(t_ibin[item], epsp, moving)
-                        synct[0]["Eps_moving"].add_subsample(t_ibin[item], Eps, moving)
-                        synct[0]["Sig_moving"].add_subsample(t_ibin[item], Sig, moving)
+                    synct[0]["epsp"].add_subsample(t_ibin[item], epsp)
+                    synct[0]["epsp_moving"].add_subsample(t_ibin[item], epsp, moving)
+                    synct[0]["Eps_moving"].add_subsample(t_ibin[item], Eps, moving)
+                    synct[0]["Sig_moving"].add_subsample(t_ibin[item], Sig, moving)
 
-                    # syncA
+                # syncA
 
-                    if item in items_syncA:
+                if item in items_syncA:
 
-                        for i in range(len(element_list)):
-                            syncA[i]["Eps"].add_subsample(A[item], Eps)
-                            syncA[i]["Sig"].add_subsample(A[item], Sig)
+                    for i in range(len(element_list)):
+                        syncA[i]["Eps"].add_subsample(A[item], Eps)
+                        syncA[i]["Sig"].add_subsample(A[item], Sig)
 
-                        syncA[0]["epsp"].add_subsample(A[item], epsp)
-                        syncA[0]["epsp_moving"].add_subsample(A[item], epsp, moving)
-                        syncA[0]["Eps_moving"].add_subsample(A[item], Eps, moving)
-                        syncA[0]["Sig_moving"].add_subsample(A[item], Sig, moving)
+                    syncA[0]["epsp"].add_subsample(A[item], epsp)
+                    syncA[0]["epsp_moving"].add_subsample(A[item], epsp, moving)
+                    syncA[0]["Eps_moving"].add_subsample(A[item], Eps, moving)
+                    syncA[0]["Sig_moving"].add_subsample(A[item], Sig, moving)
 
-                        roll = tools.center_avalanche(broken)
+                    roll = tools.center_avalanche(broken)
 
-                        for i in range(1, len(element_list)):
-                            syncA["align"][i]["Eps"].add_subsample(A[item], Eps, roll)
-                            syncA["align"][i]["Sig"].add_subsample(A[item], Sig, roll)
+                    for i in range(1, len(element_list)):
+                        syncA["align"][i]["Eps"].add_subsample(A[item], Eps, roll)
+                        syncA["align"][i]["Sig"].add_subsample(A[item], Sig, roll)
 
-                        syncA["align"][0]["Eps"].add_subsample(A[item], Eps, roll, broken)
-                        syncA["align"][0]["Sig"].add_subsample(A[item], Sig, roll, broken)
-                        syncA["align"][0]["epsp"].add_subsample(A[item], epsp, roll, broken)
-                        syncA["align"][0]["s"].add_subsample(A[item], s, roll, broken)
+                    syncA["align"][0]["Eps"].add_subsample(A[item], Eps, roll, broken)
+                    syncA["align"][0]["Sig"].add_subsample(A[item], Sig, roll, broken)
+                    syncA["align"][0]["epsp"].add_subsample(A[item], epsp, roll, broken)
+                    syncA["align"][0]["s"].add_subsample(A[item], s, roll, broken)
+
+    with h5py.File(args.output, "w") as output:
+
+        for title, data in zip(["sync-t", "sync-A"], [synct, syncA]):
+
+            for key in ["delta_t", "Epsbar", "Sigbar"]:
+                output[f"/{title}/{key}/first"] = data[key].first
+                output[f"/{title}/{key}/second"] = data[key].second
+                output[f"/{title}/{key}/norm"] = data[key].norm
+
+            for i in range(len(element_list)):
+                for key in data[i]:
+                    output[f"/{title}/{i}/{key}/first"] = data[i][key].first
+                    output[f"/{title}/{i}/{key}/second"] = data[i][key].second
+                    output[f"/{title}/{i}/{key}/norm"] = data[i][key].norm
+
+        for i in range(len(element_list)):
+            for key in syncA["align"][i]:
+                output[f"/sync-A/align/{i}/{key}/first"] = syncA["align"][i][key].first
+                output[f"/sync-A/align/{i}/{key}/second"] = syncA["align"][i][key].second
+                output[f"/sync-A/align/{i}/{key}/norm"] = syncA["align"][i][key].norm

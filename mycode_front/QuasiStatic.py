@@ -77,30 +77,41 @@ class System(model.System):
 
         assert ("alpha" in file and "eta" in file) or ("alpha" in file or "eta" in file)
 
+        def to_field(value, n):
+            if value.size == n:
+                return value
+            if value.size == 1:
+                return value * np.ones(n)
+            raise ValueError(f"{value.size} != {n}")
+
+        nel = file["elastic"]["elem"].size
+        npl = file["cusp"]["elem"].size
+
         super().__init__(
             coor=file["coor"][...],
             conn=file["conn"][...],
             dofs=file["dofs"][...],
             iip=file["dofsP"][...] if "dofsP" in file else file["iip"][...],
             elastic_elem=file["elastic"]["elem"][...],
-            elastic_K=FrictionQPotFEM.moduli_toquad(file["elastic"]["K"][...]),
-            elastic_G=FrictionQPotFEM.moduli_toquad(file["elastic"]["G"][...]),
+            elastic_K=FrictionQPotFEM.moduli_toquad(to_field(file["elastic"]["K"][...], nel)),
+            elastic_G=FrictionQPotFEM.moduli_toquad(to_field(file["elastic"]["G"][...], nel)),
             plastic_elem=file["cusp"]["elem"][...],
-            plastic_K=FrictionQPotFEM.moduli_toquad(file["cusp"]["K"][...]),
-            plastic_G=FrictionQPotFEM.moduli_toquad(file["cusp"]["G"][...]),
+            plastic_K=FrictionQPotFEM.moduli_toquad(to_field(file["cusp"]["K"][...], npl)),
+            plastic_G=FrictionQPotFEM.moduli_toquad(to_field(file["cusp"]["G"][...], npl)),
             plastic_epsy=FrictionQPotFEM.epsy_initelastic_toquad(y),
             dt=file["run"]["dt"][...],
-            rho=file["rho"][...][0],
-            alpha=file["alpha"][...][0] if "alpha" in file else 0,
+            rho=file["rho"][...].item(0),
+            alpha=file["alpha"][...].item(0) if "alpha" in file else 0,
             eta=file["eta"][...] if "eta" in file else 0,
         )
 
         for key in ["rho", "alpha"]:
             if key in file:
-                if not np.allclose(self.alpha, file[key][...][0]):
-                    if key == "alpha":
+                if key == "alpha":
+                    if not np.allclose(self.alpha, file[key][...]):
                         self.setDampingMatrix(file[key][...])
-                    else:
+                else:
+                    if not np.allclose(self.rho, file[key][...]):
                         self.setMassMatrix(file[key][...])
 
         self.normalisation = normalisation(file)
@@ -239,6 +250,15 @@ def clone(
         /kick
         /disp/...
 
+    Furthermore, this functions converts the following fields to scalar if they are homogeneous::
+
+        /alpha
+        /rho
+        /elastic/K
+        /elastic/G
+        /cusp/K
+        /cusp/G
+
     :param source: Source file.
     :param dest: Destination file.
     :parma skip: List with additional dataset to skip.
@@ -249,6 +269,12 @@ def clone(
 
     datasets = list(g5.getdatasets(source, fold="/disp"))
     groups = list(g5.getgroups(source, has_attrs=True))
+
+    for key in ["/alpha", "/rho", "/elastic/K", "/elastic/G", "/cusp/K", "/cusp/G"]:
+        if source[key].size > 1:
+            if np.allclose(source[key][0], source[key][...]):
+                dest[key] = source[key][0]
+                datasets.remove(key)
 
     for key in ["/stored", "/t", "/kick", "/disp/..."]:
         datasets.remove(key)
@@ -541,16 +567,16 @@ def generate(
         storage.dump_with_atttrs(
             file,
             "/rho",
-            rho * np.ones(nelem),
-            desc="Mass density [nelem]",
+            rho,
+            desc="Mass density; homogeneous",
         )
 
         if scale_alpha != 0 and scale_alpha is not None:
             storage.dump_with_atttrs(
                 file,
                 "/alpha",
-                scale_alpha * alpha * np.ones(nelem),
-                desc="Damping coefficient (density) [nelem]",
+                scale_alpha * alpha,
+                desc="Damping coefficient (density); homogeneous",
             )
 
         if eta is not None:
@@ -558,7 +584,7 @@ def generate(
                 file,
                 "/eta",
                 eta,
-                desc="Damping coefficient at the interface",
+                desc="Damping coefficient at the interface; homogeneous",
             )
 
         storage.dump_with_atttrs(
@@ -571,15 +597,15 @@ def generate(
         storage.dump_with_atttrs(
             file,
             "/elastic/K",
-            K * np.ones(len(elastic)),
-            desc="Bulk modulus for elements in '/elastic/elem' [nelem - N]",
+            K,
+            desc="Bulk modulus for elements in '/elastic/elem'; homogeneous",
         )
 
         storage.dump_with_atttrs(
             file,
             "/elastic/G",
-            G * np.ones(len(elastic)),
-            desc="Shear modulus for elements in '/elastic/elem' [nelem - N]",
+            G,
+            desc="Shear modulus for elements in '/elastic/elem'; homogeneous",
         )
 
         storage.dump_with_atttrs(
@@ -592,15 +618,15 @@ def generate(
         storage.dump_with_atttrs(
             file,
             "/cusp/K",
-            K * np.ones(len(plastic)),
-            desc="Bulk modulus for elements in '/cusp/elem' [nplastic]",
+            K,
+            desc="Bulk modulus for elements in '/cusp/elem'; homogeneous",
         )
 
         storage.dump_with_atttrs(
             file,
             "/cusp/G",
-            G * np.ones(len(plastic)),
-            desc="Shear modulus for elements in '/cusp/elem' [nplastic]",
+            G,
+            desc="Shear modulus for elements in '/cusp/elem'; homogeneous",
         )
 
         if classic:
