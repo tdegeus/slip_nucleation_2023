@@ -1,5 +1,5 @@
 """
-Rerun dynamics.
+Rerun step (quasi-static step, or trigger) to extract the dynamic evolution of fields.
 """
 from __future__ import annotations
 
@@ -178,14 +178,23 @@ def cli_run(cli_args=None):
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
     progname = entry_points[funcname]
 
-    parser.add_argument("--A-step", type=int, default=1, help="Control sync-A storage")
+    # developer options
     parser.add_argument("--develop", action="store_true", help="Development mode")
-    parser.add_argument("--t-step", type=int, default=500, help="Control sync-t storage")
-    parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
-    parser.add_argument("-i", "--inc", required=True, type=int, help="Increment number")
-    parser.add_argument("-o", "--output", type=str, required=True, help="Output file")
     parser.add_argument("-v", "--version", action="version", version=version)
+
+    # output selection
+    parser.add_argument("--A-step", type=int, default=1, help="Control sync-A storage")
+    parser.add_argument("--t-step", type=int, default=500, help="Control sync-t storage")
     parser.add_argument("--height", type=float, action="append", help="Add element row(s)")
+
+    # input selection
+    parser.add_argument("-i", "--inc", required=True, type=int, help="Quasistatic step to run")
+
+    # output file
+    parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
+    parser.add_argument("-o", "--output", type=str, required=True, help="Output file")
+
+    # input files
     parser.add_argument("file", type=str, help="Simulation from which to run (read-only)")
 
     args = tools._parse(parser, cli_args)
@@ -417,7 +426,7 @@ class AlignedAverage(BasicAverage):
     """
     Support class for :py:func:`cli_average_systemspanning`.
     Similar to :py:class:`BasicAverage`, but it aligns blocks and averages per blocks
-    (not on all elements).
+    (not on all blocks).
     """
 
     def __init__(self, shape, elements, dV):
@@ -475,6 +484,7 @@ def cli_average_systemspanning(cli_args=None):
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    progname = entry_points[funcname]
     output = file_defaults[funcname]
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
@@ -486,6 +496,7 @@ def cli_average_systemspanning(cli_args=None):
     assert len(args.files) > 0
     assert all([os.path.isfile(file) for file in args.files])
     tools._check_overwrite_file(args.output, args.force)
+    QuasiStatic.create_check_meta(dev=args.develop)
 
     # get duration of each event and allocate binning on duration since system spanning
 
@@ -660,44 +671,49 @@ def cli_average_systemspanning(cli_args=None):
                     s = np.zeros(epsp.shape, np.int64)
                     s[system.plastic_elem] = (i - i_n).reshape(-1, 1)
 
-                # synct
+                # synct / syncA
 
-                if t_ibin[item] >= 0:
+                for data, store, j in zip(
+                    [synct, syncA],
+                    [t_ibin[item] >= 0, item in items_syncA],
+                    [t_ibin[item], A[item]],
+                ):
 
-                    for i in range(len(element_list)):
-                        synct[i]["Eps"].add_subsample(t_ibin[item], Eps)
-                        synct[i]["Sig"].add_subsample(t_ibin[item], Sig)
-
-                    synct[0]["epsp"].add_subsample(t_ibin[item], epsp)
-                    synct[0]["epsp_moving"].add_subsample(t_ibin[item], epsp, moving)
-                    synct[0]["Eps_moving"].add_subsample(t_ibin[item], Eps, moving)
-                    synct[0]["Sig_moving"].add_subsample(t_ibin[item], Sig, moving)
-
-                # syncA
-
-                if item in items_syncA:
+                    if not store:
+                        continue
 
                     for i in range(len(element_list)):
-                        syncA[i]["Eps"].add_subsample(A[item], Eps)
-                        syncA[i]["Sig"].add_subsample(A[item], Sig)
+                        data[i]["Eps"].add_subsample(j, Eps)
+                        data[i]["Sig"].add_subsample(j, Sig)
 
-                    syncA[0]["epsp"].add_subsample(A[item], epsp)
-                    syncA[0]["epsp_moving"].add_subsample(A[item], epsp, moving)
-                    syncA[0]["Eps_moving"].add_subsample(A[item], Eps, moving)
-                    syncA[0]["Sig_moving"].add_subsample(A[item], Sig, moving)
+                    data[0]["epsp"].add_subsample(j, epsp)
 
+                    if np.sum(broken) == 0:
+                        continue
+
+                    data[0]["epsp_moving"].add_subsample(j, epsp, moving)
+                    data[0]["Eps_moving"].add_subsample(j, Eps, moving)
+                    data[0]["Sig_moving"].add_subsample(j, Sig, moving)
+
+                # syncA["align"]
+
+                if item in items_syncA and np.sum(broken) > 0:
+
+                    j = A[item]
                     roll = tools.center_avalanche(broken)
 
                     for i in range(1, len(element_list)):
-                        syncA["align"][i]["Eps"].add_subsample(A[item], Eps, roll)
-                        syncA["align"][i]["Sig"].add_subsample(A[item], Sig, roll)
+                        syncA["align"][i]["Eps"].add_subsample(j, Eps, roll)
+                        syncA["align"][i]["Sig"].add_subsample(j, Sig, roll)
 
-                    syncA["align"][0]["Eps"].add_subsample(A[item], Eps, roll, broken)
-                    syncA["align"][0]["Sig"].add_subsample(A[item], Sig, roll, broken)
-                    syncA["align"][0]["epsp"].add_subsample(A[item], epsp, roll, broken)
-                    syncA["align"][0]["s"].add_subsample(A[item], s, roll, broken)
+                    syncA["align"][0]["Eps"].add_subsample(j, Eps, roll, broken)
+                    syncA["align"][0]["Sig"].add_subsample(j, Sig, roll, broken)
+                    syncA["align"][0]["epsp"].add_subsample(j, epsp, roll, broken)
+                    syncA["align"][0]["s"].add_subsample(j, s, roll, broken)
 
     with h5py.File(args.output, "w") as output:
+
+        QuasiStatic.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
 
         for title, data in zip(["sync-t", "sync-A"], [synct, syncA]):
 
