@@ -579,14 +579,19 @@ def cli_average_systemspanning(cli_args=None):
     synct = allocate(t_bin.size - 1, element_list, dV, dV2)
     syncA = allocate(N + 1, element_list, dV, dV2)
 
-    syncA["align"] = {}
-    for i in range(len(element_list)):
-        syncA["align"][i] = {
-            "Eps": AlignedAverage(shape=(N + 1, N, 2, 2), elements=element_list[i], dV=dV2),
-            "Sig": AlignedAverage(shape=(N + 1, N, 2, 2), elements=element_list[i], dV=dV2),
-        }
-    syncA["align"][0]["s"] = AlignedAverage(shape=(N + 1, N), elements=element_list[0], dV=dV)
-    syncA["align"][0]["epsp"] = AlignedAverage(shape=(N + 1, N), elements=element_list[0], dV=dV)
+    for title in ["align", "align_moving"]:
+        syncA[title] = {}
+        syncA[title][0] = dict(
+            Eps=AlignedAverage(shape=(N + 1, N, 2, 2), elements=element_list[0], dV=dV2),
+            Sig=AlignedAverage(shape=(N + 1, N, 2, 2), elements=element_list[0], dV=dV2),
+            s=AlignedAverage(shape=(N + 1, N), elements=element_list[0], dV=dV),
+            epsp=AlignedAverage(shape=(N + 1, N), elements=element_list[0], dV=dV),
+        )
+        for i in range(1, len(element_list)):
+            syncA["align"][i] = {
+                "Eps": AlignedAverage(shape=(N + 1, N, 2, 2), elements=element_list[i], dV=dV2),
+                "Sig": AlignedAverage(shape=(N + 1, N, 2, 2), elements=element_list[i], dV=dV2),
+            }
 
     # averages
 
@@ -707,10 +712,15 @@ def cli_average_systemspanning(cli_args=None):
                         syncA["align"][i]["Eps"].add_subsample(j, Eps, roll)
                         syncA["align"][i]["Sig"].add_subsample(j, Sig, roll)
 
-                    syncA["align"][0]["Eps"].add_subsample(j, Eps, roll, broken)
-                    syncA["align"][0]["Sig"].add_subsample(j, Sig, roll, broken)
-                    syncA["align"][0]["epsp"].add_subsample(j, epsp, roll, broken)
-                    syncA["align"][0]["s"].add_subsample(j, s, roll, broken)
+                    syncA["align"][0]["Eps"].add_subsample(j, Eps, roll)
+                    syncA["align"][0]["Sig"].add_subsample(j, Sig, roll)
+                    syncA["align"][0]["epsp"].add_subsample(j, epsp, roll)
+                    syncA["align"][0]["s"].add_subsample(j, s, roll)
+
+                    syncA["align_moving"][0]["Eps"].add_subsample(j, Eps, roll, broken)
+                    syncA["align_moving"][0]["Sig"].add_subsample(j, Sig, roll, broken)
+                    syncA["align_moving"][0]["epsp"].add_subsample(j, epsp, roll, broken)
+                    syncA["align_moving"][0]["s"].add_subsample(j, s, roll, broken)
 
     with h5py.File(args.output, "w") as file:
 
@@ -729,8 +739,9 @@ def cli_average_systemspanning(cli_args=None):
                     file[f"/{title}/{i}/{key}/second"] = data[i][key].second
                     file[f"/{title}/{i}/{key}/norm"] = data[i][key].norm
 
-        for i in range(len(element_list)):
-            for key in syncA["align"][i]:
-                file[f"/sync-A/align/{i}/{key}/first"] = syncA["align"][i][key].first
-                file[f"/sync-A/align/{i}/{key}/second"] = syncA["align"][i][key].second
-                file[f"/sync-A/align/{i}/{key}/norm"] = syncA["align"][i][key].norm
+        for title in ["align", "align_moving"]:
+            for i in syncA[title]:
+                for key in syncA[title][i]:
+                    file[f"/sync-A/{title}/{i}/{key}/first"] = syncA[title][i][key].first
+                    file[f"/sync-A/{title}/{i}/{key}/second"] = syncA[title][i][key].second
+                    file[f"/sync-A/{title}/{i}/{key}/norm"] = syncA[title][i][key].norm
