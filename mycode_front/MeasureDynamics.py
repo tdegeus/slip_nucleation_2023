@@ -711,25 +711,25 @@ def cli_average_systemspanning(cli_args=None):
                     syncA["align"][0]["epsp"].add_subsample(j, epsp, roll, broken)
                     syncA["align"][0]["s"].add_subsample(j, s, roll, broken)
 
-    with h5py.File(args.output, "w") as output:
+    with h5py.File(args.output, "w") as file:
 
         QuasiStatic.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
 
         for title, data in zip(["sync-t", "sync-A"], [synct, syncA]):
 
             for key in ["delta_t", "Epsbar", "Sigbar"]:
-                output[f"/{title}/{key}/first"] = data[key].first
-                output[f"/{title}/{key}/second"] = data[key].second
-                output[f"/{title}/{key}/norm"] = data[key].norm
+                file[f"/{title}/{key}/first"] = data[key].first
+                file[f"/{title}/{key}/second"] = data[key].second
+                file[f"/{title}/{key}/norm"] = data[key].norm
 
             for i in range(len(element_list)):
                 for key in data[i]:
-                    output[f"/{title}/{i}/{key}/first"] = data[i][key].first
-                    output[f"/{title}/{i}/{key}/second"] = data[i][key].second
-                    output[f"/{title}/{i}/{key}/norm"] = data[i][key].norm
+                    file[f"/{title}/{i}/{key}/first"] = data[i][key].first
+                    file[f"/{title}/{i}/{key}/second"] = data[i][key].second
+                    file[f"/{title}/{i}/{key}/norm"] = data[i][key].norm
 
         for i in range(len(element_list)):
             for key in syncA["align"][i]:
-                output[f"/sync-A/align/{i}/{key}/first"] = syncA["align"][i][key].first
-                output[f"/sync-A/align/{i}/{key}/second"] = syncA["align"][i][key].second
-                output[f"/sync-A/align/{i}/{key}/norm"] = syncA["align"][i][key].norm
+                file[f"/sync-A/align/{i}/{key}/first"] = syncA["align"][i][key].first
+                file[f"/sync-A/align/{i}/{key}/second"] = syncA["align"][i][key].second
+                file[f"/sync-A/align/{i}/{key}/norm"] = syncA["align"][i][key].norm
