@@ -63,10 +63,12 @@ def cli_run(cli_args=None):
     Trigger event and minimise energy.
 
     This function will run ``--niter`` time steps to see if the trigger lead to any plastic event.
-    If that is not the case, it will retry the neighbouring element recursively until a plastic
-    event is found.
-    Due to this feature, the time of the event may be overestimated for very small events.
-    If ``--retry=0`` this functionality with be skipped.
+    If not, recursively try the neighbouring element until a plastic event is found.
+    Due to this feature, the time of the event may be overestimated for small events.
+    To skip this functionality:
+    -   Use ``--retry=0``.
+    -   Specify `file["/trigger/element"][-1] >= 0`
+        (you are responsible to have something meaningful in `file["/trigger/try_element"][-1]`).
 
     An option is provided to truncate the simulation when an event is system-spanning.
     In that case the ``truncated`` meta-attribute will be ``True``.
@@ -87,10 +89,19 @@ def cli_run(cli_args=None):
     progname = entry_points[funcname]
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
-    parser.add_argument("--truncate-system-spanning", action="store_true", help="Stop large events")
-    parser.add_argument("-r", "--retry", type=int, default=50, help="Maximum number of tries")
-    parser.add_argument("-t", "--niter", type=int, default=20000, help="Trial number of iterations")
     parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument(
+        "--truncate-system-spanning", action="store_true", help="Truncate as soon as A == N"
+    )
+    parser.add_argument(
+        "--rerun", action="store_true", help="Exact rerun: run at least --niter iterations"
+    )
+    parser.add_argument(
+        "-r", "--retry", type=int, default=50, help="Maximum number of elements to try"
+    )
+    parser.add_argument(
+        "-t", "--niter", type=int, default=20000, help="#iterations to use to try element"
+    )
     parser.add_argument("file", type=str, help="Input/output file")
 
     args = tools._parse(parser, cli_args)
@@ -102,47 +113,82 @@ def cli_run(cli_args=None):
 
     with h5py.File(args.file, "a") as file:
 
-        element = int(file["/trigger/element"][-1])
+        assert file["/trigger/element"].size == file["/trigger/try_element"].size
+
         step = int(file["/stored"][-1])
-        assert not file["/trigger/truncated"][step]
+        element = int(file["/trigger/element"][step + 1])
+        try_element = int(file["/trigger/try_element"][step + 1])
+        assert not file["/trigger/truncated"][step], "Cannot run is last step was not minimised"
 
         meta = QuasiStatic.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
         system = QuasiStatic.System(file)
         system.restore_step(file, step)
         idx_n = np.copy(system.plastic.i[:, 0])
         N = system.N
-        system.triggerElementWithLocalSimpleShear(file["/run/epsd/kick"][...], element)
+        search_element = True
 
-        for _ in range(args.retry):
+        if element >= 0:
+            try_element = element
+            search_element = False
+
+        assert try_element >= 0
+        system.triggerElementWithLocalSimpleShear(file["/run/epsd/kick"][...], try_element)
+
+        # search for the element to run
+
+        if search_element:
+
+            element = try_element
+
+            for itry in range(args.retry + 1):
+
+                assert itry <= args.retry, "Maximum number of tries reached"
+                assert itry == 0 or element != try_element, "All elements tried"
+
+                system.timeSteps(args.niter)
+
+                if np.sum(np.not_equal(system.plastic.i[:, 0], idx_n)) > 0:
+                    break
+
+                if element + 1 >= N:
+                    element -= N
+
+                element += 1
+                system.restore_step(file, step)
+                system.triggerElementWithLocalSimpleShear(file["/run/epsd/kick"][...], element)
+
+            file["/trigger/element"][step + 1] = element
+
+        elif args.rerun:
 
             system.timeSteps(args.niter)
 
-            if np.sum(np.not_equal(system.plastic.i[:, 0], idx_n)) > 0:
-                break
-            if element + 1 == N:
-                break
-
-            element += 1
-            system.restore_step(file, step)
-            system.triggerElementWithLocalSimpleShear(file["/run/epsd/kick"][...], element)
+        # run the dynamics
 
         if args.truncate_system_spanning:
-            niter = system.minimise_truncate(idx_n=idx_n, A_truncate=system.N)
+            ret = system.minimise_truncate(idx_n=idx_n, A_truncate=system.N)
+            truncated = ret == 0
         else:
-            niter = system.minimise()
+            ret = system.minimise()
+            assert ret == 0, "Out-of-bounds"
+            truncated = False
 
-        step += 1
-        storage.dset_extend1d(file, "/stored", step, step)
-        storage.dset_extend1d(file, "/t", step, system.t)
-        storage.dset_extend1d(file, "/kick", step, True)
-        storage.dset_extend1d(file, "/trigger/element", step, element)
-        storage.dset_extend1d(file, "/trigger/branched", step, False)
-        storage.dset_extend1d(file, "/trigger/truncated", step, niter == 0)
-        file[f"/disp/{step:d}"] = system.u
+        # store the output, and prepare for the next push
+
+        storage.dset_extend1d(file, "/stored", step + 1, step + 1)
+        storage.dset_extend1d(file, "/t", step + 1, system.t)
+        storage.dset_extend1d(file, "/kick", step + 1, True)
+        storage.dset_extend1d(file, "/trigger/branched", step + 1, False)
+        storage.dset_extend1d(file, "/trigger/truncated", step + 1, truncated)
+        file[f"/disp/{step + 1:d}"] = system.u
+
+        if file["/trigger/element"].size == step + 2:
+            storage.dset_extend1d(file, "/trigger/element", step + 2, -1)
+            storage.dset_extend1d(file, "/trigger/try_element", step + 2, try_element)
 
         # in case that the event was truncated at a given "A":
         # store state from which a restart from the moment of truncation is possible
-        if niter == 0:
+        if truncated:
             file["/restart/u"] = system.u
             file["/restart/v"] = system.v
             file["/restart/a"] = system.a
@@ -266,6 +312,7 @@ def cli_ensemblepack(cli_args=None):
         f"/meta/{QuasiStatic.entry_points['cli_generate']}",
         "/trigger/branched",
         "/trigger/element",
+        "/trigger/try_element",
         "/trigger/truncated",
     ]
     # - copy on "/event/{tid}"
@@ -400,6 +447,7 @@ def cli_ensembleinfo(cli_args=None):
         duration=[],
         truncated=[],
         element=[],
+        try_element=[],
         run_version=[],
         run_dependencies=[],
         source=[],
@@ -440,6 +488,11 @@ def cli_ensembleinfo(cli_args=None):
             meta = file["meta"][entry_points["cli_run"]]
             branch = file["meta"]["branch_fixed_stress"]
 
+            if "try_element" in file["trigger"]:
+                try_element = file["trigger"]["try_element"][1]
+            else:
+                try_element = int(os.path.basename(filepath).split("element=")[1].split("_")[0])
+
             ret["S"].append(out["S"][1])
             ret["A"].append(out["A"][1])
             ret["xi"].append(out["xi"][1])
@@ -454,6 +507,7 @@ def cli_ensembleinfo(cli_args=None):
             ret["duration"].append(out["duration"][1])
             ret["truncated"].append(file["trigger"]["truncated"][1])
             ret["element"].append(file["trigger"]["element"][1])
+            ret["try_element"].append(try_element)
             ret["run_version"].append(meta.attrs["version"])
             ret["run_dependencies"].append(";".join(meta.attrs["dependencies"]))
             ret["source"].append(os.path.basename(filepath))
@@ -578,6 +632,7 @@ def restore_from_ensembleinfo(
     inc = ensembleinfo["inc"][index]
     incc = ensembleinfo["incc"][index]
     element = ensembleinfo["element"][index]
+    try_element = ensembleinfo["try_element"][index]
 
     if sourcedir is not None:
         sourcepath = os.path.join(sourcedir, sourcepath)
@@ -601,9 +656,8 @@ def restore_from_ensembleinfo(
             dev=dev,
         )
 
-        _writeinitbranch(dest, element)
+        _writeinitbranch(dest, try_element=try_element, element=element)
         storage.dset_extend1d(dest, "/t", 1, ensembleinfo["duration"][index])
-        storage.dset_extend1d(dest, "/trigger/element", 1, element)
 
     return destpath
 
@@ -867,19 +921,29 @@ def cli_job_rerun_dynamics(cli_args=None):
         return ret
 
 
-def _writeinitbranch(file: h5py.File, element: int, meta: tuple[str, dict] = None):
+def _writeinitbranch(
+    file: h5py.File, try_element: int, element: int = -1, meta: tuple[str, dict] = None
+):
     """
     Write :py:mod:`Trigger` specific fields.
 
-    :oaram element: Element to trigger.
+    :param try_element: Element to try trigger.
+    :param element: Element to trigger, without trying others.
     :param meta: Extra metadata to write ``("/path/to/group", {"mykey": myval, ...})``.
     """
 
     storage.create_extendible(
         file,
         "/trigger/element",
-        np.uint64,
-        desc="Plastic element to trigger",
+        np.int64,
+        desc="Plastic element triggered",
+    )
+
+    storage.create_extendible(
+        file,
+        "/trigger/try_element",
+        np.int64,
+        desc="Plastic element to start trying triggering",
     )
 
     storage.create_extendible(
@@ -896,7 +960,12 @@ def _writeinitbranch(file: h5py.File, element: int, meta: tuple[str, dict] = Non
         desc="Flag if configuration followed from a branch",
     )
 
-    storage.dset_extend1d(file, "/trigger/element", 0, element)
+    storage.dset_extend1d(file, "/trigger/element", 0, -1)
+    storage.dset_extend1d(file, "/trigger/element", 1, element)
+
+    storage.dset_extend1d(file, "/trigger/try_element", 0, -1)
+    storage.dset_extend1d(file, "/trigger/try_element", 1, try_element)
+
     storage.dset_extend1d(file, "/trigger/truncated", 0, False)
     storage.dset_extend1d(file, "/trigger/branched", 0, True)
 
@@ -907,7 +976,7 @@ def _writeinitbranch(file: h5py.File, element: int, meta: tuple[str, dict] = Non
 
 
 def _write_configurations(
-    element: int,
+    try_element: int,
     info: h5py.File,
     force: bool = False,
     dev: bool = False,
@@ -921,7 +990,7 @@ def _write_configurations(
     """
     Branch at a given increment or fixed stress.
 
-    :param element: Element to trigger.
+    :param try_element: Element to try to trigger first.
     :param info: EnsembleInfo to read configuration data from.
     :param force: Force overwrite of existing files.
     :param dev: Allow uncommitted changes.
@@ -977,7 +1046,7 @@ def _write_configurations(
                 with h5py.File(tmp, "w") as dest_file:
                     QuasiStatic.clone(source_file, dest_file)
                     QuasiStatic._init_run_state(dest_file)
-                    _writeinitbranch(dest_file, element, meta)
+                    _writeinitbranch(dest_file, try_element=try_element, meta=meta)
 
             shutil.copy(tmp, d)
 
@@ -1000,12 +1069,12 @@ def _write_configurations(
     os.remove(tmp)
 
 
-def _copy_configurations(element: int, source: list[str], dest: list[str], force: bool = False):
+def _copy_configurations(try_element: int, source: list[str], dest: list[str], force: bool = False):
     """
     Copy configurations written by :py:func:`_write_configurations` and
     overwrite the triggered element.
 
-    :param element: Element to trigger.
+    :param try_element: Element to try to trigger first.
     :param source: List with source file-paths.
     :param dest: List with destination file-paths.
     :param force: Force overwrite of existing files.
@@ -1021,7 +1090,8 @@ def _copy_configurations(element: int, source: list[str], dest: list[str], force
         shutil.copy(s, d)
 
         with h5py.File(d, "a") as dest:
-            dest["/trigger/element"][0] = element
+            dest["/trigger/element"][1] = -1
+            dest["/trigger/try_element"][1] = try_element
 
 
 def __write(elements, ret, args, executable, cli_args, meta):

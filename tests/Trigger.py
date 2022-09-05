@@ -85,13 +85,14 @@ class MyTests(unittest.TestCase):
             for src in uni:
                 dst = re.sub(r"(.*)(element)(=[0-9]*)(.*)", r"\1\2=" + str(e) + r"\4", src)
                 res = g5.compare(src, dst)
-                self.assertEqual(res["!="], ["/trigger/element"])
+                self.assertEqual(res["!="], ["/trigger/try_element"])
                 self.assertEqual(res["->"], [])
                 self.assertEqual(res["<-"], [])
                 with h5py.File(src, "r") as file:
-                    self.assertEqual(elem[0], file["/trigger/element"][0])
+                    self.assertEqual(elem[0], file["/trigger/try_element"][1])
                 with h5py.File(dst, "r") as file:
-                    self.assertEqual(e, file["/trigger/element"][0])
+                    self.assertEqual(e, file["/trigger/try_element"][1])
+                    self.assertEqual(-1, file["/trigger/element"][1])
 
         # run ensemble
 
@@ -121,7 +122,7 @@ class MyTests(unittest.TestCase):
         with h5py.File(triggerinfo, "r") as file:
             Trigger.restore_from_ensembleinfo(file, 0, clonename, dev=True)
 
-        Trigger.cli_run(["--dev", clonename])
+        Trigger.cli_run(["--dev", "--rerun", clonename])
 
         with h5py.File(output[0], "r") as source, h5py.File(clonename, "r") as dest:
             self.assertTrue(np.allclose(source["/disp/1"][...], dest["/disp/1"][...]))
