@@ -51,7 +51,7 @@ class MyTests(unittest.TestCase):
 
         name = os.path.join(dirname, "rerun.h5")
         i = np.argmax(S)
-        EventMap.cli_run(["--dev", "-f", "-i", i, "-o", name, filename])
+        EventMap.cli_run(["--dev", "-f", "--step", i, "-o", name, filename])
 
         with h5py.File(name, "r") as file:
             s = file["S"][...]
