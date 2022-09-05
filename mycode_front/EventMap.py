@@ -47,13 +47,13 @@ def replace_ep(doc: str) -> str:
     return doc
 
 
-def runinc_event_basic(system: QuasiStatic.System, file: h5py.File, inc: int, Smax=None) -> dict:
+def run_event_basic(system: QuasiStatic.System, file: h5py.File, step: int, Smax=None) -> dict:
     """
     Rerun increment and get basic event information.
 
     :param system: The system (modified: increment loaded/rerun).
     :param file: Open simulation HDF5 archive (read-only).
-    :param inc: The increment to rerun.
+    :param step: Quasistatic step to rerun.
     :param Smax: Stop at given S (to avoid spending time on final energy minimisation).
     :return: A dictionary as follows::
 
@@ -67,18 +67,18 @@ def runinc_event_basic(system: QuasiStatic.System, file: h5py.File, inc: int, Sm
     if Smax is None:
         Smax = sys.maxsize
 
-    assert inc - 1 in stored
+    assert step - 1 in stored
 
-    system.restore_step(file, inc - 1)
+    system.restore_step(file, step - 1)
     i_n = np.copy(system.plastic.i[:, 0].astype(int))
     i_t = np.copy(system.plastic.i[:, 0].astype(int))
     deps = file["/run/epsd/kick"][...]
 
     if "trigger" in file:
-        system.triggerElementWithLocalSimpleShear(deps, file["/trigger/element"][inc])
+        system.triggerElementWithLocalSimpleShear(deps, file["/trigger/element"][step])
     else:
         system.initEventDrivenSimpleShear()
-        system.eventDrivenStep(deps, file["/kick"][inc])
+        system.eventDrivenStep(deps, file["/kick"][step])
 
     R = []
     T = []
@@ -113,7 +113,7 @@ def runinc_event_basic(system: QuasiStatic.System, file: h5py.File, inc: int, Sm
 
 def cli_run(cli_args=None):
     """
-    Rerun increment and store basic event info (position and time).
+    Rerun quasistatic step and store basic event info (position and time).
     Tip: truncate when (known) S is reached to not waste time on final stage of energy minimisation.
     """
 
@@ -128,7 +128,7 @@ def cli_run(cli_args=None):
 
     parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output file")
-    parser.add_argument("-i", "--inc", required=True, type=int, help="Increment number")
+    parser.add_argument("--step", required=True, type=int, help="Quasi-static step to rerun")
     parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
     parser.add_argument("-s", "--smax", type=int, help="Truncate at a maximum total S")
     parser.add_argument("-v", "--version", action="version", version=version)
@@ -140,7 +140,7 @@ def cli_run(cli_args=None):
 
     with h5py.File(args.file, "r") as file:
         system = QuasiStatic.System(file)
-        ret = runinc_event_basic(system, file, args.inc, args.smax)
+        ret = run_event_basic(system, file, args.step, args.smax)
 
     with h5py.File(args.output, "w") as file:
         file["r"] = ret["r"]
@@ -149,7 +149,7 @@ def cli_run(cli_args=None):
 
         meta = QuasiStatic.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
         meta.attrs["file"] = args.file
-        meta.attrs["inc"] = args.inc
+        meta.attrs["step"] = args.step
         meta.attrs["Smax"] = args.smax if args.smax else sys.maxsize
 
     if cli_args is not None:
@@ -158,7 +158,9 @@ def cli_run(cli_args=None):
 
 def cli_basic_output(cli_args=None):
     """
-    Collect basis information from :py:func:`cli_run` and combine in a single output file.
+    Collect basic information from :py:func:`cli_run` and combine in a single output file:
+    *   Event duration (``t``).
+    *   Event size (``S`` and ``A``)
     """
 
     class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
@@ -188,7 +190,7 @@ def cli_basic_output(cli_args=None):
         A=[],
         S=[],
         file=[],
-        inc=[],
+        step=[],
         Smax=[],
         version=[],
         dependencies=[],
@@ -203,14 +205,14 @@ def cli_basic_output(cli_args=None):
             data["S"].append(np.sum(file["S"][...]))
             data["A"].append(np.unique(file["r"][...]).size)
             data["file"].append(meta.attrs["file"])
-            data["inc"].append(meta.attrs["inc"])
+            data["step"].append(meta.attrs["step"])
             data["Smax"].append(meta.attrs["Smax"])
             data["version"].append(meta.attrs["version"])
             data["dependencies"].append(meta.attrs["dependencies"])
 
     # sorting simulation-id and then increment
 
-    sorter = np.lexsort((data["inc"], data["file"]))
+    sorter = np.lexsort((data["step"], data["file"]))
     for key in data:
         data[key] = [data[key][i] for i in sorter]
 
@@ -218,7 +220,7 @@ def cli_basic_output(cli_args=None):
 
     with h5py.File(args.output, "w") as file:
 
-        for key in ["t", "A", "S", "inc"]:
+        for key in ["t", "A", "S", "step"]:
             file[key] = data[key]
 
         prefix = os.path.dirname(os.path.commonprefix(data["file"]))
