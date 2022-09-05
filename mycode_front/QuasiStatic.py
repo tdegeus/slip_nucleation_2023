@@ -1284,7 +1284,7 @@ def basic_output(system: System, file: h5py.File, verbose: bool = True) -> dict:
         ret["epsd"][inc] = GMat.Epsd(np.average(Eps, weights=dV, axis=(0, 1)))
         ret["sigd"][inc] = GMat.Sigd(np.average(Sig, weights=dV, axis=(0, 1)))
 
-        if np.any(i == i_n):
+        if np.any(~broken):
             ret["sig_unbroken"][inc] = GMat.Sigd(
                 np.average(Sig_plas[~broken, ...], weights=dV_plas[~broken, ...], axis=(0, 1))
             )
@@ -1292,7 +1292,7 @@ def basic_output(system: System, file: h5py.File, verbose: bool = True) -> dict:
                 np.average(dSig_plas[~broken, ...], weights=dV_plas[~broken, ...], axis=(0, 1))
             )
 
-        if np.any(i != i_n):
+        if np.any(broken):
             ret["sig_broken"][inc] = GMat.Sigd(
                 np.average(Sig_plas[broken, ...], weights=dV_plas[broken, ...], axis=(0, 1))
             )

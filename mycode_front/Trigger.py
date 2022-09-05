@@ -393,10 +393,10 @@ def cli_ensembleinfo(cli_args=None):
         epsd0=[],
         sigd=[],
         sigd0=[],
-        sigd_broken=[],
-        sigd_unbroken=[],
-        delta_sigd_broken=[],
-        delta_sigd_unbroken=[],
+        sig_broken=[],
+        sig_unbroken=[],
+        delta_sig_broken=[],
+        delta_sig_unbroken=[],
         duration=[],
         truncated=[],
         element=[],
@@ -447,10 +447,10 @@ def cli_ensembleinfo(cli_args=None):
             ret["epsd0"].append(out["epsd"][0])
             ret["sigd"].append(out["sigd"][1])
             ret["sigd0"].append(out["sigd"][0])
-            ret["sigd_broken"].append(out["sigd_broken"][1])
-            ret["sigd_unbroken"].append(out["sigd_unbroken"][1])
-            ret["delta_sigd_broken"].append(out["delta_sigd_broken"][1])
-            ret["delta_sigd_unbroken"].append(out["delta_sigd_unbroken"][1])
+            ret["sig_broken"].append(out["sig_broken"][1])
+            ret["sig_unbroken"].append(out["sig_unbroken"][1])
+            ret["delta_sig_broken"].append(out["delta_sig_broken"][1])
+            ret["delta_sig_unbroken"].append(out["delta_sig_unbroken"][1])
             ret["duration"].append(out["duration"][1])
             ret["truncated"].append(file["trigger"]["truncated"][1])
             ret["element"].append(file["trigger"]["element"][1])
