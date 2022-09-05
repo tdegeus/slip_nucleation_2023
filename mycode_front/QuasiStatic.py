@@ -841,6 +841,7 @@ def create_check_meta(
         meta.attrs["uuid"] = str(uuid.uuid4())
         meta.attrs["version"] = ver
         meta.attrs["dependencies"] = deps
+        meta.attrs["compiler"] = model.version_compiler()
         return meta
 
     meta = file[path]
