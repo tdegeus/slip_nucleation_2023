@@ -77,11 +77,11 @@ class MyTests(unittest.TestCase):
             A = file[f"/full/{idname}/A"][...]
             N = file["/normalisation/N"][...]
 
-        inc = np.argwhere(A == N).ravel()[-1]
+        step = np.argwhere(A == N).ravel()[-1]
 
         with h5py.File(filename, "r") as file:
             system = QuasiStatic.System(file)
-            u = file[f"/disp/{inc:d}"][...]
+            u = file[f"/disp/{step:d}"][...]
 
         plastic = system.plastic_elem
         system.u = u
@@ -145,12 +145,12 @@ class MyTests(unittest.TestCase):
             A = file[f"/full/{idname}/A"][...]
             N = file["/normalisation/N"][...]
 
-        inc = np.argwhere(A == N).ravel()[-1]
+        step = np.argwhere(A == N).ravel()[-1]
 
-        outname = os.path.join(dirname, f"id=0_reruninc={inc:d}.h5")
+        outname = os.path.join(dirname, f"id=0_rerunstep={step:d}.h5")
         average = os.path.join(dirname, "MeasureDynamics_Average.h5")
         MeasureDynamics.cli_run(
-            ["--dev", "-f", "--height", 2, "--inc", inc, "-o", outname, filename]
+            ["--dev", "-f", "--height", 2, "--step", step, "-o", outname, filename]
         )
         MeasureDynamics.cli_average_systemspanning(["--dev", "-f", "-o", average, outname])
 
@@ -169,7 +169,7 @@ class MyTests(unittest.TestCase):
             A = file["A"][0]
 
         outname = os.path.join(dirname, "rerun_trigger.h5")
-        MeasureDynamics.cli_run(["--dev", "-f", "--inc", 1, "-o", outname, triggername])
+        MeasureDynamics.cli_run(["--dev", "-f", "--step", 1, "-o", outname, triggername])
 
         with h5py.File(outname, "r") as file:
             a = file["/dynamics/A"][-1]

@@ -140,6 +140,52 @@ def cli_plot_height(cli_args=None):
         xh.write(grid, args.output + ".xdmf")
 
 
+def branch(source: h5py.File, destination: h5py.File, step: int, force: bool = False):
+    """
+    Branch a simulation to a file where the selected step is the only step (`0` to be specific).
+    This simplifies the rest of the code in this part of the module
+    (and reduces the file size a bit).
+
+    :param source: Source file.
+    :param destination: Destination file.
+    :param step: The step to rerun.
+    :param force: Force overwrite of existing destination file.
+    """
+
+    assert os.path.isfile(source)
+    tools._check_overwrite_file(destination, force)
+
+    with h5py.File(source) as src:
+
+        assert f"/disp/{step - 1:d}" in src
+
+        paths = list(GooseHDF5.getdatasets(src, fold=["/disp", "/trigger"]))
+
+        for path in ["/disp/...", "/trigger/...", "/t", "/kick", "/stored"]:
+            if path in paths:
+                paths.remove(path)
+
+        if "trigger" in src:
+            assert not src["/trigger/truncated"][step - 1]
+
+        with h5py.File(destination, "w") as dest:
+
+            GooseHDF5.copy(src, dest, paths, expand_soft=False)
+
+            dest["/disp/0"] = src[f"/disp/{step - 1:d}"][:]
+            dest["/t"] = src["/t"][step - 1 : step + 1]
+            dest["/stored"] = np.zeros(1, dtype=np.uint64)
+            dest["/kick"] = src["/kick"][step - 1 : step + 1]
+
+            if "trigger" in src:
+                assert not src["/trigger/truncated"][0]
+                assert src["/trigger/element"][step] >= 0
+                dest["/trigger/element"] = src["/trigger/element"][step - 1 : step + 1]
+                dest["/trigger/try_element"] = src["/trigger/element"][step - 1 : step]
+                dest["/trigger/truncated"] = src["/trigger/truncated"][step - 1 : step]
+                dest["/trigger/branched"] = src["/trigger/branched"][step - 1 : step]
+
+
 def cli_run(cli_args=None):
     """
     Rerun an event and store output at different increments that are selected at:
@@ -188,7 +234,7 @@ def cli_run(cli_args=None):
     parser.add_argument("--height", type=float, action="append", help="Add element row(s)")
 
     # input selection
-    parser.add_argument("-i", "--inc", required=True, type=int, help="Quasistatic step to run")
+    parser.add_argument("--step", required=True, type=int, help="Quasistatic step to run")
 
     # output file
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
@@ -200,19 +246,11 @@ def cli_run(cli_args=None):
     args = tools._parse(parser, cli_args)
     args.height = [] if args.height is None else args.height
     assert os.path.isfile(args.file)
-    tools._check_overwrite_file(args.output, args.force)
     assert args.A_step > 0 or args.t_step > 0
 
     # copy file
 
-    if os.path.realpath(args.file) != os.path.realpath(args.output):
-
-        with h5py.File(args.file) as src, h5py.File(args.output, "w") as dest:
-            paths = list(GooseHDF5.getdatasets(src, fold="/disp"))
-            assert "/disp/..." in paths
-            paths.remove("/disp/...")
-            GooseHDF5.copy(src, dest, paths, expand_soft=False)
-            dest[f"/disp/{args.inc - 1:d}"] = src[f"/disp/{args.inc - 1:d}"][:]
+    branch(args.file, args.output, args.step, args.force)
 
     with h5py.File(args.output, "a") as file:
 
@@ -220,6 +258,7 @@ def cli_run(cli_args=None):
 
         meta = QuasiStatic.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
         meta.attrs["file"] = os.path.basename(args.file)
+        meta.attrs["step"] = args.step
         meta.attrs["A-step"] = args.A_step
         meta.attrs["t-step"] = args.t_step
         meta.attrs["height"] = args.height
@@ -254,17 +293,19 @@ def cli_run(cli_args=None):
         # restore state
 
         system = QuasiStatic.System(file)
-        system.restore_step(file, args.inc - 1)
+        system.restore_step(file, 0)
         deps = file["/run/epsd/kick"][...]
         i_n = np.copy(system.plastic.i[:, 0].astype(int))
         i = np.copy(i_n)
-        maxiter = int((file["/t"][args.inc] - file["/t"][args.inc - 1]) / file["/run/dt"][...])
+        maxiter = int(np.diff(file["/t"][:]) / file["/run/dt"][...])
 
         if "trigger" in file:
-            element = file["/trigger/element"][args.inc]
+            element = file["/trigger/element"][1]
             kick = None
+            meta.attrs["type"] = "Trigger"
         else:
-            kick = file["/kick"][args.inc]
+            kick = file["/kick"][1]
+            meta.attrs["type"] = "QuasiStatic"
 
         # variables needed to write output
 

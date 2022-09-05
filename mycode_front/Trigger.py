@@ -689,8 +689,8 @@ def __job_rerun(file, sims, basename, executable, args):
         restore_from_ensembleinfo(file, index, replica, args.sourcedir, args.develop)
         o = os.path.relpath(output, args.outdir)
         r = os.path.relpath(replica, args.outdir)
-        commands += [f"{executable} -i 1" + height + f"-o {o} {r}"]
-        ret += [f"{executable} -i 1" + height + f"-o {output} {replica}"]
+        commands += [f"{executable} --step 1" + height + f"-o {o} {r}"]
+        ret += [f"{executable} --step 1" + height + f"-o {output} {replica}"]
 
     slurm.serial_group(
         commands,
