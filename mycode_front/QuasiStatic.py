@@ -1217,10 +1217,10 @@ def basic_output(system: System, file: h5py.File, verbose: bool = True) -> dict:
     :return: Basic output as follows::
         epsd: Macroscopic strain (dimensionless) [ninc].
         sigd: Macroscopic stress (dimensionless) [ninc].
-        sigd_broken: Average stress in blocks that have yielded during this event [ninc].
-        sigd_unbroken: Average stress in blocks that have not yielded during this event [ninc].
-        delta_sigd_broken: Same as `sigd_broken` but relative to the previous step [ninc].
-        delta_sigd_unbroken: Same as `sigd_unbroken` but relative to the previous step [ninc].
+        sig_broken: Average stress in blocks that have yielded during this event [ninc].
+        sig_unbroken: Average stress in blocks that have not yielded during this event [ninc].
+        delta_sig_broken: Same as `sig_broken` but relative to the previous step [ninc].
+        delta_sig_unbroken: Same as `sig_unbroken` but relative to the previous step [ninc].
         S: Number of times a block yielded [ninc].
         A: Number of blocks that yielded at least once [ninc].
         xi: Largest extension corresponding to A [ninc].
@@ -1249,10 +1249,10 @@ def basic_output(system: System, file: h5py.File, verbose: bool = True) -> dict:
     ret = dict(system.normalisation)
     ret["epsd"] = np.empty((ninc), dtype=float)
     ret["sigd"] = np.empty((ninc), dtype=float)
-    ret["sigd_broken"] = np.zeros((ninc), dtype=float)
-    ret["sigd_unbroken"] = np.zeros((ninc), dtype=float)
-    ret["delta_sigd_broken"] = np.zeros((ninc), dtype=float)
-    ret["delta_sigd_unbroken"] = np.zeros((ninc), dtype=float)
+    ret["sig_broken"] = np.zeros((ninc), dtype=float)
+    ret["sig_unbroken"] = np.zeros((ninc), dtype=float)
+    ret["delta_sig_broken"] = np.zeros((ninc), dtype=float)
+    ret["delta_sig_unbroken"] = np.zeros((ninc), dtype=float)
     ret["S"] = np.zeros((ninc), dtype=int)
     ret["A"] = np.zeros((ninc), dtype=int)
     ret["xi"] = np.zeros((ninc), dtype=int)
@@ -1276,27 +1276,28 @@ def basic_output(system: System, file: h5py.File, verbose: bool = True) -> dict:
         i = system.plastic.i.astype(int)[:, 0]
         Sig_plas = system.plastic.Sig / system.sig0
         dSig_plas = Sig_plas - Sig_plas_n
+        broken = tools.fill_avalanche(i != i_n)
 
         ret["S"][inc] = np.sum(i - i_n)
         ret["A"][inc] = np.sum(i != i_n)
-        ret["xi"][inc] = np.sum(tools.fill_avalanche(i != i_n))
+        ret["xi"][inc] = np.sum(broken)
         ret["epsd"][inc] = GMat.Epsd(np.average(Eps, weights=dV, axis=(0, 1)))
         ret["sigd"][inc] = GMat.Sigd(np.average(Sig, weights=dV, axis=(0, 1)))
 
         if np.any(i == i_n):
-            ret["sigd_unbroken"][inc] = GMat.Sigd(
-                np.average(Sig_plas[i == i_n, ...], weights=dV_plas[i == i_n, ...], axis=(0, 1))
+            ret["sig_unbroken"][inc] = GMat.Sigd(
+                np.average(Sig_plas[~broken, ...], weights=dV_plas[~broken, ...], axis=(0, 1))
             )
-            ret["delta_sigd_unbroken"][inc] = GMat.Sigd(
-                np.average(dSig_plas[i == i_n, ...], weights=dV_plas[i == i_n, ...], axis=(0, 1))
+            ret["delta_sig_unbroken"][inc] = GMat.Sigd(
+                np.average(dSig_plas[~broken, ...], weights=dV_plas[~broken, ...], axis=(0, 1))
             )
 
         if np.any(i != i_n):
-            ret["sigd_broken"][inc] = GMat.Sigd(
-                np.average(Sig_plas[i != i_n, ...], weights=dV_plas[i != i_n, ...], axis=(0, 1))
+            ret["sig_broken"][inc] = GMat.Sigd(
+                np.average(Sig_plas[broken, ...], weights=dV_plas[broken, ...], axis=(0, 1))
             )
-            ret["delta_sigd_broken"][inc] = GMat.Sigd(
-                np.average(dSig_plas[i != i_n, ...], weights=dV_plas[i != i_n, ...], axis=(0, 1))
+            ret["delta_sig_broken"][inc] = GMat.Sigd(
+                np.average(dSig_plas[broken, ...], weights=dV_plas[broken, ...], axis=(0, 1))
             )
 
         i_n = np.copy(i)
@@ -1354,10 +1355,10 @@ def cli_ensembleinfo(cli_args=None):
     floats = [
         "epsd",
         "sigd",
-        "sigd_broken",
-        "sigd_unbroken",
-        "delta_sigd_broken",
-        "delta_sigd_unbroken",
+        "sig_broken",
+        "sig_unbroken",
+        "delta_sig_broken",
+        "delta_sig_unbroken",
     ]
     fields_full = ["S", "A", "kick", "inc"] + floats
     combine_load = {key: [] for key in fields_full}
