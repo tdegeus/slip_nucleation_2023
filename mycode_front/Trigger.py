@@ -1205,7 +1205,12 @@ def cli_job_deltasigma(cli_args=None):
     parser.add_argument("--filter", type=str, help="Filter completed jobs")
     parser.add_argument("--nmax", type=int, help="Keep first nmax jobs (mostly for testing)")
     parser.add_argument("--truncate-system-spanning", action="store_true", help="Stop large events")
-    parser.add_argument("--istep", type=int, action="append", help="Select only specific step")
+    parser.add_argument(
+        "--istress",
+        type=int,
+        action="append",
+        help="Select only specific stress for the list of stresses",
+    )
     parser.add_argument("-d", "--delta-sigma", type=float, required=True, help="delta_sigma")
     parser.add_argument("-e", "--element", type=int, action="append", help="Specify element(s)")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
@@ -1280,8 +1285,8 @@ def cli_job_deltasigma(cli_args=None):
         stress = sigd[i] + args.delta_sigma * np.arange(100, dtype=float)
         stress = stress[stress < sigd_loading[i + 1]]
 
-        if args.istep:
-            stress = [stress[i] for i in args.istep]
+        if args.istress:
+            stress = [stress[i] for i in args.istress]
 
         for istress, s in enumerate(stress):
 
