@@ -23,7 +23,7 @@ def read_entry_points(module):
 
 
 entry_points = []
-entry_points += read_entry_points("EventEvolution")
+entry_points += read_entry_points("Dynamics")
 entry_points += read_entry_points("EventMap")
 entry_points += read_entry_points("Flow")
 entry_points += read_entry_points("QuasiStatic")
