@@ -1,90 +1,84 @@
-# Front dynamics - Codes
+# Update to v14
 
-Codes to measure stress drop and dynamics from pre-run simulations.
+## Dynamics (formerly known as MeasureDynamics)
 
-<!-- MarkdownTOC -->
+### Overview
 
-- [Codes](#codes)
-    - [EnsembleInfo](#ensembleinfo)
-    - [CrackEvolution](#crackevolution)
-        - [CrackEvolution_stress](#crackevolution_stress)
-        - [CrackEvolution_strain](#crackevolution_strain)
-        - [CrackEvolution_weak-sync-A_stress](#crackevolution_weak-sync-a_stress)
-        - [CrackEvolution_weak-sync-A_strain](#crackevolution_weak-sync-a_strain)
-    - [EventEvolution](#eventevolution)
-- [Environment](#environment)
+#### Rename functions
 
-<!-- /MarkdownTOC -->
+-   `MeasureDynamics_average_systemspanning` -> `Dynamics_AverageSystemSpanning`
+-   `MeasureDynamics_plot_height` -> `Dynamics_PlotMeshHeight`
+-   `MeasureDynamics_run` -> `Dynamics_Run`
 
-## Codes
+## QuasiStatic
 
-### EnsembleInfo
+### Overview
 
-Read information (avalanche size, stress, strain, ...) of an ensemble.
+#### Rename functions
 
-### CrackEvolution
+-   `EnsembleInfo` -> `QuasiStatic_EnsembleInfo`
+-   `Run_generate` -> `QuasiStatic_Generate`
+-   `Run_plot` -> `QuasiStatic_Plot`
+-   `RunDynamics_JobAllSystemSpanning` -> `QuasiStatic_MakeJobDynamicsOfSystemSpanning`
+-   `RunEventMap_JobAllSystemSpanning` -> `QuasiStatic_MakeJobEventMapOfSystemSpanning`
+-   `Run` -> `QuasiStatic_Run`
+-   `StateAfterSystemSpanning` -> `QuasiStatic_StateAfterSystemSpanning`
+-   `SimulationStatus` -> `QuasiStatic_SimulationStatus`
 
-Extract time evolution of a specific push at a fixed stress. This reruns the push and stores the output:
+#### File structure
 
-*   At different avalanche radii `A`.
-*   At a fixed time from the moment that for the first time `A >= A/2`.
+The file structure is now changed to have different groups:
 
-#### CrackEvolution_stress
+-   `/param`: Parameters that are the same for all realisations in the ensemble.
+-   `/realisation`: Specific realisation settings.
+-   `/QuasiStatic`: Output of QuasiStatic loading.
+-   `/meta`: Metadata.
 
-To extract the average output, the following functions are available:
+Warning:
+The `initstate` of a realisation is now:
+```python
+file["realisation"]["seed"][...] + file["param"]["cusp"]["epsy"][...]
+```
 
-*   Collect synchronised at different `A` (resulting in a scatter in time `t`):
+Renamed parameters:
+```bash
+"/coor"  ->  "/param/coor"
+"/conn"  ->  "/param/conn"
+"/dofs"  ->  "/param/dofs"
+"/iip", or "dofsP"  ->  "/param/iip"
+"/alpha" ->  "/param/alpha"  # scalar only!
+"/eta" ->  "/param/eta"  # scalar only!
+"/rho" ->  "/param/rho"  # scalar only!
+"/elastic/K" ->  "/param/elastic/K"  # scalar only!
+"/elastic/G" ->  "/param/elastic/G"  # scalar only!
+"/cusp/elem" ->  "/param/cusp/elem"
+"/cusp/K" ->  "/param/cusp/K"  # scalar only!
+"/cusp/G" ->  "/param/cusp/G"  # scalar only!
+"/cusp/initstate" ->  "/param/cusp/epsy/initstate"  # !!Changed!! See above.
+"/cusp/initseq" ->  "/param/cusp/epsy/initseq"
+"/cusp/nchunk" ->  "/param/cusp/epsy/nchunk"
+"/cusp/eps_offset" ->  "/param/cusp/epsy/weibull/offset"
+"/cusp/eps0" ->  "/param/cusp/epsy/weibull/typical"
+"/cusp/k" ->  "/param/cusp/epsy/weibull/k"
+"/run/dt"  ->  "/param/dt"
+"/meta/seed_base"  ->  "/realisation/seed"
+"/param/run/epsd/kick"  ->  "/param/cusp/epsy/deps"
+```
 
-    -   `collect_sync-A_connect.py`
-    -   `collect_sync-A_crack-density.py`
-    -   `collect_sync-A_element-components.py`
-    -   `collect_sync-A_element.py`
-    -   `collect_sync-A_global.py`
-    -   `collect_sync-A_plastic.py`
-    -   `collect_sync-A_velocity.py`
+Deprecated parameters:
+```bash
+"/elastic/elem"  # recoverable for "/param/conn" and "/param/cusp/elem
+"/dofsP"  # was renamed "/iip" as long time ago
+```
 
-*   Collect synchronised at different `t` starting from the moment that the avalanches spanned half the system size (resulting in a scatter in `A`):
+Still supported parameters, but renamed:
+```bash
+"/cusp/epsy"  ->  "/param/cusp/epsy"
+```
 
-    -   `collect_sync-t_crack-density.py`
-    -   `collect_sync-t_element.py`
-    -   `collect_sync-t_global.py`
-    -   `collect_sync-t_plastic.py`
-
-#### CrackEvolution_strain
-
-Same as `CrackEvolution_stress`  but for a fixed strain.
-
-#### CrackEvolution_weak-sync-A_stress
-
-Same as `CrackEvolution_stress`  but for reduced storage.
-
-#### CrackEvolution_weak-sync-A_strain
-
-Same as `CrackEvolution_strain`  but for reduced storage.
-
-### EventEvolution
-
-Follow the evolution of an avalanches event by event. This code is similar to [CrackEvolution](#crackevolution) but with different storage.
-
-## Environment
-
-For each code the environment can be entirely set using *Conda*. In particular, each code has a file `environment.yaml` which contains the necessary dependencies.
-
-*   Create an environment based on the environment file:
-
-    ```
-    conda env create --name NAME --file FILE
-    ```
-
-*   Update an environment based on the environment file:
-
-    ```
-    source activate NAME
-    conda env update --file FILE
-    ```
-
-    or
-
-    ```
-    conda env update --name NAME --file FILE
-    ```
+Output:
+```bash
+"/t"  ->  "/QuasiStatic/inc"  # inc = t / dt
+"/disp/..."  ->  "/QuasiStatic/u/..."
+"/stored"  # Deprecated!
+```

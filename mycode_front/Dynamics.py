@@ -12,7 +12,7 @@ import enstat
 import FrictionQPotFEM  # noqa: F401
 import GMatElastoPlasticQPot  # noqa: F401
 import GooseFEM
-import GooseHDF5
+import GooseHDF5 as g5
 import h5py
 import numpy as np
 import tqdm
@@ -26,9 +26,9 @@ from . import tools
 from ._version import version
 
 entry_points = dict(
-    cli_average_systemspanning="MeasureDynamics_average_systemspanning",
-    cli_plot_height="MeasureDynamics_plot_height",
-    cli_run="MeasureDynamics_run",
+    cli_average_systemspanning="Dynamics_AverageSystemSpanning",
+    cli_plot_height="Dynamics_PlotMeshHeight",
+    cli_run="Dynamics_Run",
 )
 
 file_defaults = dict(
@@ -140,53 +140,6 @@ def cli_plot_height(cli_args=None):
         xh.write(grid, args.output + ".xdmf")
 
 
-def branch(source: str, destination: str, step: int, force: bool = False):
-    """
-    Branch a simulation to a file where the selected step is the only step (`0` to be specific).
-    This simplifies the rest of the code in this part of the module
-    (and reduces the file size a bit).
-
-    :param source: Source file.
-    :param destination: Destination file.
-    :param step: The step to rerun.
-    :param force: Force overwrite of existing destination file.
-    """
-
-    assert os.path.isfile(source)
-    assert os.path.abspath(source) != os.path.abspath(destination)
-    tools._check_overwrite_file(destination, force)
-
-    with h5py.File(source) as src:
-
-        assert f"/disp/{step - 1:d}" in src
-
-        if "trigger" in src:
-            assert not src["/trigger/truncated"][step - 1]
-
-        paths = list(GooseHDF5.getdatasets(src, fold=["/disp", "/trigger"]))
-
-        for path in ["/disp/...", "/trigger/...", "/t", "/kick", "/stored"]:
-            if path in paths:
-                paths.remove(path)
-
-        with h5py.File(destination, "w") as dest:
-
-            GooseHDF5.copy(src, dest, paths, expand_soft=False)
-
-            dest["/disp/0"] = src[f"/disp/{step - 1:d}"][:]
-            dest["/t"] = src["/t"][step - 1 : step + 1]
-            dest["/stored"] = np.zeros(1, dtype=np.uint64)
-            dest["/kick"] = src["/kick"][step - 1 : step + 1]
-
-            if "trigger" in src:
-                assert not src["/trigger/truncated"][0]
-                assert src["/trigger/element"][step] >= 0
-                dest["/trigger/element"] = src["/trigger/element"][step - 1 : step + 1]
-                dest["/trigger/try_element"] = src["/trigger/element"][step - 1 : step]
-                dest["/trigger/truncated"] = src["/trigger/truncated"][step - 1 : step]
-                dest["/trigger/branched"] = src["/trigger/branched"][step - 1 : step]
-
-
 def cli_run(cli_args=None):
     """
     Rerun an event and store output at different increments that are selected at:
@@ -249,13 +202,9 @@ def cli_run(cli_args=None):
     assert os.path.isfile(args.file)
     assert args.A_step > 0 or args.t_step > 0
 
-    # copy file
+    with h5py.File(args.file) as src, h5py.File(args.output, "w") as file:
 
-    branch(args.file, args.output, args.step, args.force)
-
-    with h5py.File(args.output, "a") as file:
-
-        # metadata & storage preparation
+        g5.copy(src, file, ["/param", "/realisation", "/meta"])
 
         meta = QuasiStatic.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
         meta.attrs["file"] = os.path.basename(args.file)
@@ -264,49 +213,48 @@ def cli_run(cli_args=None):
         meta.attrs["t-step"] = args.t_step
         meta.attrs["height"] = args.height
 
-        storage.create_extendible(
-            file, "/dynamics/stored", np.uint64, desc="List with stored items"
-        )
-        storage.create_extendible(
-            file, "/dynamics/t", float, desc="Time of each stored item (real units)"
-        )
-        storage.create_extendible(
-            file, "/dynamics/A", np.uint64, desc='Size "A" of each stored item'
-        )
-        storage.create_extendible(
-            file, "/dynamics/sync-A", np.uint64, desc="Items stored due to sync-A"
-        )
-        storage.create_extendible(
-            file, "/dynamics/sync-t", np.uint64, desc="Items stored due to sync-t"
+        if "QuasiStatic" in src:
+            typename = "QuasiStatic"
+            sroot = src[typename]
+            kick = sroot["kick"][args.step]
+        elif "Trigger" in src:
+            typename = "Trigger"
+            sroot = src[typename]
+            element = sroot["element"][args.step]
+            meta.attrs["element"] = element
+            assert not sroot["truncated"][args.step - 1]
+            assert element >= 0
+
+        # metadata & storage preparation
+
+        meta.attrs["type"] = typename
+
+        root = file.create_group("Dynamics")
+        root.create_dataset("inc", maxshape=(None,), data=[sroot["inc"][args.step - 1]])
+        storage.create_extendible(root, "A", np.uint64, desc='Size "A" of each stored item')
+        storage.create_extendible(root, "sync-A", np.uint64, desc="Items stored due to sync-A")
+        storage.create_extendible(root, "sync-t", np.uint64, desc="Items stored due to sync-t")
+        storage.symtens2_create(
+            root, "Epsbar", float, desc="Macroscopic strain tensor per item (real units)"
         )
         storage.symtens2_create(
-            file, "/dynamics/Epsbar", float, desc="Macroscopic strain tensor per item (real units)"
-        )
-        storage.symtens2_create(
-            file, "/dynamics/Sigbar", float, desc="Macroscopic stress tensor per item (real units)"
+            root, "Sigbar", float, desc="Macroscopic stress tensor per item (real units)"
         )
 
-        file_u = file["dynamics"].create_group("u")
-        file_u.attrs["desc"] = 'Displacement of selected DOFs (see "/doflist")'
-        file_u.attrs["goal"] = "Reconstruct (part of) the system at that instance"
-        file_u.attrs["groups"] = 'Items in "/stored"'
+        root.create_group("u").attrs["desc"] = 'Displacement of selected DOFs (see "/doflist")'
 
         # restore state
 
         system = QuasiStatic.System(file)
-        system.restore_step(file, 0)
-        deps = file["/run/epsd/kick"][...]
+        system.restore_quasistatic_step(sroot, args.step - 1)
+        deps = file["/param/cusp/epsy/deps"][...]
         i_n = np.copy(system.plastic.i[:, 0].astype(int))
         i = np.copy(i_n)
-        maxiter = int(np.diff(file["/t"][:]) / file["/run/dt"][...])
+        maxiter = sroot["inc"][args.step] - sroot["inc"][args.step - 1]
 
-        if "trigger" in file:
-            element = file["/trigger/element"][1]
-            kick = None
-            meta.attrs["type"] = "Trigger"
-        else:
-            kick = file["/kick"][1]
-            meta.attrs["type"] = "QuasiStatic"
+    with h5py.File(args.output, "a") as file:
+
+        root = file["Dynamics"]
 
         # variables needed to write output
 
@@ -327,8 +275,8 @@ def cli_run(cli_args=None):
         N = system.N
 
         storage.dump_with_atttrs(
-            file,
-            "/dynamics/doflist",
+            root,
+            "doflist",
             partial.dof_list(),
             desc='List of stored DOFs (same order as "u")',
         )
@@ -355,14 +303,13 @@ def cli_run(cli_args=None):
             if store:
 
                 if iiter != last_stored_iiter:
-                    file[f"/dynamics/u/{istore:d}"] = system.vector.AsDofs(system.u)[keepdof]
+                    root["u"][str(istore)] = system.vector.AsDofs(system.u)[keepdof]
                     Epsbar = np.average(system.Eps(), weights=dV, axis=(0, 1))
                     Sigbar = np.average(system.Sig(), weights=dV, axis=(0, 1))
-                    storage.symtens2_extend(file, "/dynamics/Epsbar", istore, Epsbar)
-                    storage.symtens2_extend(file, "/dynamics/Sigbar", istore, Sigbar)
-                    storage.dset_extend1d(file, "/dynamics/t", istore, system.t)
-                    storage.dset_extend1d(file, "/dynamics/A", istore, np.sum(np.not_equal(i, i_n)))
-                    storage.dset_extend1d(file, "/dynamics/stored", istore, istore)
+                    storage.symtens2_extend(root, "Epsbar", istore, Epsbar)
+                    storage.symtens2_extend(root, "Sigbar", istore, Sigbar)
+                    storage.dset_extend1d(root, "inc", istore, system.inc)
+                    storage.dset_extend1d(root, "A", istore, np.sum(np.not_equal(i, i_n)))
                     file.flush()
                     istore += 1
                     last_stored_iiter = iiter
@@ -377,7 +324,7 @@ def cli_run(cli_args=None):
             if trigger:
 
                 trigger = False
-                if kick is None:
+                if typename == "Trigger":
                     system.triggerElementWithLocalSimpleShear(deps, element)
                 else:
                     system.initEventDrivenSimpleShear()
@@ -393,13 +340,13 @@ def cli_run(cli_args=None):
                 A = max(A, a)
 
                 if (A >= A_next and A % args.A_step == 0) or A == N:
-                    storage.dset_extend1d(file, "/dynamics/sync-A", A_istore, istore)
+                    storage.dset_extend1d(root, "sync-A", A_istore, istore)
                     A_istore += 1
                     store = True
                     A_next += args.A_step
 
                 if A == N:
-                    storage.dset_extend1d(file, "/dynamics/sync-t", t_istore, istore)
+                    storage.dset_extend1d(root, "sync-t", t_istore, istore)
                     t_istore += 1
                     store = True
                     A_check = False
@@ -413,11 +360,11 @@ def cli_run(cli_args=None):
                 assert ret >= 0
                 iiter += system.inc - inc_n
                 stop = ret == 0
-                storage.dset_extend1d(file, "/dynamics/sync-t", t_istore, istore)
+                storage.dset_extend1d(root, "sync-t", t_istore, istore)
                 t_istore += 1
                 store = True
 
-        meta.attrs["completed"] = 1
+        file[f"/meta/{progname}"].attrs["completed"] = 1
 
 
 class BasicAverage(enstat.static):
@@ -550,6 +497,8 @@ def cli_average_systemspanning(cli_args=None):
 
         with h5py.File(filepath, "r") as file:
 
+            root = file["Dynamics"]
+
             if ifile == 0:
 
                 system = QuasiStatic.System(file)
@@ -559,7 +508,7 @@ def cli_average_systemspanning(cli_args=None):
 
                 height = file[f"/meta/{entry_points['cli_run']}"].attrs["height"]
                 t_step = file[f"/meta/{entry_points['cli_run']}"].attrs["t-step"]
-                dt = float(file["/run/dt"][...])
+                dt = float(file["/param/dt"][...])
 
                 element_list = [system.plastic_elem]
                 for h in height:
@@ -580,11 +529,11 @@ def cli_average_systemspanning(cli_args=None):
                     np.equal(height, file[f"/meta/{entry_points['cli_run']}"].attrs["height"])
                 )
                 assert t_step == file[f"/meta/{entry_points['cli_run']}"].attrs["t-step"]
-                assert dt == float(file["/run/dt"][...])
-                assert np.all(np.equal(doflist, file["/dynamics/doflist"][...]))
+                assert dt == float(file["/param/dt"][...])
+                assert np.all(np.equal(doflist, root["doflist"][...]))
 
-            t = file["/dynamics/t"][...] / system.t0
-            A = file["/dynamics/A"][...]
+            t = root["inc"][...] * dt / system.t0
+            A = root["A"][...]
             assert np.sum(A == N) > 0
             t = np.sort(t) - np.min(t[A == N])
             t_start.append(t[0])
@@ -647,6 +596,8 @@ def cli_average_systemspanning(cli_args=None):
 
         with h5py.File(filepath, "r") as file:
 
+            root = file["Dynamics"]
+
             if ifile > 0:
                 system.reset(file)
 
@@ -655,12 +606,10 @@ def cli_average_systemspanning(cli_args=None):
 
             ver = file[f"/meta/{entry_points['cli_run']}"].attrs["version"]
 
-            nitem = file["/dynamics/stored"].size
-            assert np.all(np.equal(file["/dynamics/stored"][...], np.arange(nitem)))
-
-            items_syncA = file["/dynamics/sync-A"][...]
-            A = file["/dynamics/A"][...]
-            t = file["/dynamics/t"][...] / system.t0
+            nitem = root["inc"].size
+            items_syncA = root["sync-A"][...]
+            A = root["A"][...]
+            t = root["inc"][...] * dt / system.t0
             delta_t = t - np.min(t[A == N])
             t_ibin = np.digitize(delta_t, t_bin) - 1
             d = np.abs(delta_t - t_mid[t_ibin])
@@ -677,8 +626,8 @@ def cli_average_systemspanning(cli_args=None):
 
             # add averages
 
-            Epsbar = storage.symtens2_read(file, "/dynamics/Epsbar") / system.eps0
-            Sigbar = storage.symtens2_read(file, "/dynamics/Sigbar") / system.sig0
+            Epsbar = storage.symtens2_read(root, "Epsbar") / system.eps0
+            Sigbar = storage.symtens2_read(root, "Sigbar") / system.sig0
 
             for i in range(2):
                 for j in range(2):
@@ -698,7 +647,7 @@ def cli_average_systemspanning(cli_args=None):
                     continue
 
                 udof = np.zeros(system.vector.shape_dofval())
-                udof[doflist] = file[f"/dynamics/u/{item:d}"]
+                udof[doflist] = root["u"][str(item)][...]
                 system.u = system.vector.AsNode(udof)
 
                 if item == 0:
@@ -710,7 +659,7 @@ def cli_average_systemspanning(cli_args=None):
                 broken = i != i_n
                 moving = np.argwhere(broken).ravel()
                 if tag.greater(ver, "12.3"):
-                    assert np.sum(broken) == file["/dynamics/A"][item]
+                    assert np.sum(broken) == root["A"][item]
 
                 Eps = (system.Eps() - Eps_n) / system.eps0
                 Sig = system.Sig() / system.sig0

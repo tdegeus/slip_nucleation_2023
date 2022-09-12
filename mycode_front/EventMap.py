@@ -62,23 +62,30 @@ def run_event_basic(system: QuasiStatic.System, file: h5py.File, step: int, Smax
         S: Size (signed) of the yielding event.
     """
 
-    stored = file["/stored"][...]
-
     if Smax is None:
         Smax = sys.maxsize
 
-    assert step - 1 in stored
+    if "QuasiStatic" in file:
+        typename = "QuasiStatic"
+        root = file[typename]
+        kick = root["kick"][step]
+    elif "Trigger" in file:
+        typename = "Trigger"
+        root = file[typename]
+        element = root["element"][step]
+        assert not root["truncated"][step - 1]
+        assert element >= 0
 
-    system.restore_step(file, step - 1)
+    system.restore_quasistatic_step(root, step - 1)
     i_n = np.copy(system.plastic.i[:, 0].astype(int))
     i_t = np.copy(system.plastic.i[:, 0].astype(int))
-    deps = file["/run/epsd/kick"][...]
+    deps = file["/param/cusp/epsy/deps"][...]
 
-    if "trigger" in file:
-        system.triggerElementWithLocalSimpleShear(deps, file["/trigger/element"][step])
+    if typename == "Trigger":
+        system.triggerElementWithLocalSimpleShear(deps, element)
     else:
         system.initEventDrivenSimpleShear()
-        system.eventDrivenStep(deps, file["/kick"][step])
+        system.eventDrivenStep(deps, kick)
 
     R = []
     T = []
