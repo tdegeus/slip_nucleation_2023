@@ -1628,10 +1628,10 @@ def cli_rerun_dynamics_job_systemspanning(cli_args=None):
     basedir = basedir if basedir else "."
     relpath = os.path.relpath(basedir, args.outdir)
 
-    for i, f in zip(inc, ifile):
+    for step, f in zip(inc, ifile):
         fname = files[f]
         basename = os.path.splitext(os.path.basename(fname))[0]
-        cmd = [executable, "-o", f"{basename}_inc={i:d}.h5", "-i", f"{i:d}"]
+        cmd = [executable, "-o", f"{basename}_inc={step:d}.h5", "--step", f"{step:d}"]
         cmd += [os.path.join(relpath, fname)]
         commands.append(" ".join(cmd))
 

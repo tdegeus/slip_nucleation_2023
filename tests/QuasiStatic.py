@@ -12,6 +12,7 @@ if os.path.exists(os.path.join(root, "mycode_front", "_version.py")):
     sys.path.insert(0, os.path.abspath(root))
 
 from mycode_front import QuasiStatic  # noqa: E402
+from mycode_front import MeasureDynamics  # noqa: E402
 
 dirname = "mytest"
 idname = "id=0.h5"
@@ -92,9 +93,13 @@ class MyTests(unittest.TestCase):
             ["-f", "-o", os.path.join(dirname, "eventmap"), infoname]
         )
 
-        QuasiStatic.cli_rerun_dynamics_job_systemspanning(
+        commands = QuasiStatic.cli_rerun_dynamics_job_systemspanning(
             ["-f", "-o", os.path.join(dirname, "rerundynamics"), infoname]
         )
+        cwd = os.getcwd()
+        os.chdir(os.path.join(dirname, "rerundynamics"))
+        MeasureDynamics.cli_run(commands[0].split(" ")[1:])
+        os.chdir(cwd)
 
         QuasiStatic.cli_state_after_systemspanning(
             ["-f", "-o", os.path.join(dirname, "state"), infoname]
