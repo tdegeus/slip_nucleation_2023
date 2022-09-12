@@ -140,7 +140,7 @@ def cli_plot_height(cli_args=None):
         xh.write(grid, args.output + ".xdmf")
 
 
-def branch(source: h5py.File, destination: h5py.File, step: int, force: bool = False):
+def branch(source: str, destination: str, step: int, force: bool = False):
     """
     Branch a simulation to a file where the selected step is the only step (`0` to be specific).
     This simplifies the rest of the code in this part of the module
@@ -153,20 +153,21 @@ def branch(source: h5py.File, destination: h5py.File, step: int, force: bool = F
     """
 
     assert os.path.isfile(source)
+    assert os.path.abspath(source) != os.path.abspath(dest)
     tools._check_overwrite_file(destination, force)
 
     with h5py.File(source) as src:
 
         assert f"/disp/{step - 1:d}" in src
 
+        if "trigger" in src:
+            assert not src["/trigger/truncated"][step - 1]
+
         paths = list(GooseHDF5.getdatasets(src, fold=["/disp", "/trigger"]))
 
         for path in ["/disp/...", "/trigger/...", "/t", "/kick", "/stored"]:
             if path in paths:
                 paths.remove(path)
-
-        if "trigger" in src:
-            assert not src["/trigger/truncated"][step - 1]
 
         with h5py.File(destination, "w") as dest:
 
