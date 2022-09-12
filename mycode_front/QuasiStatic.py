@@ -27,8 +27,8 @@ import shelephant
 import tqdm
 from numpy.typing import ArrayLike
 
+from . import Dynamics
 from . import EventMap
-from . import MeasureDynamics
 from . import slurm
 from . import storage
 from . import tag
@@ -39,22 +39,23 @@ plt.style.use(["goose", "goose-latex"])
 
 
 entry_points = dict(
-    cli_ensembleinfo="EnsembleInfo",
-    cli_generate="Run_generate",
-    cli_plot="Run_plot",
-    cli_rerun_dynamics_job_systemspanning="RunDynamics_JobAllSystemSpanning",
-    cli_rerun_event_job_systemspanning="RunEventMap_JobAllSystemSpanning",
-    cli_run="Run",
-    cli_state_after_systemspanning="StateAfterSystemSpanning",
-    cli_status="SimulationStatus",
+    cli_ensembleinfo="QuasiStatic_EnsembleInfo",
+    cli_generate="QuasiStatic_Generate",
+    cli_plot="QuasiStatic_Plot",
+    cli_rerun_dynamics_job_systemspanning="QuasiStatic_MakeJobDynamicsOfSystemSpanning",
+    cli_rerun_event_job_systemspanning="QuasiStatic_MakeJobEventMapOfSystemSpanning",
+    cli_run="QuasiStatic_Run",
+    cli_state_after_systemspanning="QuasiStatic_StateAfterSystemSpanning",
+    cli_status="QuasiStatic_SimulationStatus",
+    cli_transform_deprecated="QuasiStatic_TransformDeprecated",
 )
 
 
 file_defaults = dict(
-    cli_ensembleinfo="EnsembleInfo.h5",
-    cli_rerun_dynamics_job_systemspanning="RunDynamics_SystemSpanning",
-    cli_rerun_event_job_systemspanning="EventMap_SystemSpanning",
-    cli_state_after_systemspanning="StateAfterSystemSpanning.h5",
+    cli_ensembleinfo="QuasiStatic_EnsembleInfo.h5",
+    cli_rerun_dynamics_job_systemspanning="RunDynamicsOfSystemSpanning",
+    cli_rerun_event_job_systemspanning="RunEventMapOfSystemSpanning",
+    cli_state_after_systemspanning="QuasiStatic_StateAfterSystemSpanning.h5",
 )
 
 
@@ -68,14 +69,14 @@ class System(model.System):
     def __init__(self, file: h5py.File):
         """
         Construct system from file.
-
         :param file: HDF5-file opened for reading.
         """
 
+        root = file["param"]
         y = read_epsy(file)
         self.nchunk = y.shape[1] + 1  # not yet allocated elastic
 
-        assert ("alpha" in file and "eta" in file) or ("alpha" in file or "eta" in file)
+        assert "alpha" in root or "eta" in root
 
         def to_field(value, n):
             if value.size == n:
@@ -84,35 +85,28 @@ class System(model.System):
                 return value * np.ones(n)
             raise ValueError(f"{value.size} != {n}")
 
-        nel = file["elastic"]["elem"].size
-        npl = file["cusp"]["elem"].size
+        plastic = root["cusp"]["elem"][...]
+        elastic = np.setdiff1d(np.arange(root["conn"].shape[0]), plastic)
+        nel = elastic.size
+        npl = plastic.size
 
         super().__init__(
-            coor=file["coor"][...],
-            conn=file["conn"][...],
-            dofs=file["dofs"][...],
-            iip=file["dofsP"][...] if "dofsP" in file else file["iip"][...],
-            elastic_elem=file["elastic"]["elem"][...],
-            elastic_K=FrictionQPotFEM.moduli_toquad(to_field(file["elastic"]["K"][...], nel)),
-            elastic_G=FrictionQPotFEM.moduli_toquad(to_field(file["elastic"]["G"][...], nel)),
-            plastic_elem=file["cusp"]["elem"][...],
-            plastic_K=FrictionQPotFEM.moduli_toquad(to_field(file["cusp"]["K"][...], npl)),
-            plastic_G=FrictionQPotFEM.moduli_toquad(to_field(file["cusp"]["G"][...], npl)),
+            coor=root["coor"][...],
+            conn=root["conn"][...],
+            dofs=root["dofs"][...],
+            iip=root["iip"][...],
+            elastic_elem=elastic,
+            elastic_K=FrictionQPotFEM.moduli_toquad(to_field(root["elastic"]["K"][...], nel)),
+            elastic_G=FrictionQPotFEM.moduli_toquad(to_field(root["elastic"]["G"][...], nel)),
+            plastic_elem=plastic,
+            plastic_K=FrictionQPotFEM.moduli_toquad(to_field(root["cusp"]["K"][...], npl)),
+            plastic_G=FrictionQPotFEM.moduli_toquad(to_field(root["cusp"]["G"][...], npl)),
             plastic_epsy=FrictionQPotFEM.epsy_initelastic_toquad(y),
-            dt=file["run"]["dt"][...],
-            rho=file["rho"][...].item(0),
-            alpha=file["alpha"][...].item(0) if "alpha" in file else 0,
-            eta=file["eta"][...] if "eta" in file else 0,
+            dt=root["dt"][...],
+            rho=root["rho"][...],
+            alpha=root["alpha"][...] if "alpha" in root else 0,
+            eta=root["eta"][...] if "eta" in root else 0,
         )
-
-        for key in ["rho", "alpha"]:
-            if key in file:
-                if key == "alpha":
-                    if not np.allclose(self.alpha, file[key][...]):
-                        self.setDampingMatrix(file[key][...])
-                else:
-                    if not np.allclose(self.rho, file[key][...]):
-                        self.setMassMatrix(file[key][...])
 
         self.normalisation = normalisation(file)
         self.eps0 = self.normalisation["eps0"]
@@ -135,13 +129,20 @@ class System(model.System):
         self.u = np.zeros_like(self.u)
         self.plastic.epsy = FrictionQPotFEM.epsy_initelastic_toquad(read_epsy(file))
 
-    def restore_step(self, file: h5py.File, step: int):
+    def restore_quasistatic_step(self, root: h5py.Group, step: int):
         """
-        Quench, and read time and displacement from a file.
+        Quench and restore an a quasi-static step for the relevant root.
+        The ``root`` group should contain::
+
+            root["u"][str(step)]   # Displacements
+            root["inc"][step]      # Increment (-> time)
+
+        :param root: HDF5 archive opened in the right root (read-only).
+        :param step: Step number.
         """
         self.quench()
-        self.t = file["t"][step]
-        self.u = file["disp"][str(step)][...]
+        self.t = root["inc"][step]
+        self.u = root["u"][str(step)][...]
 
     def dV(self, rank: int = 0):
         """
@@ -162,14 +163,6 @@ class System(model.System):
         if rank == 0:
             return ret
         return self.quad.AsTensor(rank, ret)
-
-
-def dependencies(model) -> list[str]:
-    """
-    Return list with version strings.
-    Compared to model.version_dependencies() this adds the version of prrng.
-    """
-    return sorted(list(model.version_dependencies()) + ["prrng=" + prrng.version()])
 
 
 def replace_ep(doc: str) -> str:
@@ -199,132 +192,60 @@ def interpret_filename(filename: str) -> dict:
     return info
 
 
-def read_epsy(file: h5py.File) -> np.ndarray:
+def read_epsy(file: h5py.Group) -> np.ndarray:
     """
-    Regenerate yield strain sequence per plastic element.
-    Note that two ways of storage are supported:
-
-    -   "classical": the yield strains are stored.
-
-    -   "prrng": only the seeds per block are stored, that can then be uniquely restored.
-        Note that in this case a larger strain history is used.
-
-    :param file: Opened simulation archive.
+    (Re)Generate yield strain sequence per plastic element.
+    :param root: HDF5 archive
     """
 
-    alias = file["cusp"]["epsy"]
+    root = file["param"]["cusp"]["epsy"]
 
-    if isinstance(alias, h5py.Dataset):
-        return alias[...]
+    if isinstance(root, h5py.Dataset):
+        return root[...]
 
-    initstate = alias["initstate"][...]
-    initseq = alias["initseq"][...]
-    eps_offset = alias["eps_offset"][...]
-    eps0 = alias["eps0"][...]
-    k = alias["k"][...]
-    nchunk = alias["nchunk"][...]
+    seed = file["realisation"]["seed"][...]
 
-    generators = prrng.pcg32_array(initstate, initseq)
+    generators = prrng.pcg32_array(
+        initstate=seed + root["initstate"][...],
+        initseq=root["initseq"][...],
+    )
 
-    epsy = generators.weibull([nchunk], k)
-    epsy *= 2.0 * eps0
-    epsy += eps_offset
-    epsy = np.cumsum(epsy, 1)
+    epsy = generators.weibull([root["nchunk"][...]], root["weibull"]["k"][...])
+    epsy *= 2 * root["weibull"]["typical"][...]
+    epsy += root["weibull"]["offset"][...]
 
-    return epsy
+    return np.cumsum(epsy, 1)
 
 
-def clone(
-    source: h5py.File,
-    dest: h5py.File,
-    skip: list[str] = None,
-    root: str = None,
-    dry_run: bool = False,
-) -> list[str]:
-    """
-    Clone a configuration.
-    This clone does not include::
-
-        /stored
-        /t
-        /kick
-        /disp/...
-
-    Furthermore, this functions converts the following fields to scalar if they are homogeneous::
-
-        /alpha
-        /rho
-        /elastic/K
-        /elastic/G
-        /cusp/K
-        /cusp/G
-
-    :param source: Source file.
-    :param dest: Destination file.
-    :parma skip: List with additional dataset to skip.
-    :parma root: Root in ``dest``.
-    :parma dry_run: Do not perform the copy.
-    :return: List of copied datasets.
-    """
-
-    datasets = list(g5.getdatasets(source, fold="/disp"))
-    groups = list(g5.getgroups(source, has_attrs=True))
-
-    for key in ["/alpha", "/rho", "/elastic/K", "/elastic/G", "/cusp/K", "/cusp/G"]:
-        if source[key].size > 1:
-            if np.allclose(source[key][0], source[key][...]):
-                dest[key] = source[key][0]
-                datasets.remove(key)
-
-    for key in ["/stored", "/t", "/kick", "/disp/..."]:
-        datasets.remove(key)
-
-    for key in ["/disp"]:
-        groups.remove("/disp")
-
-    ret = datasets + groups
-
-    if skip:
-        for key in skip:
-            if key in ret:
-                ret.remove(key)
-
-    if not dry_run:
-        g5.copy(source, dest, ret, root=root)
-
-    return ret
-
-
-def _init_run_state(file: h5py.File):
+def _init_run_state(root: h5py.File, u: ArrayLike):
     """
     Initialise as extendible datasets:
-    *   ``"/stored"``: stored increments.
-    *   ``"/t"``: time at the end of the increment.
-    *   ``"/kick"``: kick setting of the increment.
+    *   ``"/root/inc"``: increment number (-> time) at the end of each step.
+    *   ``"/root/kick"``: kick setting of each step.
 
-    Furthermore, add a description to ``"/disp"``.
+    Initialise datasets:
+    *   ``"/root/u/0"``: displacements at the end of the step.
+
+    :param root: HDF5 archive opened in the right root (read-write).
+    :param u: Displacement field.
     """
 
-    desc = 'One entry per item in "/stored".'
-    storage.create_extendible(file, "/stored", np.uint64, desc="List of stored increments")
-    storage.create_extendible(file, "/t", np.float64, desc=f"Time (end of increment). {desc}")
-    storage.create_extendible(file, "/kick", bool, desc=f"Kick used. {desc}")
+    storage.create_extendible(root, "inc", np.uint64, desc="Increment number (end of step)")
+    storage.create_extendible(root, "kick", bool, desc="Kick used.")
+    group = root.create_group("u")
+    group.attrs["desc"] = 'Displacements at end of step. Index corresponds to "inc" and "kick".'
+    group["0"] = u
 
-    storage.dset_extend1d(file, "/stored", 0, 0)
-    storage.dset_extend1d(file, "/t", 0, 0.0)
-    storage.dset_extend1d(file, "/kick", 0, False)
-
-    if "disp" not in file:
-        file.create_group("/disp")
-
-    file["/disp"].attrs["desc"] = f"Displacement {desc}"
+    storage.dset_extend1d(root, "inc", 0, 0)
+    storage.dset_extend1d(root, "kick", 0, False)
 
 
 def branch_fixed_stress(
     source: h5py.File,
     dest: h5py.File,
-    inc: int = None,
-    incc: int = None,
+    root: str,
+    step: int = None,
+    step_c: int = None,
     stress: float = None,
     normalised: bool = False,
     system: System = None,
@@ -335,18 +256,19 @@ def branch_fixed_stress(
 ):
     """
     Branch a configuration at a given:
-    *   Increment (``inc``).
-        ``incc`` and ``stress`` are ignored if supplied, but are stored as meta-data in that case.
+    *   Quasistatic step (``step``).
+        ``step_c`` and ``stress`` are ignored if supplied, but are stored as meta-data in that case.
         To ensure meta-data integrity,
-        they are only checked to be consistent with the state at ``inc``.
-    *   Fixed stress after a system spanning event (``incc`` and ``stress``).
+        they are only checked to be consistent with the state at ``step``.
+    *   Fixed stress after a system spanning event (``step_c`` and ``stress``).
         Note that ``stress`` is approximated as best as possible,
         and its actual value is stored in the meta-data.
 
     :param source: Source file.
     :param dest: Destination file.
-    :param inc: Branch at specific increment.
-    :param incc: Branch at fixed stress after this system-spanning event.
+    :param root: Name of the root at which to branch the configuration.
+    :param step: Branch at specific quasistatic step.
+    :param step_c: Branch at fixed stress after this system-spanning event.
     :param stress: Branch at fixed stress.
     :param normalised: Assume ``stress`` to be normalised (see ``sig0`` in :py:func:`basic_output`).
     :param system: The system (optional, specify to avoid reallocation).
@@ -367,24 +289,24 @@ def branch_fixed_stress(
         output = basic_output(system, source, verbose=False)
 
     if init_dest:
-        clone(source, dest)
-        _init_run_state(dest)
+        g5.copy(source, dest, ["/param", "/realisation", "/meta"])
+        _init_run_state(root=dest.create_group(root), u=system.u)
 
     if not normalised:
         stress /= output["sig0"]
 
-    inci = None
+    step_i = None
 
-    # determine at which increment a push could be applied
-    if inc is None:
+    # determine at which step to branch
+    if step is None:
 
-        assert incc is not None and stress is not None
+        assert step_c is not None and stress is not None
 
-        jncc = int(incc) + np.argwhere(output["A"][incc:] == output["N"]).ravel()[1]
-        assert (jncc - incc) % 2 == 0
-        i = output["inc"][incc:jncc].reshape(-1, 2)
-        s = output["sigd"][incc:jncc].reshape(-1, 2)
-        k = output["kick"][incc:jncc].reshape(-1, 2)
+        next_step = int(step_c) + np.argwhere(output["A"][step_c:] == output["N"]).ravel()[1]
+        assert (next_step - step_c) % 2 == 0
+        i = output["step"][step_c:next_step].reshape(-1, 2)
+        s = output["sig"][step_c:next_step].reshape(-1, 2)
+        k = output["kick"][step_c:next_step].reshape(-1, 2)
         t = np.sum(s < stress, axis=1)
         assert np.all(k[:, 0])
         assert np.sum(t) > 0
@@ -392,51 +314,52 @@ def branch_fixed_stress(
         if np.sum(t == 1) >= 1:
             j = np.argmax(t == 1)
             if np.abs(s[j, 0] - stress) / s[j, 0] < 1e-4:
-                inc = i[j, 0]
+                step = i[j, 0]
                 stress = s[j, 0]
             elif np.abs(s[j, 1] - stress) / s[j, 1] < 1e-4:
-                inc = i[j, 1]
+                step = i[j, 1]
                 stress = s[j, 1]
             else:
-                inci = int(i[j, 0])
+                step_i = int(i[j, 0])
         else:
             j = np.argmax(t == 0)
-            inc = i[j, 0]
+            step = i[j, 0]
             stress = s[j, 0]
 
-    # restore specific increment
-    if inc is not None:
-
-        dest["/disp/0"] = source[f"/disp/{inc:d}"][...]
-
+    # restore specific step
+    if step is not None:
+        system.u = source[f"/QuasiStatic/u/{step:d}"][...]
         if stress is not None:
-            assert np.isclose(stress, output["sigd"][inc])
-        if incc is not None:
-            i = output["inc"][output["A"] == output["N"]]
-            assert i[i >= incc][1] > inc
+            assert np.isclose(stress, output["sig"][step])
+        if step_c is not None:
+            i = output["step"][output["A"] == output["N"]]
+            assert i[i >= step_c][1] > step
 
     # apply elastic loading to reach a specific stress
-    if inci is not None:
-
-        system.u = source[f"/disp/{inci:d}"]
+    elif step_i is not None:
+        system.u = source[f"/QuasiStatic/u/{step_i:d}"]
         i_n = np.copy(system.plastic.i)
         d = system.addSimpleShearToFixedStress(stress * output["sig0"])
         assert np.all(system.plastic.i == i_n)
         assert d >= 0.0
 
-        dest["/disp/0"] = system.u
+    else:
+        raise ValueError("Invalid state definition.")
+
+    # store branch
+    dest[root]["u"]["0"][...] = system.u
 
     assert f"/meta/{funcname}" not in dest
     meta = create_check_meta(dest, f"/meta/{funcname}", dev=dev)
     meta.attrs["file"] = os.path.basename(source.filename)
     if stress is not None:
         meta.attrs["stress"] = stress
-    if incc is not None:
-        meta.attrs["incc"] = int(incc)
-    if inc is not None:
-        meta.attrs["inc"] = int(inc)
-    if inci is not None:
-        meta.attrs["inci"] = inci
+    if step_c is not None:
+        meta.attrs["step_c"] = int(step_c)
+    if step is not None:
+        meta.attrs["step"] = int(step)
+    if step_i is not None:
+        meta.attrs["step_i"] = step_i
 
 
 def generate(
@@ -446,8 +369,6 @@ def generate(
     scale_alpha: float = 1.0,
     eta: float = None,
     init_run: bool = True,
-    classic: bool = False,
-    test_mode: bool = False,
     dev: bool = False,
 ):
     """
@@ -459,8 +380,6 @@ def generate(
     :param scale_alpha: Scale default general damping ``alpha`` by factor.
     :param eta: Set damping coefficient at the interface.
     :param init_run: Initialise for use with :py:func:`run`.
-    :param classic: The yield strain are hard-coded in the file, otherwise prrng is used.
-    :param test_mode: Run in test mode (smaller chunk).
     :param dev: Allow uncommitted changes.
     """
 
@@ -475,9 +394,7 @@ def generate(
     mesh = GooseFEM.Mesh.Quad4.FineLayer(N, N, h)
     coor = mesh.coor()
     conn = mesh.conn()
-    nelem = mesh.nelem
     plastic = mesh.elementsMiddleLayer()
-    elastic = np.setdiff1d(np.arange(nelem), plastic)
 
     # extract node sets to set the boundary conditions
     top = mesh.nodesTopEdge()
@@ -495,78 +412,69 @@ def generate(
 
     # yield strains
     k = 2.0
-    eps0 = 1.0e-3 / 2.0
-    eps_offset = 1.0e-5
-    nchunk = 1000
-
-    if classic:
-        assert seed == 0  # at the moment seeding is not controlled locally
-        realization = str(uuid.uuid4())
-        epsy = eps_offset + 2.0 * eps0 * np.random.weibull(k, size=nchunk * N).reshape(N, -1)
-        epsy[:, 0] = eps_offset + 2.0 * eps0 * np.random.random(N)
-        epsy = np.cumsum(epsy, axis=1)
-        nchunk = np.min(np.where(np.min(epsy, axis=0) > 0.55)[0])
-        if test_mode:
-            nchunk = 200
-        epsy = epsy[:, :nchunk]
-    else:
-        eps0 /= 10.0
-        nchunk *= 6
-        initstate = seed + np.arange(N).astype(np.int64)
-        initseq = np.zeros_like(initstate)
-        if test_mode:
-            nchunk = 200
+    eps0 = 5e-5
+    eps_offset = 1e-5
+    nchunk = int(6e3)
+    initstate = np.arange(N).astype(np.int64)
+    initseq = np.zeros_like(initstate)
 
     # elasticity & damping
-    c = 1.0
-    G = 1.0
-    K = 10.0 * G
-    rho = G / c**2.0
-    qL = 2.0 * np.pi / L
-    qh = 2.0 * np.pi / h
-    alpha = np.sqrt(2.0) * qL * c * rho
-    dt = (1.0 / (c * qh)) / 10.0
+    c = 1
+    G = 1
+    K = 10 * G
+    rho = G / c**2
+    qL = 2 * np.pi / L
+    qh = 2 * np.pi / h
+    alpha = np.sqrt(2) * qL * c * rho
+    dt = (1 / (c * qh)) / 10
 
     with h5py.File(filepath, "w") as file:
 
         storage.dump_with_atttrs(
             file,
-            "/coor",
+            "/realisation/seed",
+            seed,
+            desc="Basic seed == 'unique' identifier",
+        )
+
+        storage.dump_with_atttrs(
+            file,
+            "/param/coor",
             coor,
             desc="Nodal coordinates [nnode, ndim]",
         )
 
         storage.dump_with_atttrs(
             file,
-            "/conn",
+            "/param/conn",
             conn,
             desc="Connectivity (Quad4: nne = 4) [nelem, nne]",
         )
 
         storage.dump_with_atttrs(
             file,
-            "/dofs",
+            "/param/dofs",
             dofs,
             desc="DOFs per node, accounting for semi-periodicity [nnode, ndim]",
         )
 
         storage.dump_with_atttrs(
             file,
-            "/iip",
+            "/param/iip",
             iip,
             desc="Prescribed DOFs [nnp]",
         )
 
         storage.dump_with_atttrs(
             file,
-            "/run/dt",
+            "/param/dt",
             dt,
             desc="Time step",
         )
 
         storage.dump_with_atttrs(
             file,
-            "/rho",
+            "/param/rho",
             rho,
             desc="Mass density; homogeneous",
         )
@@ -574,7 +482,7 @@ def generate(
         if scale_alpha != 0 and scale_alpha is not None:
             storage.dump_with_atttrs(
                 file,
-                "/alpha",
+                "/param/alpha",
                 scale_alpha * alpha,
                 desc="Damping coefficient (density); homogeneous",
             )
@@ -582,101 +490,96 @@ def generate(
         if eta is not None:
             storage.dump_with_atttrs(
                 file,
-                "/eta",
+                "/param/eta",
                 eta,
                 desc="Damping coefficient at the interface; homogeneous",
             )
 
         storage.dump_with_atttrs(
             file,
-            "/elastic/elem",
-            elastic,
-            desc="Elastic elements [nelem - N]",
-        )
-
-        storage.dump_with_atttrs(
-            file,
-            "/elastic/K",
+            "/param/elastic/K",
             K,
-            desc="Bulk modulus for elements in '/elastic/elem'; homogeneous",
+            desc="Bulk modulus for elastic (non-plastic) elements; homogeneous",
         )
 
         storage.dump_with_atttrs(
             file,
-            "/elastic/G",
+            "/param/elastic/G",
             G,
-            desc="Shear modulus for elements in '/elastic/elem'; homogeneous",
+            desc="Shear modulus for elastic (non-plastic) elements; homogeneous",
         )
 
         storage.dump_with_atttrs(
             file,
-            "/cusp/elem",
+            "/param/cusp/elem",
             plastic,
             desc="Plastic elements with cusp potential [nplastic]",
         )
 
         storage.dump_with_atttrs(
             file,
-            "/cusp/K",
+            "/param/cusp/K",
             K,
             desc="Bulk modulus for elements in '/cusp/elem'; homogeneous",
         )
 
         storage.dump_with_atttrs(
             file,
-            "/cusp/G",
+            "/param/cusp/G",
             G,
             desc="Shear modulus for elements in '/cusp/elem'; homogeneous",
         )
 
-        if classic:
+        storage.dump_with_atttrs(
+            file,
+            "/param/cusp/epsy/nchunk",
+            nchunk,
+            desc="Chunk size",
+        )
 
-            file["/cusp/epsy"] = epsy
-            file["/uuid"] = realization
+        storage.dump_with_atttrs(
+            file,
+            "/param/cusp/epsy/initstate",
+            initstate,
+            desc="State to initialise prrng.pcg32_array",
+        )
 
-        else:
+        storage.dump_with_atttrs(
+            file,
+            "/param/cusp/epsy/initseq",
+            initseq,
+            desc="Sequence to initialise prrng.pcg32_array",
+        )
 
-            storage.dump_with_atttrs(
-                file,
-                "/cusp/epsy/initstate",
-                initstate,
-                desc="State to initialise prrng.pcg32_array",
-            )
+        storage.dump_with_atttrs(
+            file,
+            "/param/cusp/epsy/weibull/k",
+            k,
+            desc="Shape factor of Weibull distribution",
+        )
 
-            storage.dump_with_atttrs(
-                file,
-                "/cusp/epsy/initseq",
-                initseq,
-                desc="Sequence to initialise prrng.pcg32_array",
-            )
+        storage.dump_with_atttrs(
+            file,
+            "/param/cusp/epsy/weibull/typical",
+            eps0,
+            desc="Normalisation: epsy(i + 1) - epsy(i) = 2 * typical * random + offset",
+        )
 
-            storage.dump_with_atttrs(
-                file,
-                "/cusp/epsy/k",
-                k,
-                desc="Shape factor of Weibull distribution",
-            )
+        storage.dump_with_atttrs(
+            file,
+            "/param/cusp/epsy/weibull/offset",
+            eps_offset,
+            desc="Offset, see '/param/cusp/epsy/weibull/typical'",
+        )
 
-            storage.dump_with_atttrs(
-                file,
-                "/cusp/epsy/eps0",
-                eps0,
-                desc="Normalisation: epsy(i + 1) - epsy(i) = 2.0 * eps0 * random + eps_offset",
-            )
+        storage.dump_with_atttrs(
+            file,
+            "/param/cusp/epsy/deps",
+            eps0 * 2e-4,
+            desc="Strain kick to apply",
+        )
 
-            storage.dump_with_atttrs(
-                file,
-                "/cusp/epsy/eps_offset",
-                eps_offset,
-                desc="Offset, see eps0",
-            )
-
-            storage.dump_with_atttrs(
-                file,
-                "/cusp/epsy/nchunk",
-                nchunk,
-                desc="Chunk size",
-            )
+        assert np.min(np.diff(read_epsy(file), axis=1)) > file["/param/cusp/epsy/deps"][...]
 
         storage.dump_with_atttrs(
             file,
@@ -727,28 +630,10 @@ def generate(
             desc="== 2 G eps0",
         )
 
-        storage.dump_with_atttrs(
-            file,
-            "/meta/seed_base",
-            seed,
-            desc="Basic seed == 'unique' identifier",
-        )
-
         create_check_meta(file, f"/meta/{progname}", dev=dev)
 
         if init_run:
-
-            storage.dump_with_atttrs(
-                file,
-                "/run/epsd/kick",
-                eps0 * 2e-4,
-                desc="Strain kick to apply",
-            )
-
-            assert np.min(np.diff(read_epsy(file), axis=1)) > file["/run/epsd/kick"][...]
-
-            file["/disp/0"] = np.zeros_like(coor)
-            _init_run_state(file)
+            _init_run_state(root=file.create_group("QuasiStatic"), u=np.zeros_like(coor))
 
 
 def cli_generate(cli_args=None):
@@ -788,7 +673,6 @@ def cli_generate(cli_args=None):
             filepath=os.path.join(args.outdir, f"id={i:03d}.h5"),
             N=args.size,
             seed=i * args.size,
-            test_mode=args.develop,
             dev=args.develop,
         )
 
@@ -806,8 +690,6 @@ def cli_generate(cli_args=None):
 def create_check_meta(
     file: h5py.File = None,
     path: str = None,
-    ver: str = version,
-    deps: str = dependencies(model),
     dev: bool = False,
 ) -> h5py.Group:
     """
@@ -821,16 +703,17 @@ def create_check_meta(
         "uuid": A unique identifier that can be used to distinguish simulations if needed.
         "version": The current version of this code (see below).
         "dependencies": The current version of all relevant dependencies (see below).
+        "compiler": Compiler information.
 
     :param file: HDF5 archive.
     :param path: Path in ``file`` to store/read metadata.
-    :param ver: Version string.
-    :param deps: List of dependencies.
     :param dev: Allow uncommitted changes.
     :return: Group to metadata.
     """
 
-    assert dev or not tag.has_uncommitted(ver)
+    deps = sorted(list(model.version_dependencies()) + ["prrng=" + prrng.version()])
+
+    assert dev or not tag.has_uncommitted(version)
     assert dev or not tag.any_has_uncommitted(deps)
 
     if file is None:
@@ -839,83 +722,15 @@ def create_check_meta(
     if path not in file:
         meta = file.create_group(path)
         meta.attrs["uuid"] = str(uuid.uuid4())
-        meta.attrs["version"] = ver
+        meta.attrs["version"] = version
         meta.attrs["dependencies"] = deps
         meta.attrs["compiler"] = model.version_compiler()
         return meta
 
     meta = file[path]
-    assert dev or tag.equal(ver, meta.attrs["version"])
+    assert dev or tag.equal(version, meta.attrs["version"])
     assert dev or tag.all_equal(deps, meta.attrs["dependencies"])
     return meta
-
-
-def run(filepath: str, dev: bool = False, progress: bool = True):
-    """
-    Run the simulation.
-
-    :param filepath: Name of the input/output file (appended).
-    :param dev: Allow uncommitted changes.
-    :param progress: Show progress bar.
-    """
-
-    assert os.path.isfile(filepath)
-    basename = os.path.basename(filepath)
-    progname = entry_points["cli_run"]
-
-    with h5py.File(filepath, "a") as file:
-
-        system = System(file)
-        meta = create_check_meta(file, f"/meta/{progname}", dev=dev)
-
-        if "completed" in meta.attrs:
-            print(f"{basename}: marked completed, skipping")
-            return 1
-
-        step = int(file["/stored"][-1])
-        kick = file["/kick"][step]
-        deps = file["/run/epsd/kick"][...]
-        system.restore_step(file, step)
-        system.initEventDrivenSimpleShear()
-
-        nchunk = system.nchunk - 5
-        pbar = tqdm.tqdm(
-            total=nchunk,
-            disable=not progress,
-            desc=f"{basename}: step = {step:8d}, niter = {'-':8s}",
-        )
-
-        for step in range(step + 1, sys.maxsize):
-
-            kick = not kick
-            system.eventDrivenStep(deps, kick)
-
-            if kick:
-
-                inc_n = system.inc
-                ret = system.minimise(nmargin=5)
-
-                if ret < 0:
-                    break
-
-                if progress:
-                    pbar.n = np.max(system.plastic.i)
-                    niter = system.inc - inc_n
-                    pbar.set_description(f"{basename}: step = {step:8d}, niter = {niter:8d}")
-                    pbar.refresh()
-
-            if not kick:
-                if np.any(system.plastic.i >= nchunk):
-                    break
-
-            storage.dset_extend1d(file, "/stored", step, step)
-            storage.dset_extend1d(file, "/t", step, system.t)
-            storage.dset_extend1d(file, "/kick", step, kick)
-            file[f"/disp/{step:d}"] = system.u
-            file.flush()
-
-        pbar.set_description(f"{basename}: step = {step:8d}, {'completed':16s}")
-        meta.attrs["completed"] = 1
 
 
 def cli_run(cli_args=None):
@@ -933,12 +748,68 @@ def cli_run(cli_args=None):
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    progname = entry_points[funcname]
 
     parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("file", type=str, help="Simulation file")
+
     args = tools._parse(parser, cli_args)
-    run(args.file, dev=args.develop)
+    assert os.path.isfile(args.file)
+    basename = os.path.basename(args.file)
+
+    with h5py.File(args.file, "a") as file:
+
+        system = System(file)
+        meta = create_check_meta(file, f"/meta/{progname}", dev=args.develop)
+
+        if "completed" in meta.attrs:
+            if meta.attrs["completed"]:
+                print(f"{basename}: marked completed, skipping")
+                return 1
+
+        root = file["QuasiStatic"]
+        step = root["kick"].size
+        deps = file["/param/cusp/epsy/deps"][...]
+        system.restore_quasistatic_step(root, step - 1)
+        kick = root["kick"][step - 1]
+        system.initEventDrivenSimpleShear()
+
+        nchunk = system.nchunk - 5
+        pbar = tqdm.tqdm(
+            total=nchunk,
+            desc=f"{basename}: step = {step:8d}, niter = {'-':8s}",
+        )
+
+        for step in range(step, sys.maxsize):
+
+            kick = not kick
+            system.eventDrivenStep(deps, kick)
+
+            if kick:
+
+                inc_n = system.inc
+                ret = system.minimise(nmargin=5)
+
+                if ret < 0:
+                    break
+
+                pbar.n = np.max(system.plastic.i)
+                nstep = system.inc - inc_n
+                pbar.set_description(f"{basename}: step = {step:8d}, nstep = {nstep:8d}")
+                pbar.refresh()
+
+            if not kick:
+                if np.any(system.plastic.i >= nchunk):
+                    break
+
+            storage.dset_extend1d(root, "inc", step, system.inc)
+            storage.dset_extend1d(root, "kick", step, kick)
+            root["u"][str(step)] = system.u
+            file.flush()
+
+        pbar.set_description(f"{basename}: step = {step:8d}, {'completed':16s}")
+        meta.attrs["completed"] = 1
 
 
 def cli_status(cli_args=None):
@@ -988,12 +859,17 @@ def cli_status(cli_args=None):
 
     for filepath in tqdm.tqdm(args.files):
         with h5py.File(filepath, "r") as file:
+
             if args.key not in file:
                 ret["new"].append(filepath)
-            elif "completed" in file[args.key].attrs:
-                ret["completed"].append(filepath)
-            else:
-                ret["partial"].append(filepath)
+                continue
+
+            if "completed" in file[args.key].attrs:
+                if file[args.key].attrs["completed"]:
+                    ret["completed"].append(filepath)
+                    continue
+
+            ret["partial"].append(filepath)
 
     if args.output is not None:
         shelephant.yaml.dump(args.output, ret, args.force)
@@ -1009,7 +885,7 @@ def cli_status(cli_args=None):
 
 
 def steadystate(
-    epsd: ArrayLike, sigd: ArrayLike, kick: ArrayLike, A: ArrayLike, N: int, **kwargs
+    eps: ArrayLike, sig: ArrayLike, kick: ArrayLike, A: ArrayLike, N: int, **kwargs
 ) -> int:
     """
     Estimate the first increment of the steady-state. Constraints:
@@ -1021,20 +897,20 @@ def steadystate(
 
         Keywords arguments that are not explicitly listed are ignored.
 
-    :param epsd: Macroscopic strain [ninc].
-    :param sigd: Macroscopic stress [ninc].
+    :param eps: Macroscopic strain [ninc].
+    :param sig: Macroscopic stress [ninc].
     :param kick: Whether a kick was applied [ninc].
     :param A: Number of blocks that yielded at least once [ninc].
     :param N: Number of blocks.
     :return: Increment number.
     """
 
-    if sigd.size <= 2:
+    if sig.size <= 2:
         return None
 
-    tangent = np.empty_like(sigd)
+    tangent = np.empty_like(sig)
     tangent[0] = np.inf
-    tangent[1:] = (sigd[1:] - sigd[0]) / (epsd[1:] - epsd[0])
+    tangent[1:] = (sig[1:] - sig[0]) / (eps[1:] - eps[0])
 
     i_yield = np.argmax(A == N)
     i_tangent = np.argmax(tangent <= 0.95 * tangent[1])
@@ -1115,13 +991,13 @@ def interface_state(filepaths: dict[int], read_disp: dict[str] = None) -> dict[n
             else:
                 system.reset(file)
 
-            for j, inc in enumerate(filepaths[filepath]):
+            for j, step in enumerate(filepaths[filepath]):
 
                 if read_disp:
                     with h5py.File(read_disp[filepath][j], "r") as disp:
-                        system.u = disp[f"/disp/{inc:d}"][...]
+                        system.u = disp[f"/QuasiStatic/u/{step:d}"][...]
                 else:
-                    system.u = file[f"/disp/{inc:d}"][...]
+                    system.u = file[f"/QuasiStatic/u/{step:d}"][...]
 
                 Sig = np.average(system.plastic.Sig / system.sig0, weights=dV2, axis=1)
                 Eps = np.average(system.plastic.Eps / system.eps0, weights=dV2, axis=1)
@@ -1166,28 +1042,15 @@ def normalisation(file: h5py.File):
 
     ret = {}
 
-    if "meta" in file:
-        if "normalisation" in file["meta"]:
-            alias = file["meta"]["normalisation"]
-            N = alias["N"][...]
-            eps0 = alias["eps"][...]
-            sig0 = alias["sig"][...]
-            ret["l0"] = alias["l"][...]
-            ret["G"] = alias["G"][...]
-            ret["K"] = alias["K"][...]
-            ret["rho"] = alias["rho"][...]
-            ret["seed"] = file["meta"]["seed_base"][...]
-
-    if len(ret) == 0:
-        N = file["cusp"]["epsy"].shape[0]
-        G = 1.0
-        eps0 = 1.0e-3 / 2.0
-        sig0 = 2.0 * G * eps0
-        ret["l0"] = np.pi
-        ret["G"] = G
-        ret["K"] = 10.0 * G
-        ret["rho"] = G / 1.0**2.0
-        ret["seed"] = str(file["uuid"].asstr()[...])
+    alias = file["meta"]["normalisation"]
+    N = alias["N"][...]
+    eps0 = alias["eps"][...]
+    sig0 = alias["sig"][...]
+    ret["l0"] = alias["l"][...]
+    ret["G"] = alias["G"][...]
+    ret["K"] = alias["K"][...]
+    ret["rho"] = alias["rho"][...]
+    ret["seed"] = file["realisation"]["seed"][...]
 
     # interpret / store additional normalisation
     kappa = ret["K"] / 3.0
@@ -1198,7 +1061,7 @@ def normalisation(file: h5py.File):
     ret["eps0"] = eps0
     ret["N"] = N
     ret["t0"] = ret["l0"] / ret["cs"]
-    ret["dt"] = file["run"]["dt"][...]
+    ret["dt"] = file["param"]["dt"][...]
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
@@ -1207,7 +1070,9 @@ def normalisation(file: h5py.File):
     return ret
 
 
-def basic_output(system: System, file: h5py.File, verbose: bool = True) -> dict:
+def basic_output(
+    system: System, file: h5py.File, root: str = "QuasiStatic", verbose: bool = True
+) -> dict:
     """
     Read basic output from simulation.
 
@@ -1216,19 +1081,19 @@ def basic_output(system: System, file: h5py.File, verbose: bool = True) -> dict:
     :param verbose: Print progress.
 
     :return: Basic output as follows::
-        epsd: Macroscopic strain (dimensionless) [ninc].
-        sigd: Macroscopic stress (dimensionless) [ninc].
-        sig_broken: Average stress in blocks that have yielded during this event [ninc].
-        sig_unbroken: Average stress in blocks that have not yielded during this event [ninc].
-        delta_sig_broken: Same as `sig_broken` but relative to the previous step [ninc].
-        delta_sig_unbroken: Same as `sig_unbroken` but relative to the previous step [ninc].
-        S: Number of times a block yielded [ninc].
-        A: Number of blocks that yielded at least once [ninc].
-        xi: Largest extension corresponding to A [ninc].
-        duration: Duration of the event (dimensionless) [ninc].
-        kick: Increment started with a kick (True), or contains only elastic loading (False) [ninc].
-        inc: Increment numbers == np.arange(ninc).
-        steadystate: Increment number where the steady state starts (int).
+        eps: Macroscopic strain (dimensionless) [nstep].
+        sig: Macroscopic stress (dimensionless) [nstep].
+        sig_broken: Average stress in blocks that have yielded during this event [nstep].
+        sig_unbroken: Average stress in blocks that have not yielded during this event [nstep].
+        delta_sig_broken: Same as `sig_broken` but relative to the previous step [nstep].
+        delta_sig_unbroken: Same as `sig_unbroken` but relative to the previous step [nstep].
+        S: Number of times a block yielded [nstep].
+        A: Number of blocks that yielded at least once [nstep].
+        xi: Largest extension corresponding to A [nstep].
+        duration: Duration of the event (dimensionless) [nstep].
+        kick: True is step started with a kick [nstep].
+        step: Step numbers == np.arange(nstep).
+        steadystate: Step number where the steady state starts (int).
         l0: Block size (float).
         G: Shear modulus (float).
         K: Bulk modulus (float).
@@ -1243,30 +1108,30 @@ def basic_output(system: System, file: h5py.File, verbose: bool = True) -> dict:
         dt: Time step of time discretisation.
     """
 
-    incs = file["stored"][...]
-    ninc = incs.size
-    assert all(incs == np.arange(ninc))
+    root = file[root]
+    steps = np.arange(root["inc"].size)
+    nstep = steps.size
 
     ret = dict(system.normalisation)
-    ret["epsd"] = np.empty((ninc), dtype=float)
-    ret["sigd"] = np.empty((ninc), dtype=float)
-    ret["sig_broken"] = np.zeros((ninc), dtype=float)
-    ret["sig_unbroken"] = np.zeros((ninc), dtype=float)
-    ret["delta_sig_broken"] = np.zeros((ninc), dtype=float)
-    ret["delta_sig_unbroken"] = np.zeros((ninc), dtype=float)
-    ret["S"] = np.zeros((ninc), dtype=int)
-    ret["A"] = np.zeros((ninc), dtype=int)
-    ret["xi"] = np.zeros((ninc), dtype=int)
-    ret["kick"] = file["kick"][...].astype(bool)
-    ret["inc"] = incs
+    ret["eps"] = np.empty((nstep), dtype=float)
+    ret["sig"] = np.empty((nstep), dtype=float)
+    ret["sig_broken"] = np.zeros((nstep), dtype=float)
+    ret["sig_unbroken"] = np.zeros((nstep), dtype=float)
+    ret["delta_sig_broken"] = np.zeros((nstep), dtype=float)
+    ret["delta_sig_unbroken"] = np.zeros((nstep), dtype=float)
+    ret["S"] = np.zeros((nstep), dtype=int)
+    ret["A"] = np.zeros((nstep), dtype=int)
+    ret["xi"] = np.zeros((nstep), dtype=int)
+    ret["kick"] = root["kick"][...].astype(bool)
+    ret["step"] = steps
 
     dV = system.dV(rank=2)
     dV_plas = system.plastic_dV(rank=2)
     i_n = None
 
-    for inc in tqdm.tqdm(incs, disable=not verbose):
+    for step in tqdm.tqdm(steps, disable=not verbose):
 
-        system.u = file["disp"][str(inc)][...]
+        system.restore_quasistatic_step(root=root, step=step)
 
         if i_n is None:
             i_n = np.copy(system.plastic.i.astype(int)[:, 0])
@@ -1279,32 +1144,32 @@ def basic_output(system: System, file: h5py.File, verbose: bool = True) -> dict:
         dSig_plas = Sig_plas - Sig_plas_n
         broken = tools.fill_avalanche(i != i_n)
 
-        ret["S"][inc] = np.sum(i - i_n)
-        ret["A"][inc] = np.sum(i != i_n)
-        ret["xi"][inc] = np.sum(broken)
-        ret["epsd"][inc] = GMat.Epsd(np.average(Eps, weights=dV, axis=(0, 1)))
-        ret["sigd"][inc] = GMat.Sigd(np.average(Sig, weights=dV, axis=(0, 1)))
+        ret["S"][step] = np.sum(i - i_n)
+        ret["A"][step] = np.sum(i != i_n)
+        ret["xi"][step] = np.sum(broken)
+        ret["eps"][step] = GMat.Epsd(np.average(Eps, weights=dV, axis=(0, 1)))
+        ret["sig"][step] = GMat.Sigd(np.average(Sig, weights=dV, axis=(0, 1)))
 
         if np.any(~broken):
-            ret["sig_unbroken"][inc] = GMat.Sigd(
+            ret["sig_unbroken"][step] = GMat.Sigd(
                 np.average(Sig_plas[~broken, ...], weights=dV_plas[~broken, ...], axis=(0, 1))
             )
-            ret["delta_sig_unbroken"][inc] = GMat.Sigd(
+            ret["delta_sig_unbroken"][step] = GMat.Sigd(
                 np.average(dSig_plas[~broken, ...], weights=dV_plas[~broken, ...], axis=(0, 1))
             )
 
         if np.any(broken):
-            ret["sig_broken"][inc] = GMat.Sigd(
+            ret["sig_broken"][step] = GMat.Sigd(
                 np.average(Sig_plas[broken, ...], weights=dV_plas[broken, ...], axis=(0, 1))
             )
-            ret["delta_sig_broken"][inc] = GMat.Sigd(
+            ret["delta_sig_broken"][step] = GMat.Sigd(
                 np.average(dSig_plas[broken, ...], weights=dV_plas[broken, ...], axis=(0, 1))
             )
 
         i_n = np.copy(i)
         Sig_plas_n = np.copy(Sig_plas)
 
-    ret["duration"] = np.diff(file["t"][...], prepend=0) / ret["t0"]
+    ret["duration"] = np.diff(root["inc"][...] * ret["dt"][...], prepend=0) / ret["t0"]
     ret["steadystate"] = steadystate(**ret)
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
@@ -1354,14 +1219,14 @@ def cli_ensembleinfo(cli_args=None):
     )
 
     floats = [
-        "epsd",
-        "sigd",
+        "eps",
+        "sig",
         "sig_broken",
         "sig_unbroken",
         "delta_sig_broken",
         "delta_sig_unbroken",
     ]
-    fields_full = ["S", "A", "kick", "inc"] + floats
+    fields_full = ["S", "A", "kick", "step"] + floats
     combine_load = {key: [] for key in fields_full}
     combine_kick = {key: [] for key in fields_full}
     file_load = []
@@ -1394,17 +1259,9 @@ def cli_ensembleinfo(cli_args=None):
 
                 info["seed"].append(out["seed"])
 
-                if f"/meta/{entry_points['cli_run']}" in file:
-                    meta = file[f"/meta/{entry_points['cli_run']}"]
-                    for key in ["uuid", "version", "dependencies"]:
-                        if key in meta.attrs:
-                            info[key].append(meta.attrs[key])
-                        else:
-                            info[key].append("?")
-                else:
-                    info["uuid"].append("?")
-                    info["version"].append("?")
-                    info["dependencies"].append("?")
+                meta = file[f"/meta/{entry_points['cli_run']}"]
+                for key in ["uuid", "version", "dependencies"]:
+                    info[key].append(meta.attrs[key])
 
                 if out["steadystate"] is None:
                     continue
@@ -1433,7 +1290,7 @@ def cli_ensembleinfo(cli_args=None):
         combine_load["file"] = np.array(file_load, dtype=np.uint64)
         combine_kick["file"] = np.array(file_kick, dtype=np.uint64)
 
-        for key in ["A", "inc"]:
+        for key in ["A", "step"]:
             combine_load[key] = np.array(combine_load[key], dtype=np.uint64)
             combine_kick[key] = np.array(combine_kick[key], dtype=np.uint64)
 
@@ -1451,9 +1308,9 @@ def cli_ensembleinfo(cli_args=None):
         # extract ensemble averages
 
         ss = np.equal(combine_kick["A"], system.N)
-        assert all(np.equal(combine_kick["inc"][ss], combine_load["inc"][ss] + 1))
-        output["/averages/sigd_top"] = np.mean(combine_load["sigd"][ss])
-        output["/averages/sigd_bottom"] = np.mean(combine_kick["sigd"][ss])
+        assert all(np.equal(combine_kick["step"][ss], combine_load["step"][ss] + 1))
+        output["/averages/sig_top"] = np.mean(combine_load["sig"][ss])
+        output["/averages/sig_bottom"] = np.mean(combine_kick["sig"][ss])
 
         # store metadata at runtime for each input file
 
@@ -1501,19 +1358,19 @@ def cli_plot(cli_args=None):
     with h5py.File(args.file, "r") as file:
         data = basic_output(System(file), file)
 
-    fig, ax = plt.subplots()
+    _, ax = plt.subplots()
 
     opts = {}
     if args.marker:
         opts["marker"] = args.marker
 
-    ax.plot(data["epsd"], data["sigd"], **opts)
+    ax.plot(data["eps"], data["sig"], **opts)
 
     lim = ax.get_ylim()
     lim = [0, lim[-1]]
     ax.set_ylim(lim)
 
-    e = data["epsd"][data["steadystate"]]
+    e = data["eps"][data["steadystate"]]
     ax.plot([e, e], lim, c="r", lw=1)
 
     plt.show()
@@ -1549,13 +1406,13 @@ def cli_rerun_event_job_systemspanning(cli_args=None):
         N = file["/normalisation/N"][...]
         A = file["/avalanche/A"][...]
         S = file["/avalanche/S"][...]
-        inc = file["/avalanche/inc"][...]
+        steps = file["/avalanche/step"][...]
         ifile = file["/avalanche/file"][...]
         files = file["/files"].asstr()[...]
 
     keep = A == N
     S = S[keep]
-    inc = inc[keep]
+    steps = steps[keep]
     ifile = ifile[keep]
 
     commands = []
@@ -1564,10 +1421,10 @@ def cli_rerun_event_job_systemspanning(cli_args=None):
     basedir = basedir if basedir else "."
     relpath = os.path.relpath(basedir, args.outdir)
 
-    for s, i, f in zip(S, inc, ifile):
+    for s, step, f in zip(S, steps, ifile):
         fname = files[f]
         basename = os.path.splitext(os.path.basename(fname))[0]
-        cmd = [executable, "-o", f"{basename}_inc={i:d}.h5", "-i", f"{i:d}"]
+        cmd = [executable, "-o", f"{basename}_step={step:d}.h5", "--step", f"{step:d}"]
         if args.truncate:
             cmd += ["-s", f"{s:d}"]
         cmd += [os.path.join(relpath, fname)]
@@ -1614,24 +1471,24 @@ def cli_rerun_dynamics_job_systemspanning(cli_args=None):
     with h5py.File(args.EnsembleInfo, "r") as file:
         N = file["/normalisation/N"][...]
         A = file["/avalanche/A"][...]
-        inc = file["/avalanche/inc"][...]
+        steps = file["/avalanche/step"][...]
         ifile = file["/avalanche/file"][...]
         files = file["/files"].asstr()[...]
 
     keep = A == N
-    inc = inc[keep]
+    steps = steps[keep]
     ifile = ifile[keep]
 
     commands = []
-    executable = MeasureDynamics.entry_points["cli_run"]
+    executable = Dynamics.entry_points["cli_run"]
     basedir = os.path.dirname(args.EnsembleInfo)
     basedir = basedir if basedir else "."
     relpath = os.path.relpath(basedir, args.outdir)
 
-    for step, f in zip(inc, ifile):
+    for step, f in zip(steps, ifile):
         fname = files[f]
         basename = os.path.splitext(os.path.basename(fname))[0]
-        cmd = [executable, "-o", f"{basename}_inc={step:d}.h5", "--step", f"{step:d}"]
+        cmd = [executable, "-o", f"{basename}_step={step:d}.h5", "--step", f"{step:d}"]
         cmd += [os.path.join(relpath, fname)]
         commands.append(" ".join(cmd))
 
@@ -1677,13 +1534,13 @@ def cli_state_after_systemspanning(cli_args=None):
 
     with h5py.File(args.EnsembleInfo) as file:
         files = file["/files"].asstr()[...]
-        inc = file["/avalanche/inc"][...]
+        step = file["/avalanche/step"][...]
         fid = file["/loading/file"][...]
         A = file["/avalanche/A"][...]
         N = int(file["/normalisation/N"][...])
 
     keep = A == N
-    inc = inc[keep]
+    step = step[keep]
     fid = fid[keep]
     A = A[keep]
 
@@ -1692,7 +1549,7 @@ def cli_state_after_systemspanning(cli_args=None):
 
     for f in np.unique(fid):
         filepath = os.path.join(dirname, files[f])
-        select[filepath] = inc[fid == f]
+        select[filepath] = step[fid == f]
 
     data = interface_state(select)
 
@@ -1713,3 +1570,130 @@ def cli_state_after_systemspanning(cli_args=None):
         for key in data:
             if key in keep:
                 file[key] = data[key]
+
+
+def transform_deprecated_param(src, dest, paths):
+    """
+    Transform deprecated parameters.
+    This code is considered 'non-maintained'.
+    """
+
+    # read and remove from list of paths
+    def read_clear(file, key, paths):
+        value = file[key][...]
+        paths.remove(key)
+        return value
+
+    dest.create_group("param")
+
+    for key in ["/alpha", "/eta", "/rho", "/elastic/K", "/elastic/G", "/cusp/K", "/cusp/G"]:
+        if key not in src:
+            continue
+        data = read_clear(src, key, paths)
+        value = np.atleast_1d(data)[0]
+        assert np.allclose(value, data)
+        dest[g5.join("param", key, root=True)] = value
+
+    assert "dofsP" not in src, "WIP: please implement when needed"
+    for key in ["/coor", "/conn", "/dofs", "/iip"]:
+        g5.copy(src, dest, [key], root="param")
+        paths.remove(key)
+
+    plastic = read_clear(src, "/cusp/elem", paths)
+    elastic = np.setdiff1d(np.arange(src["conn"].shape[0]), plastic)
+    assert np.all(read_clear(src, "/elastic/elem", paths) == elastic)
+    dest["/param/cusp/elem"] = plastic
+
+    assert not isinstance(src["/cusp/epsy"], h5py.Dataset), "WIP: please implement when needed"
+    seed = src["/meta/seed_base"][...]
+    initstate = read_clear(src, "/cusp/epsy/initstate", paths)
+    initseq = read_clear(src, "/cusp/epsy/initseq", paths)
+    new_initstate = np.arange(initstate.size, dtype=initstate.dtype)
+    new_initseq = np.zeros_like(initseq)
+    assert np.all(initstate == seed + new_initstate)
+    assert np.all(initseq == new_initseq)
+    dest["/param/cusp/epsy/initstate"] = new_initstate
+    dest["/param/cusp/epsy/initseq"] = new_initseq
+
+    rename = {
+        "/cusp/epsy/nchunk": "/param/cusp/epsy/nchunk",
+        "/cusp/epsy/eps_offset": "/param/cusp/epsy/weibull/offset",
+        "/cusp/epsy/eps0": "/param/cusp/epsy/weibull/typical",
+        "/cusp/epsy/k": "/param/cusp/epsy/weibull/k",
+        "/run/dt": "/param/dt",
+        "/meta/seed_base": "/realisation/seed",
+        "/run/epsd/kick": "/param/cusp/epsy/deps",
+    }
+
+    for key in rename:
+        g5.copy(src, dest, key, rename[key])
+        paths.remove(key)
+
+    return paths
+
+
+def cli_transform_deprecated(cli_args=None):
+    """
+    Transform old data structure to the current one.
+    This code is considered 'non-maintained'.
+    """
+
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    progname = entry_points[funcname]
+
+    parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
+    parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("file", type=str, help="File to transform: .bak appended")
+
+    args = tools._parse(parser, cli_args)
+    assert os.path.isfile(args.file)
+    assert not os.path.isfile(args.file + ".bak")
+    os.rename(args.file, args.file + ".bak")
+
+    with h5py.File(args.file + ".bak") as src, h5py.File(args.file, "w") as dest:
+
+        paths = list(g5.getdatapaths(src))
+        for key in g5.getdatapaths(src, root="/meta/normalisation"):
+            paths.remove(key)
+        paths.append("/meta/normalisation")
+
+        paths = transform_deprecated_param(src, dest, paths)
+
+        dest.create_group("QuasiStatic")
+
+        rename = {f"/disp/{i}": f"/QuasiStatic/u/{i}" for i in src["disp"]}
+        rename["/kick"] = "/QuasiStatic/kick"
+        rename["/meta/EnsembleInfo"] = "/meta/QuasiStatic_EnsembleInfo"
+        rename["/meta/Run_generate"] = "/meta/QuasiStatic_Generate"
+        rename["/meta/Run"] = "/meta/QuasiStatic_Run"
+        rename["/meta/normalisation"] = "/meta/normalisation"
+
+        for key in rename:
+            if key not in src:
+                continue
+            g5.copy(src, dest, key, rename[key])
+            paths.remove(key)
+
+        dest["/QuasiStatic/inc"] = np.round(src["/t"][...] / src["/run/dt"][...]).astype(int)
+        paths.remove("/t")
+
+        assert "/meta/normalisation" in dest
+        assert np.all(src["/stored"][...] == np.arange(dest["/QuasiStatic/inc"].size))
+        paths.remove("/stored")
+        paths.remove("/disp")
+
+        dest.create_group(f"/meta/{progname}").attrs["version"] = version
+
+        if "uuid" not in dest["/meta/QuasiStatic_Run"].attrs:
+            dest["/meta/QuasiStatic_Run"].attrs["uuid"] = str(uuid.uuid4())
+
+        assert len(paths) == 0
