@@ -153,7 +153,7 @@ def branch(source: str, destination: str, step: int, force: bool = False):
     """
 
     assert os.path.isfile(source)
-    assert os.path.abspath(source) != os.path.abspath(dest)
+    assert os.path.abspath(source) != os.path.abspath(destination)
     tools._check_overwrite_file(destination, force)
 
     with h5py.File(source) as src:
