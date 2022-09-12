@@ -680,6 +680,10 @@ def cli_average_systemspanning(cli_args=None):
             Epsbar = storage.symtens2_read(file, "/dynamics/Epsbar") / system.eps0
             Sigbar = storage.symtens2_read(file, "/dynamics/Sigbar") / system.sig0
 
+            for i in range(2):
+                for j in range(2):
+                    Epsbar[:, i, j] -= Epsbar[0, i, j]
+
             keep = t_ibin >= 0
             synct["delta_t"].add_subsample(t_ibin[keep], delta_t[keep])
             synct["Epsbar"].add_subsample(t_ibin[keep], Epsbar[keep])
@@ -700,6 +704,7 @@ def cli_average_systemspanning(cli_args=None):
                 if item == 0:
                     i_n = np.copy(system.plastic.i.astype(int)[:, 0])
                     epsp_n = np.copy(system.plastic.epsp)
+                    Eps_n = system.Eps()
 
                 i = system.plastic.i.astype(int)[:, 0]
                 broken = i != i_n
@@ -707,7 +712,7 @@ def cli_average_systemspanning(cli_args=None):
                 if tag.greater(ver, "12.3"):
                     assert np.sum(broken) == file["/dynamics/A"][item]
 
-                Eps = system.Eps() / system.eps0
+                Eps = (system.Eps() - Eps_n) / system.eps0
                 Sig = system.Sig() / system.sig0
 
                 # convert epsp: [N, nip] -> [nelem, nip] (for simplicity below)
