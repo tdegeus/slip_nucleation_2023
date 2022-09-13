@@ -7,7 +7,7 @@ import argparse
 import inspect
 import itertools
 import os
-import re
+import pathlib
 import shutil
 import tempfile
 import textwrap
@@ -22,25 +22,22 @@ import h5py
 import numpy as np
 import tqdm
 
+from . import Dynamics
 from . import EventMap
-from . import MeasureDynamics
 from . import QuasiStatic
 from . import slurm
 from . import storage
-from . import tag
 from . import tools
 from ._version import version
 
 entry_points = dict(
     cli_ensembleinfo="Trigger_EnsembleInfo",
-    cli_ensembleinfo_merge="Trigger_EnsembleInfoMerge",
     cli_ensemblepack="Trigger_EnsemblePack",
     cli_ensemblepack_merge="Trigger_EnsemblePackMerge",
     cli_job_deltasigma="Trigger_JobDeltaSigma",
     cli_job_rerun_dynamics="Trigger_JobRerunDynamics",
     cli_job_rerun_eventmap="Trigger_JobRerunEventMap",
-    cli_job_strain="Trigger_JobStrain",
-    cli_run="Trigger_run",
+    cli_run="Trigger_Run",
 )
 
 file_defaults = dict(
@@ -67,13 +64,12 @@ def cli_run(cli_args=None):
     Due to this feature, the time of the event may be overestimated for small events.
     To skip this functionality:
     -   Use ``--retry=0``.
-    -   Specify `file["/trigger/element"][-1] >= 0`
-        (you are responsible to have something meaningful in `file["/trigger/try_element"][-1]`).
+    -   Specify `file["/Trigger/element"][-1] >= 0`
+        (you are responsible to have something meaningful in `file["/Trigger/try_element"][-1]`).
 
     An option is provided to truncate the simulation when an event is system-spanning.
     In that case the ``truncated`` meta-attribute will be ``True``.
-    The displacement field will not correspond to a mechanical equilibrium,
-    while the state at truncation will be stored under ``restart``.
+    The displacement field will not correspond to a mechanical equilibrium.
     """
 
     class MyFmt(
@@ -113,16 +109,18 @@ def cli_run(cli_args=None):
 
     with h5py.File(args.file, "a") as file:
 
-        assert file["/trigger/element"].size == file["/trigger/try_element"].size
+        root = file["Trigger"]
+        assert root["element"].size == root["try_element"].size
+        assert root["kick"].size == root["element"].size - 1
 
-        step = int(file["/stored"][-1])
-        element = int(file["/trigger/element"][step + 1])
-        try_element = int(file["/trigger/try_element"][step + 1])
-        assert not file["/trigger/truncated"][step], "Cannot run is last step was not minimised"
+        step = root["kick"].size - 1
+        element = int(root["element"][step + 1])
+        try_element = int(root["try_element"][step + 1])
+        assert not root["truncated"][step], "Cannot run is last step was not minimised"
 
         meta = QuasiStatic.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
         system = QuasiStatic.System(file)
-        system.restore_step(file, step)
+        system.restore_quasistatic_step(root, step)
         idx_n = np.copy(system.plastic.i[:, 0])
         N = system.N
         search_element = True
@@ -132,7 +130,7 @@ def cli_run(cli_args=None):
             search_element = False
 
         assert try_element >= 0
-        system.triggerElementWithLocalSimpleShear(file["/run/epsd/kick"][...], try_element)
+        system.triggerElementWithLocalSimpleShear(file["/param/cusp/epsy/deps"][...], try_element)
 
         # search for the element to run
 
@@ -154,10 +152,12 @@ def cli_run(cli_args=None):
                     element -= N
 
                 element += 1
-                system.restore_step(file, step)
-                system.triggerElementWithLocalSimpleShear(file["/run/epsd/kick"][...], element)
+                system.restore_quasistatic_step(root, step)
+                system.triggerElementWithLocalSimpleShear(
+                    file["/param/cusp/epsy/deps"][...], element
+                )
 
-            file["/trigger/element"][step + 1] = element
+            root["element"][step + 1] = element
 
         elif args.rerun:
 
@@ -175,24 +175,15 @@ def cli_run(cli_args=None):
 
         # store the output, and prepare for the next push
 
-        storage.dset_extend1d(file, "/stored", step + 1, step + 1)
-        storage.dset_extend1d(file, "/t", step + 1, system.t)
-        storage.dset_extend1d(file, "/kick", step + 1, True)
-        storage.dset_extend1d(file, "/trigger/branched", step + 1, False)
-        storage.dset_extend1d(file, "/trigger/truncated", step + 1, truncated)
-        file[f"/disp/{step + 1:d}"] = system.u
+        storage.dset_extend1d(root, "inc", step + 1, system.inc)
+        storage.dset_extend1d(root, "kick", step + 1, True)
+        storage.dset_extend1d(root, "branched", step + 1, False)
+        storage.dset_extend1d(root, "truncated", step + 1, truncated)
+        root["u"][str(step + 1)] = system.u
 
-        if file["/trigger/element"].size == step + 2:
-            storage.dset_extend1d(file, "/trigger/element", step + 2, -1)
-            storage.dset_extend1d(file, "/trigger/try_element", step + 2, try_element)
-
-        # in case that the event was truncated at a given "A":
-        # store state from which a restart from the moment of truncation is possible
-        if truncated:
-            file["/restart/u"] = system.u
-            file["/restart/v"] = system.v
-            file["/restart/a"] = system.a
-            file["/restart/t"] = system.t
+        if root["element"].size == step + 2:
+            storage.dset_extend1d(root, "element", step + 2, -1)
+            storage.dset_extend1d(root, "try_element", step + 2, try_element)
 
         meta.attrs["completed"] = 1
         pbar.n = 1
@@ -231,23 +222,17 @@ def cli_ensemblepack_merge(cli_args=None):
         for ifile, filepath in enumerate(tqdm.tqdm(args.files)):
             with h5py.File(filepath) as file:
                 if ifile == 0:
-                    g5.copy(
-                        file,
-                        output,
-                        ["/source", "/realisation", "/event", "/ensemble"],
-                        expand_soft=False,
-                    )
-                    continue
-
-                assert g5.allequal(file, output, g5.getdatapaths(file, "/source"))
-                assert g5.allequal(file, output, g5.getdatapaths(file, "/realisation"))
-                if "/ensemble" in file:
-                    assert g5.allequal(file, output, g5.getdatapaths(file, "/ensemble"))
+                    g5.copy(file, output, "/param")
+                    if "event" not in output:
+                        output.create_group("event")
+                else:
+                    assert g5.allequal(file, output, g5.getdatapaths(file, "/param"))
 
                 for path in file["event"]:
                     if path in output["event"]:
-                        continue
-                    g5.copy(file, output, [f"/event/{path}"], expand_soft=False)
+                        assert g5.allequal(file, output, g5.getdatapaths(file, f"/event/{path}"))
+                    else:
+                        g5.copy(file, output, f"/event/{path}", expand_soft=False)
 
 
 def cli_ensemblepack(cli_args=None):
@@ -258,10 +243,9 @@ def cli_ensemblepack(cli_args=None):
         /event/filename_of_trigger/...
 
     Thereby ``...`` houses all fields that were present in the source file.
-    However, for common data this is only a soft-link, to::
+    However, the data common to the ensemble are included as a soft link::
 
-        /realisation/filename_of_realisation/...
-        /source/...
+        /event/filename_of_trigger/param  ->  /param
     """
 
     class MyFmt(
@@ -292,43 +276,6 @@ def cli_ensemblepack(cli_args=None):
     pbar = tqdm.tqdm(args.files)
     pbar.set_description(fmt.format(""))
 
-    # categorise datasets
-    restart = [
-        "/restart/u",
-        "/restart/v",
-        "/restart/a",
-        "/restart/t",
-    ]
-    # - copy/link on "/realisation/{sid}"
-    realisation = [
-        "/cusp/epsy/initstate",
-        "/meta/seed_base",
-    ]
-    # - copy on "/event/{tid}"
-    event_meta = [
-        "/meta/branch_fixed_stress",
-        f"/meta/{entry_points['cli_run']}",
-        f"/meta/{QuasiStatic.entry_points['cli_run']}",
-        f"/meta/{QuasiStatic.entry_points['cli_generate']}",
-        "/trigger/branched",
-        "/trigger/element",
-        "/trigger/try_element",
-        "/trigger/truncated",
-    ]
-    # - copy on "/event/{tid}"
-    event_data = [
-        "/disp",
-        "/stored",
-        "/t",
-        "/kick",
-    ]
-    # - copy on "/ensemble"
-    ensemble_meta = [
-        f"/meta/{entry_points['cli_job_strain']}",
-        f"/meta/{entry_points['cli_job_deltasigma']}",
-    ]
-    skip = realisation + event_meta + ensemble_meta + restart
-
     if args.append:
         with h5py.File(args.output, "r") as output:
             for filepath in args.files:
@@ -344,60 +291,24 @@ def cli_ensemblepack(cli_args=None):
 
                 # copy/check global ensemble data
                 if ifile == 0 and not args.append:
-                    datasets = QuasiStatic.clone(file, output, skip=skip, root="/source")
-                    ensemble_meta = [i for i in ensemble_meta if i in file]
-                    g5.copy(file, output, ensemble_meta, root="/ensemble")
-                elif ifile == 0 and args.append:
-                    datasets = QuasiStatic.clone(
-                        file, output, skip=skip, root="/source", dry_run=True
-                    )
-                    ensemble_meta = [i for i in ensemble_meta if i in file]
-
-                for path in datasets:
-                    if not g5.equal(file, output, path, root="/source"):
-                        print(path)
-
-                assert g5.allequal(file, output, datasets, root="/source")
-                assert g5.allequal(file, output, ensemble_meta, root="/ensemble")
+                    g5.copy(file, output, "/param")
+                else:
+                    assert g5.allequal(file, output, list(g5.getdatapaths(file, "/param")))
 
                 # test that all data is copied/linked
-                present = g5.getdatapaths(file)
-                present = list(itertools.filterfalse(re.compile("^/disp.*$").match, present))
-                present = list(itertools.filterfalse(re.compile("^/restart.*$").match, present))
-                copied = datasets + ensemble_meta + realisation + event_data + event_meta
-                assert np.all(np.in1d(present, copied))
+                for path in file:
+                    assert path in ["param", "realisation", "meta", "Trigger"]
 
-                sid = file["/meta/branch_fixed_stress"].attrs["file"]
+                # skip non-completed runs
+                if "completed" not in file[f"/meta/{entry_points['cli_run']}"].attrs:
+                    continue
+                if not file[f"/meta/{entry_points['cli_run']}"].attrs["completed"]:
+                    continue
+
+                # copy/link event data
                 tid = os.path.basename(filepath)
-
-                if f"/realisation/{sid}" not in output:
-                    g5.copy(file, output, realisation, root=f"/realisation/{sid}")
-                else:
-                    g5.compare(
-                        file,
-                        output,
-                        realisation,
-                        [g5.join(f"/realisation/{sid}", i) for i in realisation],
-                    )
-
-                if "/disp/1" not in file:
-                    continue
-                if "/meta/Trigger_run" not in file:
-                    continue
-                if tag.greater_equal(file["/meta/Trigger_run"].attrs["version"], "7.4"):
-                    if "completed" not in file["/meta/Trigger_run"].attrs:
-                        continue
-
-                g5.copy(file, output, event_data, root=f"/event/{tid}")
-                g5.copy(file, output, event_meta, root=f"/event/{tid}", skip=True)
-
-                for path in datasets:
-                    output[g5.join(f"/event/{tid}", path)] = h5py.SoftLink(g5.join("/source", path))
-
-                for path in realisation:
-                    output[g5.join(f"/event/{tid}", path)] = h5py.SoftLink(
-                        g5.join(f"/realisation/{sid}", path)
-                    )
+                g5.copy(file, output, ["/realisation", "/meta", "/Trigger"], root=f"/event/{tid}")
+                output[f"/event/{tid}/param"] = h5py.SoftLink("/param")
 
 
 def cli_ensembleinfo(cli_args=None):
@@ -436,15 +347,16 @@ def cli_ensembleinfo(cli_args=None):
         S=[],
         A=[],
         xi=[],
-        epsd=[],
-        epsd0=[],
-        sigd=[],
-        sigd0=[],
+        eps=[],
+        eps0=[],
+        sig=[],
+        sig0=[],
         sig_broken=[],
         sig_unbroken=[],
         delta_sig_broken=[],
         delta_sig_unbroken=[],
         duration=[],
+        dinc=[],
         truncated=[],
         element=[],
         try_element=[],
@@ -452,9 +364,9 @@ def cli_ensembleinfo(cli_args=None):
         run_dependencies=[],
         source=[],
         file=[],
-        inc=[],
+        step=[],
         inci=[],
-        incc=[],
+        step_c=[],
         stress=[],
     )
 
@@ -480,45 +392,46 @@ def cli_ensembleinfo(cli_args=None):
             elif simid[idx] != simid[index[i - 1]]:
                 system.reset(file)
 
-            out = QuasiStatic.basic_output(system, file, verbose=False)
+            out = QuasiStatic.basic_output(system, file, root="Trigger", verbose=False)
             assert len(out["S"]) >= 2
-            assert file["trigger"]["branched"][0]
-            assert not file["trigger"]["branched"][1]
+            assert file["Trigger"]["branched"][0]
+            assert not file["Trigger"]["branched"][1]
 
             meta = file["meta"][entry_points["cli_run"]]
             branch = file["meta"]["branch_fixed_stress"]
 
-            if "try_element" in file["trigger"]:
-                try_element = file["trigger"]["try_element"][1]
+            if "try_element" in file["Trigger"]:
+                try_element = file["Trigger"]["try_element"][1]
             else:
                 try_element = int(os.path.basename(filepath).split("element=")[1].split("_")[0])
 
             ret["S"].append(out["S"][1])
             ret["A"].append(out["A"][1])
             ret["xi"].append(out["xi"][1])
-            ret["epsd"].append(out["epsd"][1])
-            ret["epsd0"].append(out["epsd"][0])
-            ret["sigd"].append(out["sigd"][1])
-            ret["sigd0"].append(out["sigd"][0])
+            ret["eps"].append(out["eps"][1])
+            ret["eps0"].append(out["eps"][0])
+            ret["sig"].append(out["sig"][1])
+            ret["sig0"].append(out["sig"][0])
             ret["sig_broken"].append(out["sig_broken"][1])
             ret["sig_unbroken"].append(out["sig_unbroken"][1])
             ret["delta_sig_broken"].append(out["delta_sig_broken"][1])
             ret["delta_sig_unbroken"].append(out["delta_sig_unbroken"][1])
             ret["duration"].append(out["duration"][1])
-            ret["truncated"].append(file["trigger"]["truncated"][1])
-            ret["element"].append(file["trigger"]["element"][1])
+            ret["dinc"].append(out["dinc"][1])
+            ret["truncated"].append(file["Trigger"]["truncated"][1])
+            ret["element"].append(file["Trigger"]["element"][1])
             ret["try_element"].append(try_element)
             ret["run_version"].append(meta.attrs["version"])
             ret["run_dependencies"].append(";".join(meta.attrs["dependencies"]))
             ret["source"].append(os.path.basename(filepath))
             ret["file"].append(branch.attrs["file"])
-            ret["inc"].append(branch.attrs["inc"] if "inc" in branch.attrs else int(-1))
+            ret["step"].append(branch.attrs["step"] if "step" in branch.attrs else int(-1))
             ret["inci"].append(branch.attrs["inci"] if "inci" in branch.attrs else int(-1))
-            ret["incc"].append(branch.attrs["incc"] if "incc" in branch.attrs else int(-1))
+            ret["step_c"].append(branch.attrs["step_c"] if "step_c" in branch.attrs else int(-1))
             ret["stress"].append(branch.attrs["stress"] if "stress" in branch.attrs else int(-1))
 
-        if "ensemble" in pack:
-            g5.copy(pack, output, ["/ensemble"])
+        if "param" in pack:
+            g5.copy(pack, output, "/param")
 
         for key in ["file", "run_version"]:
             tools.h5py_save_unique(data=ret.pop(key), file=output, path=f"/{key}", asstr=True)
@@ -531,89 +444,6 @@ def cli_ensembleinfo(cli_args=None):
 
         QuasiStatic.create_check_meta(output, f"/meta/{progname}", dev=args.develop)
         output["/meta/normalisation/N"] = N
-
-
-def cli_ensembleinfo_merge(cli_args=None):
-    """
-    Merge files created by :py:func:`cli_ensemblepack`.
-    """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
-    funcname = inspect.getframeinfo(inspect.currentframe()).function
-    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
-    progname = entry_points[funcname]
-
-    parser.add_argument("--develop", action="store_true", help="Development mode")
-    parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
-    parser.add_argument("-o", "--output", type=str, required=True, help="Output file")
-    parser.add_argument("files", nargs="*", type=str, help="Files to merge")
-
-    args = tools._parse(parser, cli_args)
-    assert len(args.files) > 0
-    assert all([os.path.isfile(file) for file in args.files])
-    tools._check_overwrite_file(args.output, args.force)
-
-    ret = {}
-
-    with h5py.File(args.output, "w") as output:
-        for ifile, filepath in enumerate(tqdm.tqdm(args.files)):
-            with h5py.File(filepath) as file:
-                if ifile == 0:
-                    g5.copy(file, output, ["/meta/normalisation/N"])
-                    if "ensemble" in file:
-                        g5.copy(file, output, ["/ensemble"])
-                    paths = list(g5.getdatasets(file, max_depth=1))
-                    paths.remove("/ensemble/...")
-                    paths.remove("/meta/...")
-                    paths.remove("/file/...")
-                    paths.remove("/run_version/...")
-                    paths.remove("/run_dependencies/...")
-                    paths = [i[1:] for i in paths]  # split "/"
-                else:
-                    if "ensemble" in file:
-                        assert g5.allequal(file, output, g5.getdatapaths(file, "/ensemble"))
-
-                for k in paths:
-                    if k not in ret:
-                        ret[k] = []
-                    if k in ["source"]:
-                        ret[k] += file[k].asstr()[...].tolist()
-                    else:
-                        ret[k] += file[k][...].tolist()
-
-                for k in ["file", "run_version"]:
-                    if k not in ret:
-                        ret[k] = []
-                    ret[k] += tools.h5py_read_unique(file, k, asstr=True)
-
-                for k in ["run_dependencies"]:
-                    if k not in ret:
-                        ret[k] = []
-                    ret[k] += [";".join(i) for i in tools.h5py_read_unique(file, k, asstr=True)]
-
-        _, index = np.unique(ret["source"], return_index=True)
-
-        if len(index) != len(ret["source"]):
-            for k in ret:
-                ret[k] = [ret[k][i] for i in index]
-
-        for key in ["file", "run_version"]:
-            tools.h5py_save_unique(data=ret.pop(key), file=output, path=f"/{key}", asstr=True)
-
-        for key in ["run_dependencies"]:
-            tools.h5py_save_unique(data=ret.pop(key), file=output, path=f"/{key}", split=";")
-
-        for key in ret:
-            output[key] = ret[key]
-
-        QuasiStatic.create_check_meta(output, f"/meta/{progname}", dev=args.develop)
 
 
 def restore_from_ensembleinfo(
@@ -629,16 +459,17 @@ def restore_from_ensembleinfo(
     """
 
     sourcepath = tools.h5py_read_unique(ensembleinfo, "file", asstr=True)[index]
-    inc = ensembleinfo["inc"][index]
-    incc = ensembleinfo["incc"][index]
+    step = ensembleinfo["step"][index]
+    step_c = ensembleinfo["step_c"][index]
     element = ensembleinfo["element"][index]
     try_element = ensembleinfo["try_element"][index]
+    dinc = ensembleinfo["dinc"][index]
 
     if sourcedir is not None:
-        sourcepath = os.path.join(sourcedir, sourcepath)
+        sourcepath = pathlib.Path(sourcedir) / sourcepath
     elif not os.path.isfile(sourcepath):
-        sourcedir = os.path.dirname(ensembleinfo.filename)
-        sourcepath = os.path.join(sourcedir, sourcepath)
+        sourcedir = pathlib.Path(ensembleinfo.filename).parent
+        sourcepath = sourcedir / sourcepath
 
     if not os.path.isfile(sourcepath):
         raise OSError(f'File not found: "{sourcepath}"')
@@ -648,16 +479,18 @@ def restore_from_ensembleinfo(
         QuasiStatic.branch_fixed_stress(
             source=source,
             dest=dest,
-            inc=inc if inc > 0 else None,
-            incc=incc,
+            root="Trigger",
+            step=step if step > 0 else None,
+            step_c=step_c,
             stress=ensembleinfo["stress"][index],
             normalised=True,
             system=QuasiStatic.System(source),
             dev=dev,
         )
+        root = dest["Trigger"]
+        storage.dset_extend1d(root, "inc", 1, root["inc"][0] + dinc)
 
-        _writeinitbranch(dest, try_element=try_element, element=element)
-        storage.dset_extend1d(dest, "/t", 1, ensembleinfo["duration"][index])
+        _writeinitbranch(dest, try_element=try_element, element=element, dev=dev)
 
     return destpath
 
@@ -680,7 +513,7 @@ def __job_rerun(file, sims, basename, executable, args):
     height = " "
 
     if hasattr(args, "height"):
-        height = " " + " ".join(["--height=" + str(h) for h in args.height]) + " "
+        height = " " + " ".join(["--height " + str(h) for h in args.height]) + " "
 
     for i in tqdm.tqdm(range(len(sims["replica"]))):
         index = sims["index"][i]
@@ -689,8 +522,8 @@ def __job_rerun(file, sims, basename, executable, args):
         restore_from_ensembleinfo(file, index, replica, args.sourcedir, args.develop)
         o = os.path.relpath(output, args.outdir)
         r = os.path.relpath(replica, args.outdir)
-        commands += [f"{executable} --step 1" + height + f"-o {o} {r}"]
-        ret += [f"{executable} --step 1" + height + f"-o {output} {replica}"]
+        commands += [f"{executable} -o {o} --step 1" + height + f"{r}"]
+        ret += [f"{executable} -o {output} --step 1" + height + f"{replica}"]
 
     slurm.serial_group(
         commands,
@@ -751,15 +584,15 @@ def cli_job_rerun_eventmap(cli_args=None):
             N = int(file["/meta/normalisation/N"][...])
 
         A = file["A"][...]
-        inc = file["inc"][...]
-        incc = file["incc"][...]
+        step = file["step"][...]
+        step_c = file["step_c"][...]
         element = file["element"][...]
         sid = [
             QuasiStatic.interpret_filename(i)["id"]
             for i in tools.h5py_read_unique(file, "file", asstr=True)
         ]
 
-        select = np.argwhere((A > args.amin) * (A < N) * (inc == incc)).ravel()
+        select = np.argwhere((A > args.amin) * (A < N) * (step == step_c)).ravel()
 
         sims = dict(
             replica=[],
@@ -768,7 +601,7 @@ def cli_job_rerun_eventmap(cli_args=None):
         )
 
         for index in select:
-            base = f"id={sid[index]:d}_incc={incc[index]:d}_element={element[index]:d}.h5"
+            base = f"id={sid[index]:d}_incc={step_c[index]:d}_element={element[index]:d}.h5"
             sims["replica"].append(os.path.join(args.outdir, "src", base))
             sims["output"].append(os.path.join(args.outdir, base))
             sims["index"].append(index)
@@ -837,7 +670,7 @@ def cli_job_rerun_dynamics(cli_args=None):
         "--height",
         type=float,
         action="append",
-        help="Add element row(s), see " + MeasureDynamics.entry_points["cli_run"],
+        help="Add element row(s), see " + Dynamics.entry_points["cli_run"],
     )
 
     # paths
@@ -871,9 +704,9 @@ def cli_job_rerun_dynamics(cli_args=None):
         else:
             N = int(file["/meta/normalisation/N"][...])
 
-        sigmastar = file["sigd0"][...]
+        sigmastar = file["sig0"][...]
         A = file["A"][...]
-        incc = file["incc"][...]
+        step_c = file["step_c"][...]
         element = file["element"][...]
         sid = [
             QuasiStatic.interpret_filename(i)["id"]
@@ -905,12 +738,12 @@ def cli_job_rerun_dynamics(cli_args=None):
             if not args.test:
                 sorter = sorter[A[sorter] == N]
             for index in sorter[: args.nsim]:
-                base = f"id={sid[index]:d}_incc={incc[index]:d}_element={element[index]:d}.h5"
+                base = f"id={sid[index]:d}_incc={step_c[index]:d}_element={element[index]:d}.h5"
                 sims["replica"].append(os.path.join(args.outdir, f"bin={ibin:02d}", "src", base))
                 sims["output"].append(os.path.join(args.outdir, f"bin={ibin:02d}", base))
                 sims["index"].append(index)
 
-        executable = MeasureDynamics.entry_points["cli_run"]
+        executable = Dynamics.entry_points["cli_run"]
 
         if args.eventmap:
             executable = EventMap.entry_points["cli_run"]
@@ -922,7 +755,11 @@ def cli_job_rerun_dynamics(cli_args=None):
 
 
 def _writeinitbranch(
-    file: h5py.File, try_element: int, element: int = -1, meta: tuple[str, dict] = None
+    file: h5py.File,
+    try_element: int,
+    element: int = -1,
+    meta: tuple[str, dict] = None,
+    dev: bool = False,
 ):
     """
     Write :py:mod:`Trigger` specific fields.
@@ -930,47 +767,50 @@ def _writeinitbranch(
     :param try_element: Element to try trigger.
     :param element: Element to trigger, without trying others.
     :param meta: Extra metadata to write ``("/path/to/group", {"mykey": myval, ...})``.
+    :param dev: If True, allow uncommited changes.
     """
 
+    root = file["Trigger"]
+
     storage.create_extendible(
-        file,
-        "/trigger/element",
+        root,
+        "element",
         np.int64,
         desc="Plastic element triggered",
     )
 
     storage.create_extendible(
-        file,
-        "/trigger/try_element",
+        root,
+        "try_element",
         np.int64,
         desc="Plastic element to start trying triggering",
     )
 
     storage.create_extendible(
-        file,
-        "/trigger/truncated",
+        root,
+        "truncated",
         bool,
         desc="Flag if run was truncated before equilibrium",
     )
 
     storage.create_extendible(
-        file,
-        "/trigger/branched",
+        root,
+        "branched",
         bool,
         desc="Flag if configuration followed from a branch",
     )
 
-    storage.dset_extend1d(file, "/trigger/element", 0, -1)
-    storage.dset_extend1d(file, "/trigger/element", 1, element)
+    storage.dset_extend1d(root, "element", 0, -1)
+    storage.dset_extend1d(root, "element", 1, element)
 
-    storage.dset_extend1d(file, "/trigger/try_element", 0, -1)
-    storage.dset_extend1d(file, "/trigger/try_element", 1, try_element)
+    storage.dset_extend1d(root, "try_element", 0, -1)
+    storage.dset_extend1d(root, "try_element", 1, try_element)
 
-    storage.dset_extend1d(file, "/trigger/truncated", 0, False)
-    storage.dset_extend1d(file, "/trigger/branched", 0, True)
+    storage.dset_extend1d(root, "truncated", 0, False)
+    storage.dset_extend1d(root, "branched", 0, True)
 
     if meta is not None:
-        g = file.create_group(meta[0])
+        g = QuasiStatic.create_check_meta(file, meta[0], dev=dev)
         for key in meta[1]:
             g.attrs[key] = meta[1][key]
 
@@ -982,8 +822,8 @@ def _write_configurations(
     dev: bool = False,
     source: list[str] = None,
     dest: list[str] = None,
-    inc: list[int] = None,
-    incc: list[int] = None,
+    step: list[int] = None,
+    step_c: list[int] = None,
     stress: list[float] = None,
     meta: tuple[str, dict] = None,
 ):
@@ -996,8 +836,8 @@ def _write_configurations(
     :param dev: Allow uncommitted changes.
     :param source: List with source file-paths.
     :param dest: List with destination file-paths.
-    :param inc: List with fixed increment at which to push (entries can be ``None``).
-    :param incc: List with system spanning events after which to load (entries can be ``None``).
+    :param step: List with fixed increment at which to push (entries can be ``None``).
+    :param step_c: List with system spanning events after which to load (entries can be ``None``).
     :param stress: List with stress at which to load (entries can be ``None``).
     :param meta: Extra metadata to write ``("/path/to/group", {"mykey": myval, ...})``.
     """
@@ -1014,7 +854,7 @@ def _write_configurations(
         if os.path.isfile(i):
             os.remove(i)
 
-    fmt = "{:" + str(max(len(i) for i in source)) + "s}"
+    fmt = "{:" + str(max(len(str(i)) for i in source)) + "s}"
     index = np.argsort(source)
     pbar = tqdm.tqdm(index)
     tmp = tempfile.mkstemp(suffix=".h5", dir=os.path.dirname(dest[0]))[1]
@@ -1023,7 +863,7 @@ def _write_configurations(
 
         s = source[idx]
         d = dest[idx]
-        pbar.set_description(fmt.format(s), refresh=True)
+        pbar.set_description(fmt.format(str(s)), refresh=True)
 
         with h5py.File(s, "r") as source_file:
 
@@ -1040,13 +880,16 @@ def _write_configurations(
             if init_system:
                 p = f"/full/{os.path.split(s)[-1]:s}"
                 output["kick"] = info[f"{p:s}/kick"][...]
-                output["sigd"] = info[f"{p:s}/sigd"][...]
+                output["sig"] = info[f"{p:s}/sig"][...]
                 output["A"] = info[f"{p:s}/A"][...]
-                output["inc"] = info[f"{p:s}/inc"][...]
+                output["step"] = info[f"{p:s}/step"][...]
                 with h5py.File(tmp, "w") as dest_file:
-                    QuasiStatic.clone(source_file, dest_file)
-                    QuasiStatic._init_run_state(dest_file)
-                    _writeinitbranch(dest_file, try_element=try_element, meta=meta)
+                    g5.copy(source_file, dest_file, ["/param", "/realisation", "/meta"])
+                    QuasiStatic._init_run_state(
+                        root=dest_file.create_group("Trigger"),
+                        u=source_file["/QuasiStatic/u/0"][...],
+                    )
+                    _writeinitbranch(dest_file, try_element=try_element, meta=meta, dev=dev)
 
             shutil.copy(tmp, d)
 
@@ -1055,8 +898,9 @@ def _write_configurations(
                 QuasiStatic.branch_fixed_stress(
                     source=source_file,
                     dest=dest_file,
-                    inc=inc[idx],
-                    incc=incc[idx],
+                    root="Trigger",
+                    step=step[idx],
+                    step_c=step_c[idx],
                     stress=stress[idx],
                     normalised=True,
                     system=system,
@@ -1090,22 +934,177 @@ def _copy_configurations(try_element: int, source: list[str], dest: list[str], f
         shutil.copy(s, d)
 
         with h5py.File(d, "a") as dest:
-            dest["/trigger/element"][1] = -1
-            dest["/trigger/try_element"][1] = try_element
+            dest["/Trigger/element"][1] = -1
+            dest["/Trigger/try_element"][1] = try_element
 
 
-def __write(elements, ret, args, executable, cli_args, meta):
+def __filter(ret, filepath, meta):
     """
-    Internal use only.
-    Just to avoid duplicate code.
+    Filter already run simulations.
     """
+
+    assert os.path.isfile(filepath)
+
+    with h5py.File(filepath, "r") as file:
+        # cli_ensembleinfo
+        if "sig0" in file:
+            raise OSError("Not yet implemented (not very hard though)")
+        # cli_ensemblepack
+        else:
+            if g5.join("/ensemble", meta[0]) in file:
+                m = file[g5.join("/ensemble", meta[0])]
+                for key in meta[1]:
+                    assert m.attrs[key] == meta[1][key]
+
+            present = sorted(i for i in file["event"])
+            ensemble = [os.path.basename(i) for i in ret["dest"]]
+            keep = ~np.in1d(ensemble, present)
+            for key in ret:
+                ret[key] = list(itertools.compress(ret[key], keep))
+
+    return ret
+
+
+def cli_job_deltasigma(cli_args=None):
+    """
+    Create jobs to trigger at fixed stress increase ``delta_sigma``
+    since the last system-spanning event:
+    ``stress[i] = sigma_c[i] + j * delta_sigma`` with ``j = 0, 1, ...``.
+    The highest stress is thereby always lower than that of the next system spanning event.
+    """
+
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    progname = entry_points[funcname]
+
+    parser.add_argument("--conda", type=str, default=slurm.default_condabase, help="Env-basename")
+    parser.add_argument("--develop", action="store_true", help="Development mode")
+    parser.add_argument("--filter", type=str, help="Filter completed jobs")
+    parser.add_argument("--nmax", type=int, help="Keep first nmax jobs (mostly for testing)")
+    parser.add_argument("--truncate-system-spanning", action="store_true", help="Stop large events")
+    parser.add_argument(
+        "--istress",
+        type=int,
+        action="append",
+        help="Select only specific stress for the list of stresses",
+    )
+    parser.add_argument("-d", "--delta-sigma", type=float, required=True, help="delta_sigma")
+    parser.add_argument("-e", "--element", type=int, action="append", help="Specify element(s)")
+    parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
+    parser.add_argument("-n", "--group", type=int, default=50, help="#simulations to group")
+    parser.add_argument("-o", "--outdir", type=str, default=".", help="Output directory")
+    parser.add_argument("-p", "--pushes", type=int, default=3, help="#elements per configuration")
+    parser.add_argument("-r", "--subdir", action="store_true", help="Separate in directories")
+    parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
+    parser.add_argument("ensembleinfo", type=str, help="EnsembleInfo (read-only)")
+
+    args = tools._parse(parser, cli_args)
+    assert os.path.isfile(args.ensembleinfo)
+
+    if not os.path.isdir(args.outdir):
+        os.makedirs(args.outdir)
+
+    basedir = pathlib.Path(args.ensembleinfo).parent
+    executable = entry_points["cli_run"]
+
+    with h5py.File(args.ensembleinfo, "r") as file:
+        files = [basedir / f for f in file["/files"].asstr()[...]]
+        N = file["/normalisation/N"][...]
+        A = file["/avalanche/A"][...]
+        step = file["/avalanche/step"][...]
+        sig = file["/avalanche/sig"][...]
+        ifile = file["/avalanche/file"][...]
+        step_loading = file["/loading/step"][...]
+        sig_loading = file["/loading/sig"][...]
+        ifile_loading = file["/loading/file"][...]
+
+    keep = A == N
+    step = step[keep]
+    sig = sig[keep]
+    ifile = ifile[keep]
+    step_loading = step_loading[keep]
+    sig_loading = sig_loading[keep]
+    ifile_loading = ifile_loading[keep]
+    assert all(step - 1 == step_loading)
+    assert args.delta_sigma > 0
+    assert args.delta_sigma < np.max(sig_loading - sig)
+    elements = np.linspace(0, N + 1, args.pushes + 1)[:-1].astype(int)
+
+    if args.element:
+        elements = args.element
+
+    ret = dict(
+        source=[],
+        dest=[],
+        step=[],
+        step_c=[],
+        stress=[],
+    )
+
+    basecommand = [executable]
+    if args.truncate_system_spanning:
+        basecommand += ["--truncate-system-spanning"]
+
+    for i in range(sig.size - 1):
+
+        if ifile[i] != ifile_loading[i + 1]:
+            continue
+
+        filepath = files[ifile[i]]
+        sid = filepath.stem
+        assert sig_loading[i + 1] > sig[i]
+        stress = sig[i] + args.delta_sigma * np.arange(100, dtype=float)
+        stress = stress[stress < sig_loading[i + 1]]
+
+        if args.istress:
+            stress = [stress[i] for i in args.istress]
+
+        for istress, s in enumerate(stress):
+
+            if istress == 0:
+                j = step[i]  # directly after system-spanning events
+            else:
+                j = None  # at fixed stress
+
+            if args.subdir:
+                bse = f"{args.outdir}/{sid}/deltasigma={args.delta_sigma:.3f}"
+                if not os.path.isdir(f"{args.outdir}/{sid}"):
+                    os.makedirs(f"{args.outdir}/{sid}")
+            else:
+                bse = f"{args.outdir}/deltasigma={args.delta_sigma:.3f}"
+            out = f"{bse}_{sid}_incc={step[i]:d}_element={elements[0]:d}_istep={istress:02d}.h5"
+            ret["source"].append(filepath)
+            ret["dest"].append(out)
+            ret["step"].append(j)
+            ret["step_c"].append(step[i])
+            ret["stress"].append(s)
+
+    # -----------
+    # write files
+    # -----------
+
+    meta = {
+        "deltasigma": args.delta_sigma,
+        "pushes": args.pushes,
+    }
+
+    meta = (f"/meta/{progname}", meta)
 
     if args.nmax is not None:
         for key in ret:
             ret[key] = ret[key][: args.nmax]
 
-    # when previously present data have to be filtered the trick of generating for one element
-    # and then copying cannot be used
+    # when previously present data have to be filtered the trick of
+    # generating for one element and then copying cannot be used
     # instead generate per element after filtering
     # (this could be made more clever, but it would take some more coding)
     if args.filter:
@@ -1151,163 +1150,3 @@ def __write(elements, ret, args, executable, cli_args, meta):
 
     if cli_args is not None:
         return [" ".join(cmd + [i]) for i in outfiles]
-
-
-def __filter(ret, filepath, meta):
-    """
-    Filter already run simulations.
-    """
-
-    assert os.path.isfile(filepath)
-
-    with h5py.File(filepath, "r") as file:
-        # cli_ensembleinfo
-        if "sigd0" in file:
-            raise OSError("Not yet implemented (not very hard though)")
-        # cli_ensemblepack
-        else:
-            if g5.join("/ensemble", meta[0]) in file:
-                m = file[g5.join("/ensemble", meta[0])]
-                for key in meta[1]:
-                    assert m.attrs[key] == meta[1][key]
-
-            present = sorted(i for i in file["event"])
-            ensemble = [os.path.basename(i) for i in ret["dest"]]
-            keep = ~np.in1d(ensemble, present)
-            for key in ret:
-                ret[key] = list(itertools.compress(ret[key], keep))
-
-    return ret
-
-
-def cli_job_deltasigma(cli_args=None):
-    """
-    Create jobs to trigger at fixed stress increase ``delta_sigma``
-    after the last system-spanning event:
-    ``stress[i] = sigma_c[i] + j * delta_sigma`` with ``j = 0, 1, ...``.
-    The highest stress is thereby always lower than that where the next system spanning event.
-    """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
-    funcname = inspect.getframeinfo(inspect.currentframe()).function
-    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
-    progname = entry_points[funcname]
-
-    parser.add_argument("--conda", type=str, default=slurm.default_condabase, help="Env-basename")
-    parser.add_argument("--develop", action="store_true", help="Development mode")
-    parser.add_argument("--filter", type=str, help="Filter completed jobs")
-    parser.add_argument("--nmax", type=int, help="Keep first nmax jobs (mostly for testing)")
-    parser.add_argument("--truncate-system-spanning", action="store_true", help="Stop large events")
-    parser.add_argument(
-        "--istress",
-        type=int,
-        action="append",
-        help="Select only specific stress for the list of stresses",
-    )
-    parser.add_argument("-d", "--delta-sigma", type=float, required=True, help="delta_sigma")
-    parser.add_argument("-e", "--element", type=int, action="append", help="Specify element(s)")
-    parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
-    parser.add_argument("-n", "--group", type=int, default=50, help="#simulations to group")
-    parser.add_argument("-o", "--outdir", type=str, default=".", help="Output directory")
-    parser.add_argument("-p", "--pushes", type=int, default=3, help="#elements per configuration")
-    parser.add_argument("-r", "--subdir", action="store_true", help="Separate in directories")
-    parser.add_argument("-v", "--version", action="version", version=version)
-    parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
-    parser.add_argument("ensembleinfo", type=str, help="EnsembleInfo (read-only)")
-
-    args = tools._parse(parser, cli_args)
-    assert os.path.isfile(args.ensembleinfo)
-
-    if not os.path.isdir(args.outdir):
-        os.makedirs(args.outdir)
-
-    basedir = os.path.dirname(args.ensembleinfo)
-    executable = entry_points["cli_run"]
-
-    with h5py.File(args.ensembleinfo, "r") as file:
-        files = [os.path.join(basedir, f) for f in file["/files"].asstr()[...]]
-        N = file["/normalisation/N"][...]
-        A = file["/avalanche/A"][...]
-        inc = file["/avalanche/inc"][...]
-        sigd = file["/avalanche/sigd"][...]
-        ifile = file["/avalanche/file"][...]
-        inc_loading = file["/loading/inc"][...]
-        sigd_loading = file["/loading/sigd"][...]
-        ifile_loading = file["/loading/file"][...]
-
-    keep = A == N
-    inc = inc[keep]
-    sigd = sigd[keep]
-    ifile = ifile[keep]
-    inc_loading = inc_loading[keep]
-    sigd_loading = sigd_loading[keep]
-    ifile_loading = ifile_loading[keep]
-    assert all(inc - 1 == inc_loading)
-    assert args.delta_sigma > 0
-    assert args.delta_sigma < np.max(sigd_loading - sigd)
-    elements = np.linspace(0, N + 1, args.pushes + 1)[:-1].astype(int)
-
-    if args.element:
-        elements = args.element
-
-    ret = dict(
-        source=[],
-        dest=[],
-        inc=[],
-        incc=[],
-        stress=[],
-    )
-
-    meta = {
-        "deltasigma": args.delta_sigma,
-        "pushes": args.pushes,
-    }
-
-    basecommand = [executable]
-    if args.truncate_system_spanning:
-        basecommand += ["--truncate-system-spanning"]
-
-    for i in range(sigd.size - 1):
-
-        if ifile[i] != ifile_loading[i + 1]:
-            continue
-
-        filepath = files[ifile[i]]
-        simid = os.path.basename(os.path.splitext(filepath)[0])
-        assert sigd_loading[i + 1] > sigd[i]
-        stress = sigd[i] + args.delta_sigma * np.arange(100, dtype=float)
-        stress = stress[stress < sigd_loading[i + 1]]
-
-        if args.istress:
-            stress = [stress[i] for i in args.istress]
-
-        for istress, s in enumerate(stress):
-
-            if istress == 0:
-                j = inc[i]  # directly after system-spanning events
-            else:
-                j = None  # at fixed stress
-
-            if args.subdir:
-                bse = f"{args.outdir}/{simid}/deltasigma={args.delta_sigma:.3f}"
-                if not os.path.isdir(f"{args.outdir}/{simid}"):
-                    os.makedirs(f"{args.outdir}/{simid}")
-            else:
-                bse = f"{args.outdir}/deltasigma={args.delta_sigma:.3f}"
-            out = f"{bse}_{simid}_incc={inc[i]:d}_element={elements[0]:d}_istep={istress:02d}.h5"
-            ret["source"].append(filepath)
-            ret["dest"].append(out)
-            ret["inc"].append(j)
-            ret["incc"].append(inc[i])
-            ret["stress"].append(s)
-
-    return __write(elements, ret, args, executable, cli_args, meta=(f"/meta/{progname}", meta))
-
-
