@@ -329,6 +329,7 @@ def branch_fixed_stress(
     # restore specific step
     if step is not None:
         system.u = source[f"/QuasiStatic/u/{step:d}"][...]
+        dest[root]["kick"][0] = source["/QuasiStatic/kick"][step]
         if stress is not None:
             assert np.isclose(stress, output["sig"][step])
         if step_c is not None:
@@ -1091,6 +1092,7 @@ def basic_output(
         A: Number of blocks that yielded at least once [nstep].
         xi: Largest extension corresponding to A [nstep].
         duration: Duration of the event (dimensionless) [nstep].
+        dinc: Same as `duration` but in number of time steps [nstep].
         kick: True is step started with a kick [nstep].
         step: Step numbers == np.arange(nstep).
         steadystate: Step number where the steady state starts (int).
@@ -1169,6 +1171,7 @@ def basic_output(
         i_n = np.copy(i)
         Sig_plas_n = np.copy(Sig_plas)
 
+    ret["dinc"] = np.diff(root["inc"][...], prepend=0)
     ret["duration"] = np.diff(root["inc"][...] * ret["dt"][...], prepend=0) / ret["t0"]
     ret["steadystate"] = steadystate(**ret)
 
