@@ -46,26 +46,6 @@ class MyTests(unittest.TestCase):
 
         shutil.rmtree(dirname)
 
-    def test_strain(self):
-
-        n = 3
-        opts = ["--dev", "-f", infoname, "-n", 4, "-p", 2, "-o", dirname, "--nmax", n, "-r"]
-        commands = Trigger.cli_job_strain(opts)
-        commands += Trigger.cli_job_strain(opts + ["--element", "2"])
-
-        output = []
-        for command in commands:
-            output.append(Trigger.cli_run(command.split(" ")[1:]))
-
-        triggerpack = os.path.join(dirname, "TriggerPack.h5")
-        triggerinfo = os.path.join(dirname, "TriggerInfo.h5")
-        Trigger.cli_ensemblepack(["-f", "-o", triggerpack] + output[:2])
-        Trigger.cli_ensemblepack(["-a", "-o", triggerpack] + output[2:])
-        Trigger.cli_ensembleinfo(["--dev", "-f", "-o", triggerinfo, triggerpack])
-
-        extra = Trigger.cli_job_strain(opts + ["--filter", triggerpack])
-        self.assertFalse(np.any(np.in1d(extra, commands)))
-
     def test_deltasigma(self):
 
         n = 5
