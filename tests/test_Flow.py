@@ -1,36 +1,38 @@
 import os
+import pathlib
 import shutil
 import sys
 import unittest
 
 import h5py
 
-root = os.path.join(os.path.dirname(__file__), "..")
-if os.path.exists(os.path.join(root, "mycode_front", "_version.py")):
-    sys.path.insert(0, os.path.abspath(root))
+root = pathlib.Path(__file__).parent.joinpath("..").resolve()
+if (root / "mycode_front" / "_version.py").exists():
+    sys.path.insert(0, str(root))
 
 from mycode_front import Flow  # noqa: E402
 
-dirname = "mytest"
+dirname = pathlib.Path(__file__).parent / "output" / "Flow"
+
+
+def setUpModule():
+    """
+    Create working directory.
+    """
+    os.makedirs(dirname, exist_ok=True)
+
+
+def tearDownModule():
+    """
+    Remove working directory.
+    """
+    shutil.rmtree(dirname)
 
 
 class MyTests(unittest.TestCase):
     """
     Tests
     """
-
-    @classmethod
-    def setUpClass(self):
-
-        if os.path.isdir(dirname):
-            shutil.rmtree(dirname)
-
-        os.makedirs(dirname)
-
-    @classmethod
-    def tearDownClass(self):
-
-        shutil.rmtree(dirname)
 
     def test_small(self):
         """
@@ -42,7 +44,10 @@ class MyTests(unittest.TestCase):
         files = Flow.cli_generate(["-N", N, "--dev", dirname])
 
         with h5py.File(files[-1], "a") as file:
-            file["/boundcheck"][...] = 193
+            file["/param/cusp/epsy/nchunk"][...] = 200
+
+        with h5py.File(files[-1], "a") as file:
+            file["/Flow/boundcheck"][...] = 193
 
         Flow.cli_run(["--develop", files[-1]])
         Flow.cli_ensembleinfo(["-o", os.path.join(dirname, "einfo.h5"), files[-1]])
