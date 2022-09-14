@@ -329,7 +329,7 @@ def branch_fixed_stress(
     # restore specific step
     if step is not None:
         system.u = source[f"/QuasiStatic/u/{step:d}"][...]
-        dest[root]["kick"][0] = source[f"/QuasiStatic/kick"][step]
+        dest[root]["kick"][0] = source["/QuasiStatic/kick"][step]
         if stress is not None:
             assert np.isclose(stress, output["sig"][step])
         if step_c is not None:
