@@ -329,7 +329,7 @@ def branch_fixed_stress(
     # restore specific step
     if step is not None:
         system.u = source[f"/QuasiStatic/u/{step:d}"][...]
-        dest[root]["kick"][0] = source["/QuasiStatic/kick"][step]
+        dest[root]["kick"][0] = source[f"/QuasiStatic/kick"][step]
         if stress is not None:
             assert np.isclose(stress, output["sig"][step])
         if step_c is not None:
@@ -584,49 +584,49 @@ def generate(
 
         storage.dump_with_atttrs(
             file,
-            "/meta/normalisation/N",
+            "/param/normalisation/N",
             N,
             desc="Number of blocks along each plastic layer",
         )
 
         storage.dump_with_atttrs(
             file,
-            "/meta/normalisation/l",
+            "/param/normalisation/l",
             h,
             desc="Elementary block size",
         )
 
         storage.dump_with_atttrs(
             file,
-            "/meta/normalisation/rho",
+            "/param/normalisation/rho",
             rho,
             desc="Elementary density",
         )
 
         storage.dump_with_atttrs(
             file,
-            "/meta/normalisation/G",
+            "/param/normalisation/G",
             G,
             desc="Uniform shear modulus == 2 mu",
         )
 
         storage.dump_with_atttrs(
             file,
-            "/meta/normalisation/K",
+            "/param/normalisation/K",
             K,
             desc="Uniform bulk modulus == kappa",
         )
 
         storage.dump_with_atttrs(
             file,
-            "/meta/normalisation/eps",
+            "/param/normalisation/eps",
             eps0,
             desc="Typical yield strain",
         )
 
         storage.dump_with_atttrs(
             file,
-            "/meta/normalisation/sig",
+            "/param/normalisation/sig",
             2.0 * G * eps0,
             desc="== 2 G eps0",
         )
@@ -1043,14 +1043,14 @@ def normalisation(file: h5py.File):
 
     ret = {}
 
-    alias = file["meta"]["normalisation"]
-    N = alias["N"][...]
-    eps0 = alias["eps"][...]
-    sig0 = alias["sig"][...]
-    ret["l0"] = alias["l"][...]
-    ret["G"] = alias["G"][...]
-    ret["K"] = alias["K"][...]
-    ret["rho"] = alias["rho"][...]
+    root = file["param"]["normalisation"]
+    N = root["N"][...]
+    eps0 = root["eps"][...]
+    sig0 = root["sig"][...]
+    ret["l0"] = root["l"][...]
+    ret["G"] = root["G"][...]
+    ret["K"] = root["K"][...]
+    ret["rho"] = root["rho"][...]
     ret["seed"] = file["realisation"]["seed"][...]
 
     # interpret / store additional normalisation
@@ -1665,9 +1665,9 @@ def cli_transform_deprecated(cli_args=None):
     with h5py.File(args.file + ".bak") as src, h5py.File(args.file, "w") as dest:
 
         paths = list(g5.getdatapaths(src))
-        for key in g5.getdatapaths(src, root="/meta/normalisation"):
+        for key in g5.getdatapaths(src, root="/param/normalisation"):
             paths.remove(key)
-        paths.append("/meta/normalisation")
+        paths.append("/param/normalisation")
 
         paths = transform_deprecated_param(src, dest, paths)
 
@@ -1678,7 +1678,7 @@ def cli_transform_deprecated(cli_args=None):
         rename["/meta/EnsembleInfo"] = "/meta/QuasiStatic_EnsembleInfo"
         rename["/meta/Run_generate"] = "/meta/QuasiStatic_Generate"
         rename["/meta/Run"] = "/meta/QuasiStatic_Run"
-        rename["/meta/normalisation"] = "/meta/normalisation"
+        rename["/meta/normalisation"] = "/param/normalisation"
 
         for key in rename:
             if key not in src:
@@ -1689,7 +1689,7 @@ def cli_transform_deprecated(cli_args=None):
         dest["/QuasiStatic/inc"] = np.round(src["/t"][...] / src["/run/dt"][...]).astype(int)
         paths.remove("/t")
 
-        assert "/meta/normalisation" in dest
+        assert "/param/normalisation" in dest
         assert np.all(src["/stored"][...] == np.arange(dest["/QuasiStatic/inc"].size))
         paths.remove("/stored")
         paths.remove("/disp")
