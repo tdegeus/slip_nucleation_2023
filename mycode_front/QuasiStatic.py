@@ -1575,7 +1575,7 @@ def cli_state_after_systemspanning(cli_args=None):
                 file[key] = data[key]
 
 
-def transform_deprecated_param(src, dest, paths):
+def transform_deprecated_param(src, dest, paths, source_root: str = "/"):
     """
     Transform deprecated parameters.
     This code is considered 'non-maintained'.
@@ -1584,39 +1584,47 @@ def transform_deprecated_param(src, dest, paths):
     # read and remove from list of paths
     def read_clear(file, key, paths):
         value = file[key][...]
-        paths.remove(key)
+        try:
+            paths.remove(key)
+        except ValueError:
+            raise ValueError(f"{key} not found in paths")
         return value
 
+    source_root = g5.abspath(source_root)
     dest.create_group("param")
 
     for key in ["/alpha", "/eta", "/rho", "/elastic/K", "/elastic/G", "/cusp/K", "/cusp/G"]:
-        if key not in src:
+        if g5.join(source_root, key) not in src:
             continue
-        data = read_clear(src, key, paths)
+        data = read_clear(src, g5.join(source_root, key), paths)
         value = np.atleast_1d(data)[0]
         assert np.allclose(value, data)
         dest[g5.join("param", key, root=True)] = value
 
-    assert "dofsP" not in src, "WIP: please implement when needed"
+    assert g5.join(source_root, "dofsP") not in src, "WIP: please implement when needed"
+
     for key in ["/coor", "/conn", "/dofs", "/iip"]:
-        g5.copy(src, dest, [key], root="param")
-        paths.remove(key)
+        g5.copy(src, dest, key, root="param", source_root=source_root)
+        paths.remove(g5.join(source_root, key))
 
-    plastic = read_clear(src, "/cusp/elem", paths)
-    elastic = np.setdiff1d(np.arange(src["conn"].shape[0]), plastic)
-    assert np.all(read_clear(src, "/elastic/elem", paths) == elastic)
-    dest["/param/cusp/elem"] = plastic
+    plastic = read_clear(src, g5.join(source_root, "/cusp/elem"), paths)
+    elastic = np.setdiff1d(np.arange(src[g5.join(source_root, "conn")].shape[0]), plastic)
+    assert np.all(read_clear(src, g5.join(source_root, "/elastic/elem"), paths) == elastic)
+    g5.copy(src, dest, "/cusp/elem", "/param/cusp/elem", source_root=source_root)
 
-    assert not isinstance(src["/cusp/epsy"], h5py.Dataset), "WIP: please implement when needed"
-    seed = src["/meta/seed_base"][...]
-    initstate = read_clear(src, "/cusp/epsy/initstate", paths)
-    initseq = read_clear(src, "/cusp/epsy/initseq", paths)
+    assert not isinstance(
+        src[g5.join(source_root, "/cusp/epsy")], h5py.Dataset
+    ), "WIP: please implement when needed"
+
+    seed = src[g5.join(source_root, "/meta/seed_base")][...]
+    initstate = read_clear(src, g5.join(source_root, "/cusp/epsy/initstate"), paths)
+    initseq = read_clear(src, g5.join(source_root, "/cusp/epsy/initseq"), paths)
     new_initstate = np.arange(initstate.size, dtype=initstate.dtype)
     new_initseq = np.zeros_like(initseq)
     assert np.all(initstate == seed + new_initstate)
     assert np.all(initseq == new_initseq)
     dest["/param/cusp/epsy/initstate"] = new_initstate
-    dest["/param/cusp/epsy/initseq"] = new_initseq
+    g5.copy(src, dest, "/cusp/epsy/initseq", "/param/cusp/epsy/initseq", source_root=source_root)
 
     rename = {
         "/cusp/epsy/nchunk": "/param/cusp/epsy/nchunk",
@@ -1629,8 +1637,10 @@ def transform_deprecated_param(src, dest, paths):
     }
 
     for key in rename:
-        g5.copy(src, dest, key, rename[key])
-        paths.remove(key)
+        if g5.join(source_root, key) not in src:
+            continue
+        g5.copy(src, dest, g5.join(source_root, key), rename[key])
+        paths.remove(g5.join(source_root, key))
 
     return paths
 
@@ -1639,6 +1649,31 @@ def cli_transform_deprecated(cli_args=None):
     """
     Transform old data structure to the current one.
     This code is considered 'non-maintained'.
+
+    To check::
+
+        G5compare \
+            -r "/meta/seed_base" "/realisation/seed" \
+            -r "/meta/normalisation" "/param/normalisation" \
+            -r "/alpha" "/param/alpha" \
+            -r "/rho" "/param/rho" \
+            -r "/conn" "/param/conn" \
+            -r "/coor" "/param/coor" \
+            -r "/dofs" "/param/dofs" \
+            -r "/iip" "/param/iip" \
+            -r "/cusp" "/param/cusp" \
+            -r "/cusp/epsy/k" "/param/cusp/epsy/weibull/k" \
+            -r "/cusp/epsy/eps0" "/param/cusp/epsy/weibull/typical" \
+            -r "/cusp/epsy/eps_offset" "/param/cusp/epsy/weibull/offset" \
+            -r "/elastic" "/param/elastic" \
+            -r "/run/dt" "/param/dt" \
+            -r "/run/epsd/kick" "/param/cusp/epsy/deps" \
+            -r "/disp" "/QuasiStatic/u" \
+            -r "/kick" "/QuasiStatic/kick" \
+            -r "/t" "/QuasiStatic/inc" \
+            -r "/meta/Run_generate" "/meta/QuasiStatic_Generate" \
+            -r "/meta/Run" "/meta/QuasiStatic_Run" \
+            foo.h5.bak foo.h5
     """
 
     class MyFmt(
@@ -1664,13 +1699,8 @@ def cli_transform_deprecated(cli_args=None):
 
     with h5py.File(args.file + ".bak") as src, h5py.File(args.file, "w") as dest:
 
-        paths = list(g5.getdatapaths(src))
-        for key in g5.getdatapaths(src, root="/param/normalisation"):
-            paths.remove(key)
-        paths.append("/param/normalisation")
-
+        paths = list(g5.getdatapaths(src, fold="/meta/normalisation", fold_symbol=""))
         paths = transform_deprecated_param(src, dest, paths)
-
         dest.create_group("QuasiStatic")
 
         rename = {f"/disp/{i}": f"/QuasiStatic/u/{i}" for i in src["disp"]}
@@ -1686,7 +1716,7 @@ def cli_transform_deprecated(cli_args=None):
             g5.copy(src, dest, key, rename[key])
             paths.remove(key)
 
-        dest["/QuasiStatic/inc"] = np.round(src["/t"][...] / src["/run/dt"][...]).astype(int)
+        dest["/QuasiStatic/inc"] = np.round(src["/t"][...] / src["/run/dt"][...]).astype(np.uint64)
         paths.remove("/t")
 
         assert "/param/normalisation" in dest

@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import inspect
 import itertools
+import logging
 import os
 import pathlib
 import shutil
@@ -38,6 +39,7 @@ entry_points = dict(
     cli_job_rerun_dynamics="Trigger_JobRerunDynamics",
     cli_job_rerun_eventmap="Trigger_JobRerunEventMap",
     cli_run="Trigger_Run",
+    cli_transform_deprecated_pack="Trigger_TransformDeprecatedEnsemblePack",
 )
 
 file_defaults = dict(
@@ -1150,3 +1152,158 @@ def cli_job_deltasigma(cli_args=None):
 
     if cli_args is not None:
         return [" ".join(cmd + [i]) for i in outfiles]
+
+
+def cli_transform_deprecated_pack(cli_args=None):
+    """
+    Transform old data structure to the current one.
+    This code is considered 'non-maintained'.
+    """
+
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    progname = entry_points[funcname]
+
+    parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
+    parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("--log", default=entry_points[funcname] + ".log", help="Log file")
+    parser.add_argument("source", type=str, help="Source (read only)")
+    parser.add_argument("dest", type=str, help="Destination (overwritten)")
+
+    args = tools._parse(parser, cli_args)
+
+    logger = logging.getLogger("mylogger")
+    logger.setLevel(logging.WARNING)
+    handler = logging.FileHandler(args.log)
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+
+        temp_file = os.path.join(temp_dir, "tmp.h5")
+        temp_file = "mytmp.h5"
+
+        with h5py.File(args.source) as src, h5py.File(args.dest, "w-") as dest:
+
+            paths = list(g5.getdatasets(src, fold="event", fold_symbol=""))
+            paths.remove("/event")
+
+            if len(paths) > 0:
+                logger.warning("Potentially not be copied:\n" + "\n".join(paths))
+
+            pbar = tqdm.tqdm(src["event"])
+
+            for ifile, name in enumerate(pbar):
+
+                pbar.set_description(f"{name}")
+                root = f"/event/{name}"
+                dest.create_group(root)
+                allow_nonempty = False
+                fold = ["/meta/normalisation", "/trigger"]
+
+                if ifile == 0:
+                    paths = list(g5.getdatapaths(src, root=root, fold=fold, fold_symbol=""))
+                    paths_bak = [i for i in paths]
+                    root_bak = root
+
+                try:
+                    paths = list(g5.getdatapaths(src, root=root, fold=fold, fold_symbol=""))
+                except:
+                    paths = [g5.join(root, i.split(root_bak)[1]) for i in paths_bak]
+                    logger.warning(f'Failed to read paths "{name}"')
+
+                # copy/check parameters
+                try:
+
+                    with h5py.File(temp_file, "w") as tmp:
+
+                        paths = QuasiStatic.transform_deprecated_param(
+                            src, tmp, paths, source_root=root
+                        )
+
+                        for key in g5.getdatapaths(src, root=g5.join(root, "/meta/normalisation")):
+                            g5.copy(src, tmp, key, key.split(root)[1].replace("/meta", "/param"))
+
+                        paths.remove(g5.join(root, "/meta/normalisation"))
+
+                        if ifile == 0:
+                            g5.copy(tmp, dest, "/param")
+                            g5.copy(tmp, dest, "/realisation/seed", root=root)
+                        else:
+                            check = list(g5.getdatapaths(tmp))
+                            check.remove("/realisation/seed")
+                            assert g5.allequal(tmp, dest, check)
+
+                except:  # noqa: E722
+
+                    if ifile > 0:
+                        logger.warning(f'Failed to read parameters "{name}"')
+                        allow_nonempty = True
+                    else:
+                        raise OSError("Cannot read parameters")
+
+                # link parameters
+                dest[g5.join(root, "param")] = h5py.SoftLink("/param")
+
+                # basic trigger fields
+                rename = {"/trigger": "/Trigger"}
+
+                for key in rename:
+                    if g5.join(root, key) not in src:
+                        logger.warning(f'No trigger in "{name}"')
+                        continue
+                    g5.copy(src, dest, g5.join(root, key), g5.join(root, rename[key]))
+                    paths.remove(g5.join(root, key))
+
+                # fields that were previously not grouped under trigger
+                rename = {f"/disp/{i}": f"/Trigger/u/{i}" for i in src[g5.join(root, "disp")]}
+                rename["/kick"] = "/Trigger/kick"
+
+                for key in rename:
+                    g5.copy(src, dest, g5.join(root, key), g5.join(root, rename[key]))
+                    paths.remove(g5.join(root, key))
+
+                # optional metadata
+                rename = {}
+                rename["/meta/EnsembleInfo"] = "/meta/QuasiStatic_EnsembleInfo"
+                rename["/meta/Run_generate"] = "/meta/QuasiStatic_Generate"
+                rename["/meta/Run"] = "/meta/QuasiStatic_Run"
+                rename["/meta/Trigger_run"] = "/meta/Trigger_Run"
+                rename["/meta/branch_fixed_stress"] = "/meta/branch_fixed_stress"
+
+                for key in rename:
+                    if g5.join(root, key) not in src:
+                        continue
+                    g5.copy(src, dest, g5.join(root, key), g5.join(root, rename[key]))
+                    paths.remove(g5.join(root, key))
+
+                t = src[g5.join(root, "/t")][...]
+                dt = src[g5.join(root, "/run/dt")][...]
+                dest[g5.join(root, "/Trigger/inc")] = np.round(t / dt).astype(np.uint64)
+                paths.remove(g5.join(root, "/t"))
+
+                # adding meta data
+                dest.create_group(g5.join(root, f"/meta/{progname}")).attrs["version"] = version
+
+                # assertions
+                assert "/param/normalisation" in dest
+
+                n = dest[g5.join(root, "/Trigger/inc")].size
+                assert np.all(src[g5.join(root, "stored")][...] == np.arange(n))
+
+                paths.remove(g5.join(root, "/stored"))
+                paths.remove(g5.join(root, "/disp"))
+
+                if len(paths) > 0:
+                    logger.warning("Potentially not be copied:\n" + "\n".join(paths))
+
+                assert len(paths) == 0 or allow_nonempty

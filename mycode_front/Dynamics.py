@@ -29,6 +29,7 @@ entry_points = dict(
     cli_average_systemspanning="Dynamics_AverageSystemSpanning",
     cli_plot_height="Dynamics_PlotMeshHeight",
     cli_run="Dynamics_Run",
+    cli_transform_deprecated="Dynamics_TransformDeprecated",
 )
 
 file_defaults = dict(
@@ -741,3 +742,105 @@ def cli_average_systemspanning(cli_args=None):
                     file[f"/sync-A/{title}/{i}/{key}/first"] = syncA[title][i][key].first
                     file[f"/sync-A/{title}/{i}/{key}/second"] = syncA[title][i][key].second
                     file[f"/sync-A/{title}/{i}/{key}/norm"] = syncA[title][i][key].norm
+
+
+def cli_transform_deprecated(cli_args=None):
+    """
+    Transform old data structure to the current one.
+    This code is considered 'non-maintained'.
+
+    To check::
+
+        G5compare \
+            -r "/meta/seed_base" "/realisation/seed" \
+            -r "/meta/normalisation" "/param/normalisation" \
+            -r "/alpha" "/param/alpha" \
+            -r "/rho" "/param/rho" \
+            -r "/conn" "/param/conn" \
+            -r "/coor" "/param/coor" \
+            -r "/dofs" "/param/dofs" \
+            -r "/iip" "/param/iip" \
+            -r "/cusp" "/param/cusp" \
+            -r "/cusp/epsy/k" "/param/cusp/epsy/weibull/k" \
+            -r "/cusp/epsy/eps0" "/param/cusp/epsy/weibull/typical" \
+            -r "/cusp/epsy/eps_offset" "/param/cusp/epsy/weibull/offset" \
+            -r "/elastic" "/param/elastic" \
+            -r "/run/dt" "/param/dt" \
+            -r "/run/epsd/kick" "/param/cusp/epsy/deps" \
+            -r "/kick" "/Dynamics/kick" \
+            -r "/dynamics" "/Dynamics" \
+            -r "/meta/MeasureDynamics_run" "/meta/Dynamics_Run" \
+            foo.h5.bak foo.h5
+    """
+
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    progname = entry_points[funcname]
+
+    parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
+    parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("file", type=str, help="File to transform: .bak appended")
+
+    args = tools._parse(parser, cli_args)
+    assert os.path.isfile(args.file)
+    assert not os.path.isfile(args.file + ".bak")
+    os.rename(args.file, args.file + ".bak")
+
+    with h5py.File(args.file + ".bak") as src, h5py.File(args.file, "w") as dest:
+
+        fold = ["/meta/normalisation", "/dynamics"]
+        paths = list(g5.getdatapaths(src, fold=fold, fold_symbol=""))
+        paths = QuasiStatic.transform_deprecated_param(src, dest, paths)
+        dest.create_group("Flow")
+
+        rename = {}
+        rename["/meta/Run_generate"] = "/meta/QuasiStatic_Generate"
+        rename["/meta/Run"] = "/meta/QuasiStatic_Run"
+        rename["/meta/MeasureDynamics_run"] = "/meta/Dynamics_Run"
+        rename["/meta/normalisation"] = "/param/normalisation"
+        rename["/kick"] = "/Dynamics/kick"
+
+        for key in src["dynamics"]:
+            if key not in ["t", "stored"]:
+                rename[f"/dynamics/{key}"] = f"/Dynamics/{key}"
+                paths.append(f"/dynamics/{key}")
+
+        for key in rename:
+            if key not in src:
+                continue
+            g5.copy(src, dest, key, rename[key])
+            paths.remove(key)
+
+        t = src["/dynamics/t"][...]
+        dt = src["/run/dt"][...]
+        dest["/Dynamics/inc"] = np.round(t / dt).astype(np.uint64)
+        paths.remove("/t")
+
+        dest[f"/meta/{entry_points['cli_run']}"].attrs["element"] = src["/trigger/element"][1]
+        paths.remove("/trigger/element")
+        paths.remove("/trigger/branched")
+        paths.remove("/trigger/truncated")
+
+        assert "/param/normalisation" in dest
+        assert np.all(src["/dynamics/stored"][...] == np.arange(dest["/Dynamics/inc"].size))
+        paths.remove("/stored")
+        paths.remove("/disp/0")
+        paths.remove("/dynamics")
+
+        if "/dynamics" in paths:
+            paths.remove("/dynamics")
+
+        dest.create_group(f"/meta/{progname}").attrs["version"] = version
+
+        if len(paths) != 0:
+            print(paths)
+
+        assert len(paths) == 0

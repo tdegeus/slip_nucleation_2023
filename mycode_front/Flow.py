@@ -6,6 +6,7 @@ import os
 import re
 import sys
 import textwrap
+import uuid
 
 import FrictionQPotFEM  # noqa: F401
 import GMatElastoPlasticQPot  # noqa: F401
@@ -36,6 +37,7 @@ entry_points = dict(
     cli_update_branch_velocityjump="Flow_VelocityJump_UpdateBranch",
     cli_update_generate="Flow_GenerateUpdate",
     cli_update_run="Flow_RunUpdate",
+    cli_transform_deprecated="Flow_TransformDeprecated",
 )
 
 file_defaults = dict(
@@ -868,3 +870,89 @@ def cli_plot(cli_args=None):
         plt.show()
 
     plt.close(fig)
+
+
+def cli_transform_deprecated(cli_args=None):
+    """
+    Transform old data structure to the current one.
+    This code is considered 'non-maintained'.
+
+    To check::
+
+        G5compare \
+            -r "/meta/seed_base" "/realisation/seed" \
+            -r "/meta/normalisation" "/param/normalisation" \
+            -r "/alpha" "/param/alpha" \
+            -r "/rho" "/param/rho" \
+            -r "/conn" "/param/conn" \
+            -r "/coor" "/param/coor" \
+            -r "/dofs" "/param/dofs" \
+            -r "/iip" "/param/iip" \
+            -r "/cusp" "/param/cusp" \
+            -r "/cusp/epsy/k" "/param/cusp/epsy/weibull/k" \
+            -r "/cusp/epsy/eps0" "/param/cusp/epsy/weibull/typical" \
+            -r "/cusp/epsy/eps_offset" "/param/cusp/epsy/weibull/offset" \
+            -r "/elastic" "/param/elastic" \
+            -r "/run/dt" "/param/dt" \
+            -r "/run/epsd/kick" "/param/cusp/epsy/deps" \
+            -r "/gammadot" "/Flow/gammadot" \
+            -r "/output" "/Flow/output" \
+            -r "/snapshot" "/Flow/snapshot" \
+            -r "/restart" "/Flow/restart" \
+            -r "/boundcheck" "/Flow/boundcheck" \
+            -r "/meta/Flow_generate" "/meta/Flow_Generate" \
+            -r "/meta/Flow_run" "/meta/Flow_Run" \
+            -r "/meta/Run_generate" "/meta/QuasiStatic_Generate" \
+            foo.h5.bak foo.h5
+    """
+
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    progname = entry_points[funcname]
+
+    parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
+    parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("file", type=str, help="File to transform: .bak appended")
+
+    args = tools._parse(parser, cli_args)
+    assert os.path.isfile(args.file)
+    assert not os.path.isfile(args.file + ".bak")
+    os.rename(args.file, args.file + ".bak")
+
+    with h5py.File(args.file + ".bak") as src, h5py.File(args.file, "w") as dest:
+
+        old = ["/boundcheck", "/gammadot", "/output", "/snapshot", "/restart"]
+        fold = old + ["/meta/normalisation"]
+        paths = list(g5.getdatapaths(src, fold=fold, fold_symbol=""))
+        paths = QuasiStatic.transform_deprecated_param(src, dest, paths)
+        dest.create_group("Flow")
+
+        rename = {i: g5.join("/Flow", i) for i in old}
+        rename["/meta/Run_generate"] = "/meta/QuasiStatic_Generate"
+        rename["/meta/Flow_generate"] = "/meta/Flow_Generate"
+        rename["/meta/Flow_run"] = "/meta/Flow_Run"
+        rename["/meta/normalisation"] = "/param/normalisation"
+
+        for key in rename:
+            if key not in src:
+                continue
+            g5.copy(src, dest, key, rename[key])
+            paths.remove(key)
+
+        assert "/param/normalisation" in dest
+
+        dest.create_group(f"/meta/{progname}").attrs["version"] = version
+
+        if "Flow_Run" in dest["meta"]:
+            if "uuid" not in dest["/meta/Flow_Run"].attrs:
+                dest["/meta/Flow_Run"].attrs["uuid"] = str(uuid.uuid4())
+
+        assert len(paths) == 0
