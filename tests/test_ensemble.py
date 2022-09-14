@@ -14,7 +14,7 @@ import shelephant
 
 root = pathlib.Path(__file__).parent.joinpath("..").resolve()
 if (root / "mycode_front" / "_version.py").exists():
-    sys.path.insert(0, root)
+    sys.path.insert(0, str(root))
 
 from mycode_front import Dynamics  # noqa: E402
 from mycode_front import EventMap  # noqa: E402

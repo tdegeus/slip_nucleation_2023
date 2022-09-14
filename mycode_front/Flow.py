@@ -25,22 +25,22 @@ from ._version import version
 
 
 entry_points = dict(
-    cli_branch_velocityjump="Flow_branch_velocityjump",
-    cli_ensembleinfo="Flow_ensembleinfo",
-    cli_ensembleinfo_velocityjump="Flow_ensembleinfo_velocityjump",
-    cli_generate="Flow_generate",
-    cli_paraview="Flow_paraview",
-    cli_plot="Flow_plot",
-    cli_plot_velocityjump="Flow_plot_velocityjump",
-    cli_run="Flow_run",
-    cli_update_branch_velocityjump="Flow_update_branch_velocityjump",
-    cli_update_generate="Flow_update_generate",
-    cli_update_run="Flow_update_run",
+    cli_branch_velocityjump="Flow_VelocityJump_Branch",
+    cli_ensembleinfo="Flow_EnsembleInfo",
+    cli_ensembleinfo_velocityjump="Flow_VelocityJump_EnsembleInfo",
+    cli_generate="Flow_Generate",
+    cli_paraview="Flow_Paraview",
+    cli_plot="Flow_Plot",
+    cli_plot_velocityjump="Flow_VelocityJump_Plot",
+    cli_run="Flow_Run",
+    cli_update_branch_velocityjump="Flow_VelocityJump_UpdateBranch",
+    cli_update_generate="Flow_GenerateUpdate",
+    cli_update_run="Flow_RunUpdate",
 )
 
 file_defaults = dict(
     cli_ensembleinfo="Flow_EnsembleInfo.h5",
-    cli_ensembleinfo_velocityjump="Flow_EnsembleInfo_velocityjump.h5",
+    cli_ensembleinfo_velocityjump="Flow_VelocityJump_EnsembleInfo.h5",
 )
 
 
@@ -131,35 +131,35 @@ def generate(*args, **kwargs):
 
         storage.dump_with_atttrs(
             file,
-            "/gammadot",
+            "/Flow/gammadot",
             gammadot,
             desc="Applied shear-rate",
         )
 
         storage.dump_with_atttrs(
             file,
-            "/boundcheck",
+            "/Flow/boundcheck",
             10,
             desc="Stop at n potentials before running out of bounds",
         )
 
         storage.dump_with_atttrs(
             file,
-            "/restart/interval",
+            "/Flow/restart/interval",
             restart,
             desc="Restart storage interval",
         )
 
         storage.dump_with_atttrs(
             file,
-            "/output/interval",
+            "/Flow/output/interval",
             output,
             desc="Output storage interval",
         )
 
         storage.dump_with_atttrs(
             file,
-            "/snapshot/interval",
+            "/Flow/snapshot/interval",
             snapshot,
             desc="Snapshot storage interval",
         )
@@ -233,14 +233,13 @@ def cli_generate(cli_args=None):
                 seed=i * args.size,
                 scale_alpha=args.scale_alpha,
                 eta=args.eta,
-                test_mode=args.develop,
                 dev=args.develop,
             )
 
             # warning: Gammadot hard-coded here, check that yield strains did not change
             with h5py.File(filepath, "r") as file:
-                assert not isinstance(file["/cusp/epsy"], h5py.Dataset)
-                assert np.isclose(file["/cusp/epsy/eps0"][...], Ensemble.eps0)
+                assert not isinstance(file["/param/cusp/epsy"], h5py.Dataset)
+                assert np.isclose(file["/param/cusp/epsy/weibull/typical"][...], Ensemble.eps0)
 
     executable = entry_points["cli_run"]
     commands = [f"{executable} {file}" for file in filenames]
@@ -268,17 +267,20 @@ def run_create_extendible(file: h5py.File):
         yy=2,
     )
 
+    output = file["/Flow/output"]
+    snapshot = file["/Flow/snapshot"]
+
     # reaction force
-    storage.create_extendible(file, "/output/fext", np.float64, unit="sig0 (normalised stress)")
+    storage.create_extendible(output, "fext", np.float64, unit="sig0 (normalised stress)")
 
     # averaged on the weak layer
-    storage.create_extendible(file, "/output/sig", np.float64, ndim=2, unit="sig0", **flatindex)
-    storage.create_extendible(file, "/output/eps", np.float64, ndim=2, unit="eps0", **flatindex)
-    storage.create_extendible(file, "/output/epsp", np.float64, unit="eps0")
+    storage.create_extendible(output, "sig", np.float64, ndim=2, unit="sig0", **flatindex)
+    storage.create_extendible(output, "eps", np.float64, ndim=2, unit="eps0", **flatindex)
+    storage.create_extendible(output, "epsp", np.float64, unit="eps0")
 
     # book-keeping
-    storage.create_extendible(file, "/output/inc", np.uint32)
-    storage.create_extendible(file, "/snapshot/inc", np.uint32)
+    storage.create_extendible(output, "inc", np.uint32)
+    storage.create_extendible(snapshot, "inc", np.uint32)
 
 
 def __velocity_preparation(system, gammadot):
@@ -318,28 +320,33 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
         dV = system.plastic_dV(rank=2)
 
         if "completed" in meta.attrs:
-            print(f'"{basename}": marked completed, skipping')
-            return 1
+            if meta.attrs["completed"]:
+                print(f'"{basename}": marked completed, skipping')
+                return 1
 
         run_create_extendible(file)
 
         inc = 0
-        output = file["/output/interval"][...]
-        restart = file["/restart/interval"][...]
-        snapshot = file["/snapshot/interval"][...] if "/snapshot/interval" in file else sys.maxsize
-        v = __velocity_preparation(system, file["/gammadot"][...])
+        output = file["/Flow/output/interval"][...]
+        restart = file["/Flow/restart/interval"][...]
+        snapshot = (
+            file["/Flow/snapshot/interval"][...]
+            if "/Flow/snapshot/interval" in file
+            else sys.maxsize
+        )
+        v = __velocity_preparation(system, file["/Flow/gammadot"][...])
         init = True
         i_n = np.copy(system.plastic.i.astype(int))
 
-        boundcheck = file["/boundcheck"][...]
-        nchunk = file["/cusp/epsy/nchunk"][...] + 2 - boundcheck
+        boundcheck = file["/Flow/boundcheck"][...]
+        nchunk = file["/param/cusp/epsy/nchunk"][...] + 2 - boundcheck
         pbar = tqdm.tqdm(total=nchunk, disable=not progress, desc=filepath)
 
-        if "/restart/u" in file:
-            system.u = file["/restart/u"][...]
-            system.v = file["/restart/v"][...]
-            system.a = file["/restart/a"][...]
-            inc = int(file["/restart/inc"][...])
+        if "/Flow/restart/u" in file:
+            system.u = file["/Flow/restart/u"][...]
+            system.v = file["/Flow/restart/v"][...]
+            system.a = file["/Flow/restart/a"][...]
+            inc = int(file["/Flow/restart/inc"][...])
             pbar.n = np.max(system.plastic.i)
             pbar.refresh()
 
@@ -351,7 +358,7 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
 
             if init:
                 if np.all(system.plastic.i.astype(int) - i_n > 1):
-                    v = __velocity_steadystate(system, file["/gammadot"][...])
+                    v = __velocity_steadystate(system, file["/Flow/gammadot"][...])
                     init = False
 
             n = min(
@@ -375,23 +382,23 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
 
                 i = int(inc / snapshot)
 
-                for key in ["/snapshot/inc"]:
+                for key in ["/Flow/snapshot/inc"]:
                     file[key].resize((i + 1,))
 
-                file["/snapshot/inc"][i] = inc
-                file[f"/snapshot/u/{inc:d}"] = system.u
-                file[f"/snapshot/v/{inc:d}"] = system.v
-                file[f"/snapshot/a/{inc:d}"] = system.a
+                file["/Flow/snapshot/inc"][i] = inc
+                file[f"/Flow/snapshot/u/{inc:d}"] = system.u
+                file[f"/Flow/snapshot/v/{inc:d}"] = system.v
+                file[f"/Flow/snapshot/a/{inc:d}"] = system.a
                 file.flush()
 
             if inc % output == 0:
 
                 i = int(inc / output)
 
-                for key in ["/output/inc", "/output/fext", "/output/epsp"]:
+                for key in ["/Flow/output/inc", "/Flow/output/fext", "/Flow/output/epsp"]:
                     file[key].resize((i + 1,))
 
-                for key in ["/output/sig", "/output/eps"]:
+                for key in ["/Flow/output/sig", "/Flow/output/eps"]:
                     file[key].resize((3, i + 1))
 
                 Eps_weak = np.average(system.plastic.Eps / system.eps0, weights=dV, axis=(0, 1))
@@ -401,19 +408,19 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
                 fext[0] += fext[-1]
                 fext = np.mean(fext[:-1]) / h / system.normalisation["sig0"]
 
-                file["/output/inc"][i] = inc
-                file["/output/fext"][i] = fext
-                file["/output/epsp"][i] = np.mean(system.plastic.epsp / system.eps0)
-                file["/output/eps"][:, i] = Eps_weak.ravel()[[0, 1, 3]]
-                file["/output/sig"][:, i] = Sig_weak.ravel()[[0, 1, 3]]
+                file["/Flow/output/inc"][i] = inc
+                file["/Flow/output/fext"][i] = fext
+                file["/Flow/output/epsp"][i] = np.mean(system.plastic.epsp / system.eps0)
+                file["/Flow/output/eps"][:, i] = Eps_weak.ravel()[[0, 1, 3]]
+                file["/Flow/output/sig"][:, i] = Sig_weak.ravel()[[0, 1, 3]]
                 file.flush()
 
             if inc % restart == 0:
 
-                storage.dump_overwrite(file, "/restart/u", system.u)
-                storage.dump_overwrite(file, "/restart/v", system.v)
-                storage.dump_overwrite(file, "/restart/a", system.a)
-                storage.dump_overwrite(file, "/restart/inc", inc)
+                storage.dump_overwrite(file, "/Flow/restart/u", system.u)
+                storage.dump_overwrite(file, "/Flow/restart/v", system.v)
+                storage.dump_overwrite(file, "/Flow/restart/a", system.a)
+                storage.dump_overwrite(file, "/Flow/restart/inc", inc)
                 file.flush()
 
         meta.attrs["completed"] = 1
@@ -468,22 +475,22 @@ def basic_output(file: h5py.File, interval=400) -> dict:
         fext_std: Standard deviation corresponding to time averaging ``fext`` [n].
     """
 
-    gammadot = file["/gammadot"][...]
+    gammadot = file["/Flow/gammadot"][...]
     norm = QuasiStatic.normalisation(file)
 
     dt = norm["dt"]
     t0 = norm["t0"]
     eps0 = norm["eps0"]
-    y = file["/coor"][:, 1]
+    y = file["/param/coor"][:, 1]
     L = np.max(y) - np.min(y)
-    inc = file["/output/inc"][...]
+    inc = file["/Flow/output/inc"][...]
     vtop = gammadot * L / eps0 * t0
 
     data = {}
-    sig = file["/output/sig"][...]
-    eps = file["/output/eps"][...]
-    data["fext"] = file["/output/fext"][...]
-    data["epsp"] = file["/output/epsp"][...]
+    sig = file["/Flow/output/sig"][...]
+    eps = file["/Flow/output/eps"][...]
+    data["fext"] = file["/Flow/output/fext"][...]
+    data["epsp"] = file["/Flow/output/epsp"][...]
     data["sig"] = tools.sigd(xx=sig[0, :], xy=sig[1, :], yy=sig[2, :]).ravel()
     data["eps"] = tools.epsd(xx=eps[0, :], xy=eps[1, :], yy=eps[2, :]).ravel()
     data["t"] = inc * dt / t0
@@ -543,14 +550,11 @@ def cli_ensembleinfo(cli_args=None):
 
     with h5py.File(args.output, "w") as output:
         for filename in tqdm.tqdm(args.files):
+            prefix = os.path.relpath(filename, os.path.dirname(args.output))
             with h5py.File(filename) as file:
-                try:
-                    out = basic_output(file)
-                except KeyError:
-                    continue
-
+                out = basic_output(file)
                 for key in out:
-                    output[g5.join(f"/full/{filename}/{key}")] = out[key]
+                    output[g5.join(f"/full/{prefix}/{key}")] = out[key]
 
 
 def cli_branch_velocityjump(cli_args=None):
@@ -586,7 +590,7 @@ def cli_branch_velocityjump(cli_args=None):
     assert os.path.isfile(args.file)
 
     with h5py.File(args.file) as source:
-        assert str(args.inc) in source["snapshot"]["u"]
+        assert str(args.inc) in source["Flow"]["snapshot"]["u"]
 
     if len(args.gammadot) == 0:
         Gammadot = DefaultEnsemble.gammadot
@@ -620,47 +624,47 @@ def cli_branch_velocityjump(cli_args=None):
 
                 meta = f"/meta/{entry_points['cli_run']}"
                 paths = g5.getdatapaths(source)
-                paths = [p for p in paths if not re.match(r"(/snapshot/)(.*)", p)]
-                paths = [p for p in paths if not re.match(r"(/output/)(.*)", p)]
-                paths = [p for p in paths if not re.match(r"(/restart/)(.*)", p)]
+                paths = [p for p in paths if not re.match(r"(/Flow/snapshot/)(.*)", p)]
+                paths = [p for p in paths if not re.match(r"(/Flow/output/)(.*)", p)]
+                paths = [p for p in paths if not re.match(r"(/Flow/restart/)(.*)", p)]
                 paths = [p for p in paths if not re.match(f"({meta})(.*)", p)]
                 g5.copy(source, dest, paths)
 
                 for t in ["restart", "output", "snapshot"]:
-                    g5.copy(source, dest, [f"/{t}/interval"])
+                    g5.copy(source, dest, f"/Flow/{t}/interval")
 
                 g5.copy(
                     source,
                     dest,
-                    [f"/meta/{entry_points['cli_run']}"],
-                    [f"/meta/{entry_points['cli_run']}_source"],
+                    f"/meta/{entry_points['cli_run']}",
+                    f"/meta/{entry_points['cli_run']}_source",
                 )
 
                 meta = QuasiStatic.create_check_meta(dest, f"/meta/{progname}", dev=args.develop)
                 meta.attrs["inc"] = args.inc
 
-                dest["/gammadot"][...] = out_gammadot
-                dest["/restart/inc"] = 0
-                dest["/restart/u"] = source[f"/snapshot/u/{args.inc:d}"][...]
-                dest["/restart/v"] = source[f"/snapshot/v/{args.inc:d}"][...]
-                dest["/restart/a"] = source[f"/snapshot/a/{args.inc:d}"][...]
-                dest["/snapshot/u/0"] = source[f"/snapshot/u/{args.inc:d}"][...]
-                dest["/snapshot/v/0"] = source[f"/snapshot/v/{args.inc:d}"][...]
-                dest["/snapshot/a/0"] = source[f"/snapshot/a/{args.inc:d}"][...]
+                dest["/Flow/gammadot"][...] = out_gammadot
+                dest["/Flow/restart/inc"] = 0
+                dest["/Flow/restart/u"] = source[f"/Flow/snapshot/u/{args.inc:d}"][...]
+                dest["/Flow/restart/v"] = source[f"/Flow/snapshot/v/{args.inc:d}"][...]
+                dest["/Flow/restart/a"] = source[f"/Flow/snapshot/a/{args.inc:d}"][...]
+                dest["/Flow/snapshot/u/0"] = source[f"/Flow/snapshot/u/{args.inc:d}"][...]
+                dest["/Flow/snapshot/v/0"] = source[f"/Flow/snapshot/v/{args.inc:d}"][...]
+                dest["/Flow/snapshot/a/0"] = source[f"/Flow/snapshot/a/{args.inc:d}"][...]
 
                 run_create_extendible(dest)
 
-                i = int(args.inc / source["/output/interval"][...])
+                i = int(args.inc / source["/Flow/output/interval"][...])
 
-                for key in ["/output/inc"]:
+                for key in ["/Flow/output/inc"]:
                     dest[key].resize((1,))
                     dest[key][0] = 0
 
-                for key in ["/output/fext", "/output/epsp"]:
+                for key in ["/Flow/output/fext", "/Flow/output/epsp"]:
                     dest[key].resize((1,))
                     dest[key][0] = source[key][i]
 
-                for key in ["/output/sig", "/output/eps"]:
+                for key in ["/Flow/output/sig", "/Flow/output/eps"]:
                     dest[key].resize((3, 1))
                     dest[key][:, 0] = source[key][:, i]
 
@@ -750,16 +754,16 @@ def cli_paraview(cli_args=None):
 
         series = xh.TimeSeries()
 
-        for inc in file["/snapshot/inc"][...]:
+        for inc in file["/Flow/snapshot/inc"][...]:
 
-            if inc == 0 and f"/snapshot/u/{inc:d}" not in file:
+            if inc == 0 and f"/Flow/snapshot/u/{inc:d}" not in file:
                 system.u = np.zeros_like(system.coor)
                 system.v = np.zeros_like(system.coor)
                 system.a = np.zeros_like(system.coor)
             else:
-                system.u = file[f"/snapshot/u/{inc:d}"][...]
-                system.v = file[f"/snapshot/v/{inc:d}"][...]
-                system.a = file[f"/snapshot/a/{inc:d}"][...]
+                system.u = file[f"/Flow/snapshot/u/{inc:d}"][...]
+                system.v = file[f"/Flow/snapshot/v/{inc:d}"][...]
+                system.a = file[f"/Flow/snapshot/a/{inc:d}"][...]
 
             output[f"/disp/{inc:d}"] = xh.as3d(system.u)
             output[f"/Sig/{inc:d}"] = GMat.Sigd(np.mean(system.Sig() / system.sig0, axis=1))
