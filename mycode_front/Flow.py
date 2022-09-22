@@ -488,9 +488,13 @@ def basic_output(file: h5py.File, interval=400) -> dict:
     inc = file["/Flow/output/inc"][...]
     vtop = gammadot * L / eps0 * t0
 
-    data = {}
     sig = file["/Flow/output/sig"][...]
     eps = file["/Flow/output/eps"][...]
+
+    if sig.size == 0:
+        return {}
+
+    data = {}
     data["fext"] = file["/Flow/output/fext"][...]
     data["epsp"] = file["/Flow/output/epsp"][...]
     data["sig"] = tools.sigd(xx=sig[0, :], xy=sig[1, :], yy=sig[2, :]).ravel()
