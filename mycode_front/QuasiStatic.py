@@ -889,7 +889,8 @@ def steadystate(
     eps: ArrayLike, sig: ArrayLike, kick: ArrayLike, A: ArrayLike, N: int, **kwargs
 ) -> int:
     """
-    Estimate the first increment of the steady-state. Constraints:
+    Estimate the first step of the steady-state. Constraints:
+
     -   Start with elastic loading.
     -   Sufficiently low tangent modulus.
     -   All blocks yielded at least once.
@@ -898,10 +899,10 @@ def steadystate(
 
         Keywords arguments that are not explicitly listed are ignored.
 
-    :param eps: Macroscopic strain [ninc].
-    :param sig: Macroscopic stress [ninc].
-    :param kick: Whether a kick was applied [ninc].
-    :param A: Number of blocks that yielded at least once [ninc].
+    :param eps: Macroscopic strain [nstep].
+    :param sig: Macroscopic stress [nstep].
+    :param kick: Whether a kick was applied [nstep].
+    :param A: Number of blocks that yielded at least once [nstep].
     :param N: Number of blocks.
     :return: Increment number.
     """
