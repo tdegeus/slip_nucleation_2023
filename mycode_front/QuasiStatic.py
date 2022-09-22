@@ -256,17 +256,19 @@ def branch_fixed_stress(
 ):
     """
     Branch a configuration at a given:
+
     *   Quasistatic step (``step``).
         ``step_c`` and ``stress`` are ignored if supplied, but are stored as meta-data in that case.
         To ensure meta-data integrity,
         they are only checked to be consistent with the state at ``step``.
+
     *   Fixed stress after a system spanning event (``step_c`` and ``stress``).
         Note that ``stress`` is approximated as best as possible,
         and its actual value is stored in the meta-data.
 
     :param source: Source file.
     :param dest: Destination file.
-    :param root: Name of the root at which to branch the configuration.
+    :param root: Root to which to write the branched configuration (e.g. `QuastiStatic`).
     :param step: Branch at specific quasistatic step.
     :param step_c: Branch at fixed stress after this system-spanning event.
     :param stress: Branch at fixed stress.
