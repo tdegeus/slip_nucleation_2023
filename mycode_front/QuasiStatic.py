@@ -294,7 +294,7 @@ def branch_fixed_stress(
         g5.copy(source, dest, ["/param", "/realisation", "/meta"])
         _init_run_state(root=dest.create_group(root), u=system.u)
 
-    if not normalised:
+    if not normalised and stress is not None:
         stress /= output["sig0"]
 
     step_i = None
