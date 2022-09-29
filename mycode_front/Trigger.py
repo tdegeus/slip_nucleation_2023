@@ -121,7 +121,7 @@ def cli_run(cli_args=None):
         assert not root["truncated"][step], "Cannot run is last step was not minimised"
 
         meta = QuasiStatic.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
-        system = QuasiStatic.System(file)
+        system = QuasiStatic.init_system(file)
         system.restore_quasistatic_step(root, step)
         idx_n = np.copy(system.plastic.i[:, 0])
         N = system.N
@@ -389,7 +389,7 @@ def cli_ensembleinfo(cli_args=None):
             file = pack["event"][filepath]
 
             if i == 0:
-                system = QuasiStatic.System(file)
+                system = QuasiStatic.init_system(file)
                 N = system.N
             elif simid[idx] != simid[index[i - 1]]:
                 system.reset(file)
@@ -486,7 +486,7 @@ def restore_from_ensembleinfo(
             step_c=step_c,
             stress=ensembleinfo["stress"][index],
             normalised=True,
-            system=QuasiStatic.System(source),
+            system=QuasiStatic.init_system(source),
             dev=dev,
         )
         root = dest["Trigger"]
@@ -870,7 +870,7 @@ def _write_configurations(
         with h5py.File(s, "r") as source_file:
 
             if i == 0:
-                system = QuasiStatic.System(source_file)
+                system = QuasiStatic.init_system(source_file)
                 output = {
                     "N": int(info["/normalisation/N"][...]),
                     "sig0": float(info["/normalisation/sig0"][...]),
