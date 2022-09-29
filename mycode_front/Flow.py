@@ -317,7 +317,7 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
 
     with h5py.File(filepath, "a") as file:
 
-        system = QuasiStatic.System(file)
+        system = QuasiStatic.init_system(file)
         meta = QuasiStatic.create_check_meta(file, f"/meta/{progname}", dev=dev)
         dV = system.plastic_dV(rank=2)
 
@@ -483,10 +483,12 @@ def basic_output(file: h5py.File, interval=400) -> dict:
     dt = norm["dt"]
     t0 = norm["t0"]
     eps0 = norm["eps0"]
+    l0 = norm["l0"]
     y = file["/param/coor"][:, 1]
     L = np.max(y) - np.min(y)
     inc = file["/Flow/output/inc"][...]
-    vtop = gammadot * L / eps0 * t0
+    vtop = (gammadot / eps0 * t0) * (L / l0)
+    epsapp = (gammadot / eps0 * t0) * inc * dt / t0
 
     sig = file["/Flow/output/sig"][...]
     eps = file["/Flow/output/eps"][...]
@@ -502,13 +504,14 @@ def basic_output(file: h5py.File, interval=400) -> dict:
     data["t"] = inc * dt / t0
     data["epsdot"] = np.diff(data["eps"], prepend=0) / np.diff(data["t"], prepend=1)
     data["epspdot"] = np.diff(data["epsp"], prepend=0) / np.diff(data["t"], prepend=1)
-    data["epsdotbar"] = vtop / norm["l0"] * np.ones_like(data["eps"])
+    data["epsbar"] = epsapp
+    data["epsdotbar"] = vtop * np.ones_like(data["eps"])
 
     dinc = np.diff(inc)
     assert np.all(dinc == dinc[0])
     dinc = dinc[0]
 
-    store = ["eps", "sig", "fext", "epsdot", "epspdot", "epsdotbar"]
+    store = ["eps", "sig", "fext", "epsdot", "epspdot", "epsbar", "epsdotbar"]
 
     n = int((inc.size - inc.size % interval) / interval)
     ret = {}
@@ -753,7 +756,7 @@ def cli_paraview(cli_args=None):
 
     with h5py.File(args.file) as file, h5py.File(f"{args.output}.h5", "w") as output:
 
-        system = QuasiStatic.System(file)
+        system = QuasiStatic.init_system(file)
 
         output["/coor"] = system.coor
         output["/conn"] = system.conn
@@ -826,11 +829,11 @@ def cli_plot(cli_args=None):
     with h5py.File(args.file) as file:
         out = basic_output(file)
 
-    meps = out["eps"][...]
+    meps = out["epsbar"][...]
     msig = out["sig"][...]
     mfext = out["fext"][...]
 
-    i = np.argsort(out["eps_full"])
+    i = np.argsort(out["epsbar_full"])
 
     for key in out:
         if re.match("(.*)(_full)", key):
@@ -839,8 +842,8 @@ def cli_plot(cli_args=None):
     fig, axes = gplt.subplots(ncols=2)
 
     ax = axes[0]
-    ax.plot(out["eps_full"], out["sig_full"], c="k", label=r"$\sigma_\text{interface}$")
-    ax.plot(out["eps_full"], out["fext_full"], c="r", label=r"$f_\text{ext}$")
+    ax.plot(out["epsbar_full"], out["sig_full"], c="k", label=r"$\sigma_\text{interface}$")
+    ax.plot(out["epsbar_full"], out["fext_full"], c="r", label=r"$f_\text{ext}$")
     ax.plot(meps, msig, c="b", marker="o", ls="none", label=r"$\bar{\sigma}_\text{interface}$")
     ax.plot(meps, mfext, c="tab:orange", marker="o", ls="none", label=r"$\bar{f}_\text{ext}$")
 
@@ -851,7 +854,7 @@ def cli_plot(cli_args=None):
     else:
         ax.set_ylim([0, ax.get_ylim()[-1]])
 
-    ax.set_xlabel(r"$\varepsilon$")
+    ax.set_xlabel(r"$\varepsilon_\text{applied}$")
     ax.set_ylabel(r"$\sigma$")
 
     ax.legend()
@@ -859,10 +862,10 @@ def cli_plot(cli_args=None):
     ax = axes[1]
 
     n = r"\dot{\varepsilon}"
-    ax.plot(out["eps_full"], out["epsdot_full"], c="k", label=rf"${n}_\text{{interface}}$")
-    ax.plot(out["eps_full"], out["epsdotbar_full"], c="r", label=rf"${n}_\text{{applied}}$")
+    ax.plot(out["epsbar_full"], out["epsdot_full"], c="k", label=rf"${n}_\text{{interface}}$")
+    ax.plot(out["epsbar_full"], out["epsdotbar_full"], c="r", label=rf"${n}_\text{{applied}}$")
 
-    ax.set_xlabel(r"$\varepsilon$")
+    ax.set_xlabel(r"$\varepsilon_\text{applied}$")
     ax.set_ylabel(r"$\dot{\varepsilon}$")
 
     ax.legend()

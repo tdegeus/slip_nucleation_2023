@@ -117,7 +117,7 @@ def cli_plot_height(cli_args=None):
     tools._check_overwrite_file(args.output + ".xdmf", args.force)
 
     with h5py.File(args.file) as file:
-        system = QuasiStatic.System(file)
+        system = QuasiStatic.init_system(file)
         coor = np.copy(system.coor)
         conn = np.copy(system.conn)
 
@@ -246,7 +246,7 @@ def cli_run(cli_args=None):
 
         # restore state
 
-        system = QuasiStatic.System(file)
+        system = QuasiStatic.init_system(file)
         system.restore_quasistatic_step(sroot, args.step - 1)
         deps = file["/param/cusp/epsy/deps"][...]
         i_n = np.copy(system.plastic.i[:, 0].astype(int))
@@ -502,7 +502,7 @@ def cli_average_systemspanning(cli_args=None):
 
             if ifile == 0:
 
-                system = QuasiStatic.System(file)
+                system = QuasiStatic.init_system(file)
                 N = system.N
                 dV = system.dV()
                 dV2 = system.dV(rank=2)

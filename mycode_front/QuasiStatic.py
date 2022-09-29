@@ -15,6 +15,7 @@ import uuid
 
 import FrictionQPotFEM  # noqa: F401
 import FrictionQPotFEM.UniformSingleLayer2d as model
+import FrictionQPotFEM.UniformSingleLayerThermal2d as thermal_model
 import GMatElastoPlasticQPot  # noqa: F401
 import GMatElastoPlasticQPot.Cartesian2d as GMat
 import GooseFEM
@@ -125,8 +126,10 @@ class System(model.System):
             For different realisations (yield strains) for the same ensemble: favour this function
             over the constructor to avoid reallocation and file-IO.
         """
-        self.quench()
         self.u = np.zeros_like(self.u)
+        self.v = np.zeros_like(self.v)
+        self.a = np.zeros_like(self.a)
+        self.inc = 0
         self.plastic.epsy = FrictionQPotFEM.epsy_initelastic_toquad(read_epsy(file))
 
     def restore_quasistatic_step(self, root: h5py.Group, step: int):
@@ -141,7 +144,7 @@ class System(model.System):
         :param step: Step number.
         """
         self.quench()
-        self.t = root["inc"][step]
+        self.inc = root["inc"][step]
         self.u = root["u"][str(step)][...]
 
     def dV(self, rank: int = 0):
@@ -163,6 +166,130 @@ class System(model.System):
         if rank == 0:
             return ret
         return self.quad.AsTensor(rank, ret)
+
+
+class SystemThermal(thermal_model.System):
+    """
+    The thermal system.
+    Other than the underlying system this class takes an open HDF5-file to construct
+    (to which a certain structure is enforced in different parts of the module).
+    """
+
+    def __init__(self, file: h5py.File):
+        """
+        Construct system from file.
+        :param file: HDF5-file opened for reading.
+        """
+
+        root = file["param"]
+        y = read_epsy(file)
+        self.nchunk = y.shape[1] + 1  # not yet allocated elastic
+
+        assert "alpha" in root or "eta" in root
+
+        def to_field(value, n):
+            if value.size == n:
+                return value
+            if value.size == 1:
+                return value * np.ones(n)
+            raise ValueError(f"{value.size} != {n}")
+
+        plastic = root["cusp"]["elem"][...]
+        elastic = np.setdiff1d(np.arange(root["conn"].shape[0]), plastic)
+        nel = elastic.size
+        npl = plastic.size
+
+        super().__init__(
+            coor=root["coor"][...],
+            conn=root["conn"][...],
+            dofs=root["dofs"][...],
+            iip=root["iip"][...],
+            elastic_elem=elastic,
+            elastic_K=FrictionQPotFEM.moduli_toquad(to_field(root["elastic"]["K"][...], nel)),
+            elastic_G=FrictionQPotFEM.moduli_toquad(to_field(root["elastic"]["G"][...], nel)),
+            plastic_elem=plastic,
+            plastic_K=FrictionQPotFEM.moduli_toquad(to_field(root["cusp"]["K"][...], npl)),
+            plastic_G=FrictionQPotFEM.moduli_toquad(to_field(root["cusp"]["G"][...], npl)),
+            plastic_epsy=FrictionQPotFEM.epsy_initelastic_toquad(y),
+            dt=root["dt"][...],
+            rho=root["rho"][...],
+            alpha=root["alpha"][...] if "alpha" in root else 0,
+            eta=root["eta"][...] if "eta" in root else 0,
+            temperature_dinc=root["temperature"]["dinc"][...],
+            temperature_seed=root["temperature"]["seed"][...],
+            temperature=root["temperature"]["temperature"][...],
+        )
+
+        self.normalisation = normalisation(file)
+        self.eps0 = self.normalisation["eps0"]
+        self.sig0 = self.normalisation["sig0"]
+        self.t0 = self.normalisation["t0"]
+
+    def reset(self, file: h5py.File):
+        """
+        Reinitialise system:
+
+        *   Read yield strains from file.
+        *   Set all displacements, velocities, and accelerations to zero.
+
+        .. tip::
+
+            For different realisations (yield strains) for the same ensemble: favour this function
+            over the constructor to avoid reallocation and file-IO.
+        """
+        self.u = np.zeros_like(self.u)
+        self.v = np.zeros_like(self.v)
+        self.a = np.zeros_like(self.a)
+        self.inc = 0
+        self.plastic.epsy = FrictionQPotFEM.epsy_initelastic_toquad(read_epsy(file))
+
+    def restore_quasistatic_step(self, root: h5py.Group, step: int):
+        """
+        Quench and restore an a quasi-static step for the relevant root.
+        The ``root`` group should contain::
+
+            root["u"][str(step)]   # Displacements
+            root["v"][str(step)]   # Velocities
+            root["a"][str(step)]   # Accelerations
+            root["inc"][step]      # Increment (-> time)
+
+        :param root: HDF5 archive opened in the right root (read-only).
+        :param step: Step number.
+        """
+        self.inc = root["inc"][step]
+        self.u = root["u"][str(step)][...]
+        self.v = root["v"][str(step)][...]
+        self.a = root["a"][str(step)][...]
+
+    def dV(self, rank: int = 0):
+        """
+        Return integration point 'volume' for all quadrature points of all elements.
+        Broadcast to an integration point tensor if needed.
+        """
+        ret = self.quad.dV
+        if rank == 0:
+            return ret
+        return self.quad.AsTensor(rank, ret)
+
+    def plastic_dV(self, rank: int = 0):
+        """
+        Return integration point 'volume' for all quadrature points of plastic elements.
+        Broadcast to an integration point tensor if needed.
+        """
+        ret = self.quad.dV[self.plastic_elem, ...]
+        if rank == 0:
+            return ret
+        return self.quad.AsTensor(rank, ret)
+
+
+def init_system(file: h5py.File) -> System:
+    """
+    Initialise system from file.
+    :param file: HDF5-file opened for reading.
+    """
+    if "temperature" in file["param"]:
+        return SystemThermal(file)
+    return System(file)
 
 
 def replace_ep(doc: str) -> str:
@@ -373,6 +500,8 @@ def generate(
     eta: float = None,
     init_run: bool = True,
     dev: bool = False,
+    temperature: float = None,
+    temperature_seed: int = None,
 ):
     """
     Generate input file. See :py:func:`read_epsy` for different strategies to store yield strains.
@@ -384,6 +513,8 @@ def generate(
     :param eta: Set damping coefficient at the interface.
     :param init_run: Initialise for use with :py:func:`run`.
     :param dev: Allow uncommitted changes.
+    :param temperature: Run with temperature. In units of `sig0`.
+    :param temperature_seed: Seed for temperature random generators: uses ``3 * nelem * nip`` seeds.
     """
 
     assert not os.path.isfile(filepath)
@@ -432,6 +563,8 @@ def generate(
     dt = (1 / (c * qh)) / 10
 
     with h5py.File(filepath, "w") as file:
+
+        assert seed % N == 0
 
         storage.dump_with_atttrs(
             file,
@@ -632,6 +765,38 @@ def generate(
             2.0 * G * eps0,
             desc="== 2 G eps0",
         )
+
+        if temperature is not None:
+            assert temperature_seed is not None
+            assert temperature_seed % (3 * conn.shape[0] * 4) == 0
+
+            storage.dump_with_atttrs(
+                file,
+                "/param/temperature/temperature",
+                temperature * 2.0 * G * eps0,
+                desc="== T0 * sig0",
+            )
+
+            storage.dump_with_atttrs(
+                file,
+                "/param/normalisation/T0",
+                temperature,
+                desc="'Temperature' in units of sig0",
+            )
+
+            storage.dump_with_atttrs(
+                file,
+                "/param/temperature/seed",
+                temperature_seed,
+                desc="Base seed, ``3 * nelem * nip`` seeds used",
+            )
+
+            storage.dump_with_atttrs(
+                file,
+                "/param/temperature/dinc",
+                int(round(5 * h / c / dt, -2)),
+                desc="Temperature time scale: ~= 5 l_0 / c_s",
+            )
 
         create_check_meta(file, f"/meta/{progname}", dev=dev)
 

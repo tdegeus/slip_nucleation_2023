@@ -146,7 +146,7 @@ def cli_run(cli_args=None):
     tools._check_overwrite_file(args.output, args.force)
 
     with h5py.File(args.file, "r") as file:
-        system = QuasiStatic.System(file)
+        system = QuasiStatic.init_system(file)
         ret = run_event_basic(system, file, args.step, args.smax)
 
     with h5py.File(args.output, "w") as file:
