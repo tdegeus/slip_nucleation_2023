@@ -74,7 +74,7 @@ def _interpret(part: list[str], convert: bool = False) -> dict:
     if convert:
         for key in info:
             if key in ["N"]:
-                info[key] = {"3^7": 3 ** 7, "3^6x4": 3 ** 6 * 4, "3^6x2": 3 ** 6 * 4}[info[key]]
+                info[key] = {"3^7": 3**7, "3^6x4": 3**6 * 4, "3^6x2": 3**6 * 4}[info[key]]
             elif key in ["gammadot", "jump", "alpha", "eta"]:
                 info[key] = float(info[key])
             else:
