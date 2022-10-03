@@ -73,7 +73,9 @@ def _interpret(part: list[str], convert: bool = False) -> dict:
 
     if convert:
         for key in info:
-            if key in ["gammadot", "jump"]:
+            if key in ["N"]:
+                info[key] = {"3^7": 3 ** 7, "3^6x4": 3 ** 6 * 4, "3^6x2": 3 ** 6 * 4}[info[key]]
+            elif key in ["gammadot", "jump", "alpha", "eta"]:
                 info[key] = float(info[key])
             else:
                 info[key] = int(info[key])
@@ -102,8 +104,14 @@ def interpret_filename(filepath: str, convert: bool = False) -> dict:
     :return: Parameters as dictionary.
     """
 
-    part = os.path.splitext(os.path.basename(filepath))[0]
-    return _interpret(re.split("_|/", part), convert=convert)
+    filepath = os.path.basename(filepath)
+
+    if filepath.endswith(".h5"):
+        filepath = filepath[:-3]
+    if filepath.endswith(".hdf5"):
+        filepath = filepath[:-5]
+
+    return _interpret(re.split("_|/", filepath), convert=convert)
 
 
 def generate(*args, **kwargs):
