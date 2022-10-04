@@ -7,8 +7,6 @@ dependencies:
 - goosehdf5 >=0.20.0
 - goosempl
 - gooseslurm
-- graphviz
-- graphviz
 - h5py
 - nested_dict
 - numpy
