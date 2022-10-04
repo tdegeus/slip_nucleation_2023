@@ -18,7 +18,6 @@ import FrictionQPotFEM  # noqa: F401
 import GMatElastoPlasticQPot  # noqa: F401
 import GooseFEM  # noqa: F401
 import GooseHDF5 as g5
-import GooseMPL as gplt
 import h5py
 import numpy as np
 import tqdm
@@ -630,6 +629,8 @@ def cli_job_rerun_dynamics(cli_args=None):
             -s ../Run
             Trigger_EnsembleInfo.h5
     """
+
+    import GooseMPL as gplt  # noqa F401
 
     class MyFmt(
         argparse.RawDescriptionHelpFormatter,
