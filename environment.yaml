@@ -4,6 +4,7 @@ dependencies:
 - autodocsumm
 - click
 - enstat >=0.5.0
+- furo
 - goosehdf5 >=0.20.0
 - goosempl
 - gooseslurm
@@ -27,6 +28,5 @@ dependencies:
 - scikit-build
 - setuptools_scm
 - shelephant
-- furo
 - tqdm
 - xdmfwrite_h5py
