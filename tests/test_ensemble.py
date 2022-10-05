@@ -95,6 +95,16 @@ class test_QuasiStatic(unittest.TestCase):
 
         QuasiStatic.cli_generate(["--dev", mygendir])
 
+    def test_meta_move(self):
+        """
+        Move meta-data.
+        """
+        old = f"/meta/{QuasiStatic.entry_points['cli_run']}"
+        new = f"{old}_new"
+        QuasiStatic.cli_move_meta(["--dev", old, new, simpath])
+        with h5py.File(simpath) as file:
+            self.assertEqual(file[old].attrs["version"], file[new].attrs["version"])
+
     def test_status(self):
         """
         Check that file was completed.

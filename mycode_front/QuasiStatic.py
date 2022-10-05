@@ -48,6 +48,7 @@ entry_points = dict(
     cli_state_after_systemspanning="QuasiStatic_StateAfterSystemSpanning",
     cli_status="QuasiStatic_SimulationStatus",
     cli_transform_deprecated="QuasiStatic_TransformDeprecated",
+    cli_move_meta="QuasiStatic_MoveMeta",
 )
 
 
@@ -734,6 +735,51 @@ def create_check_meta(
     assert dev or tag.equal(version, meta.attrs["version"])
     assert dev or tag.all_equal(deps, meta.attrs["dependencies"])
     return meta
+
+
+def cli_move_meta(cli_args=None):
+    """
+    Create a copy of meta-data, and overwrite the version information with the current information
+    and a new UUID.
+    """
+
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+
+    parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
+    parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("old_name", type=str, help="Former name (overwritten with new versions)")
+    parser.add_argument("new_name", type=str, help="Former name (overwritten with new versions)")
+    parser.add_argument("file", type=str, help="Simulation file")
+
+    args = tools._parse(parser, cli_args)
+    assert os.path.isfile(args.file)
+
+    deps = sorted(list(model.version_dependencies()) + ["prrng=" + prrng.version()])
+    compiler = model.version_compiler()
+
+    assert args.develop or not tag.has_uncommitted(version)
+    assert args.develop or not tag.any_has_uncommitted(deps)
+
+    with h5py.File(args.file, "a") as file:
+
+        assert args.old_name in file
+
+        g5.copy(file, file, args.old_name, args.new_name)
+
+        meta = file[args.old_name]
+        meta.attrs["uuid"] = str(uuid.uuid4())
+        meta.attrs["version"] = version
+        meta.attrs["version_dependencies"] = deps
+        meta.attrs["version_compiler"] = compiler
 
 
 def cli_run(cli_args=None):
