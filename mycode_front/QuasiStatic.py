@@ -691,6 +691,17 @@ def cli_generate(cli_args=None):
     )
 
 
+def _compare_versions(ver, cmpver):
+
+    if tag.greater_equal(cmpver, "14.0"):
+        if tag.greater_equal(ver, cmpver):
+            return True
+    else:
+        return tag.equal(ver, cmpver)
+
+    return False
+
+
 def create_check_meta(
     file: h5py.File = None,
     path: str = None,
@@ -715,7 +726,7 @@ def create_check_meta(
     :return: Group to metadata.
     """
 
-    deps = sorted(list(model.version_dependencies()) + ["prrng=" + prrng.version()])
+    deps = sorted(list(set(list(model.version_dependencies()) + ["prrng=" + prrng.version()])))
 
     assert dev or not tag.has_uncommitted(version)
     assert dev or not tag.any_has_uncommitted(deps)
@@ -732,8 +743,11 @@ def create_check_meta(
         return meta
 
     meta = file[path]
-    assert dev or tag.equal(version, meta.attrs["version"])
-    assert dev or tag.all_equal(deps, meta.attrs["dependencies"])
+    assert dev or _compare_versions(version, meta.attrs["version"])
+    assert dev or tag.all_greater_equal(deps, meta.attrs["dependencies"])
+    meta.attrs["version"] = version
+    meta.attrs["dependencies"] = deps
+    meta.attrs["compiler"] = model.version_compiler()
     return meta
 
 
