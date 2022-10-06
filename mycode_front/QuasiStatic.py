@@ -770,6 +770,7 @@ def cli_move_meta(cli_args=None):
 
     parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("--uncomplete", action="store_true", help="Unmarked as completed")
     parser.add_argument("old_name", type=str, help="Former name (overwritten with new versions)")
     parser.add_argument("new_name", type=str, help="Former name (overwritten with new versions)")
     parser.add_argument("file", type=str, help="Simulation file")
@@ -794,6 +795,9 @@ def cli_move_meta(cli_args=None):
         meta.attrs["version"] = version
         meta.attrs["version_dependencies"] = deps
         meta.attrs["version_compiler"] = compiler
+
+        if args.uncomplete:
+            meta.attrs["completed"] = 0
 
 
 def cli_run(cli_args=None):
