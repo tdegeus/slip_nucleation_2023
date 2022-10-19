@@ -225,7 +225,12 @@ def h5py_save_unique(
     value, index = np.unique(data, return_inverse=True)
 
     if split is not None:
-        value = list(map(lambda i: str(i).split(split), value))
+        # catch bug: can only store square arrays
+        n = [len(i) for i in list(map(lambda i: str(i).split(split), value))]
+        if np.all(np.equal(n, n[0])):
+            value = list(map(lambda i: str(i).split(split), value))
+        else:
+            value = list(map(str, value))
     elif asstr:
         value = list(map(str, value))
 

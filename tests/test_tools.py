@@ -71,6 +71,12 @@ class MyTests(unittest.TestCase):
             ["bar", "foo"],
             ["foo", "bar"],
         ]
+        e = [
+            ["a", "b", "c"],
+            ["a", "b"],
+            ["a", "b", "c"],
+            ["a", "b", "c"],
+        ]
 
         with h5py.File(filepath, "w") as file:
             tools.h5py_save_unique(a, file, "a", asstr=True)
@@ -82,9 +88,13 @@ class MyTests(unittest.TestCase):
             tools.h5py_save_unique([";".join(i) for i in c], file, "c", split=";")
             c_r = tools.h5py_read_unique(file, "c", asstr=True)
 
+            tools.h5py_save_unique([";".join(i) for i in e], file, "e", split=";")
+            e_r = tools.h5py_read_unique(file, "e", asstr=True)
+
         self.assertEqual(a, a_r)
         self.assertTrue(np.all(np.equal(b, b_r)))
         self.assertEqual(c, c_r)
+        self.assertEqual([";".join(i) for i in e], e_r)
 
         shutil.rmtree(dirname)
 
