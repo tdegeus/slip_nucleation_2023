@@ -706,6 +706,7 @@ def create_check_meta(
     file: h5py.File = None,
     path: str = None,
     dev: bool = False,
+    **kwargs,
 ) -> h5py.Group:
     """
     Create or read/check metadata. This function asserts that:
@@ -740,14 +741,20 @@ def create_check_meta(
         meta.attrs["version"] = version
         meta.attrs["dependencies"] = deps
         meta.attrs["compiler"] = model.version_compiler()
+        for key in kwargs:
+            meta.attrs[key] = kwargs[key]
         return meta
 
     meta = file[path]
-    assert dev or _compare_versions(version, meta.attrs["version"])
-    assert dev or tag.all_greater_equal(deps, meta.attrs["dependencies"])
-    meta.attrs["version"] = version
-    meta.attrs["dependencies"] = deps
-    meta.attrs["compiler"] = model.version_compiler()
+    if file.mode in ["r+", "w", "a"]:
+        assert dev or _compare_versions(version, meta.attrs["version"])
+        assert dev or tag.all_greater_equal(deps, meta.attrs["dependencies"])
+        meta.attrs["version"] = version
+        meta.attrs["dependencies"] = deps
+        meta.attrs["compiler"] = model.version_compiler()
+    else:
+        assert dev or tag.equal(version, meta.attrs["version"])
+        assert dev or tag.all_equal(deps, meta.attrs["dependencies"])
     return meta
 
 
@@ -793,8 +800,8 @@ def cli_move_meta(cli_args=None):
         meta = file[args.old_name]
         meta.attrs["uuid"] = str(uuid.uuid4())
         meta.attrs["version"] = version
-        meta.attrs["version_dependencies"] = deps
-        meta.attrs["version_compiler"] = compiler
+        meta.attrs["dependencies"] = deps
+        meta.attrs["compiler"] = compiler
 
         if args.uncomplete:
             meta.attrs["completed"] = 0
