@@ -1447,8 +1447,9 @@ def cli_plot(cli_args=None):
     lim = [0, lim[-1]]
     ax.set_ylim(lim)
 
-    e = data["eps"][data["steadystate"]]
-    ax.plot([e, e], lim, c="r", lw=1)
+    if data["steadystate"] is not None:
+        e = data["eps"][data["steadystate"]]
+        ax.plot([e, e], lim, c="r", lw=1)
 
     plt.show()
 
