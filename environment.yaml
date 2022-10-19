@@ -20,7 +20,7 @@ dependencies:
 - python-cppcolormap
 - python-frictionqpotfem >0.20.1
 - python-gmatelastic >0.5.0
-- python-gmatelastoplasticqpot >=0.17.0
+- python-gmatelastoplasticqpot >=0.18.2
 - python-gmattensor >0.9.0
 - python-goosefem >=1.3.0
 - python-prrng
