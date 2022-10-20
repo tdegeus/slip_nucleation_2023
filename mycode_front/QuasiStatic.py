@@ -353,8 +353,13 @@ def branch_fixed_stress(
     # store branch
     dest[root]["u"]["0"][...] = system.u
 
-    assert f"/meta/{funcname}" not in dest
-    meta = create_check_meta(dest, f"/meta/{funcname}", dev=dev)
+    metaname = funcname
+    i = 1
+    while f"/meta/{metaname}" in dest:
+        metaname = f"{funcname}_{i:d}"
+        i += 1
+
+    meta = create_check_meta(dest, f"/meta/{metaname}", dev=dev)
     meta.attrs["file"] = os.path.basename(source.filename)
     if stress is not None:
         meta.attrs["stress"] = stress
