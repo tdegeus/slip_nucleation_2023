@@ -401,6 +401,13 @@ def cli_ensembleinfo(cli_args=None):
             meta = file["meta"][entry_points["cli_run"]]
             branch = file["meta"]["branch_fixed_stress"]
 
+            # see QuasiStatic.branch_fixed_stress
+            for i in range(1, 999):
+                if f"branch_fixed_stress_{i:d}" in file["meta"]:
+                    branch = file["meta"][f"branch_fixed_stress_{i:d}"]
+                else:
+                    break
+
             if "try_element" in file["Trigger"]:
                 try_element = file["Trigger"]["try_element"][1]
             else:
