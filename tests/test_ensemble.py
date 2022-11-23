@@ -4,6 +4,7 @@ import re
 import shutil
 import sys
 import unittest
+from functools import partialmethod
 
 import enstat
 import GMatElastoPlasticQPot.Cartesian2d as GMat
@@ -13,6 +14,9 @@ import h5py
 import numpy as np
 import path
 import shelephant
+import tqdm
+
+tqdm.__init__ = partialmethod(tqdm.__init__, disable=True)
 
 root = pathlib.Path(__file__).parent.joinpath("..").resolve()
 if (root / "mycode_front" / "_version.py").exists():
@@ -171,6 +175,30 @@ class test_QuasiStatic(unittest.TestCase):
                 self.assertAlmostEqual(sig / sig0, check)
 
             Dynamics.cli_average_systemspanning([outpath, "-o", outdir / "average.h5", "--dev"])
+
+    def test_rerun_dynamics_run_highfrequency(self):
+        """
+        Rerun a quasistatic step with Dynamics, check the macroscopic stress.
+        """
+
+        outdir = qsdir / "Dynamics"
+        commands = QuasiStatic.cli_rerun_dynamics_job_systemspanning(["-f", "-o", outdir, infopath])
+        _, _, outpath, _, step, inpath = commands[0].split(" ")
+        step = int(step)
+        # inpath = pathlib.Path(inpath).name
+
+        with h5py.File(outdir / inpath) as file:
+            system = QuasiStatic.System(file)
+            system.restore_quasistatic_step(file["QuasiStatic"], step - 1)
+            check = np.average(system.Sig(), weights=system.dV(rank=2), axis=(0, 1))[0, 1]
+
+        with path.Path(outdir):
+
+            Dynamics.cli_run_highfrequency(commands[0].split(" ")[1:] + ["--dev"])
+
+            with h5py.File(outpath) as file:
+                sig = file["/DynamicsHighFrequency/fext"][0]
+                self.assertAlmostEqual(sig, check)
 
     def test_rerun_eventmap(self):
         """

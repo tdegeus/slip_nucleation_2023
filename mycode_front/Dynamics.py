@@ -29,6 +29,7 @@ entry_points = dict(
     cli_average_systemspanning="Dynamics_AverageSystemSpanning",
     cli_plot_height="Dynamics_PlotMeshHeight",
     cli_run="Dynamics_Run",
+    cli_run_highfrequency="Dynamics_RunHighFrequency",
     cli_transform_deprecated="Dynamics_TransformDeprecated",
 )
 
@@ -47,13 +48,16 @@ def replace_ep(doc: str) -> str:
     return doc
 
 
-def elements_at_height(coor: ArrayLike, conn: ArrayLike, height: float) -> np.ndarray:
+def elements_at_height(
+    coor: ArrayLike, conn: ArrayLike, height: float, return_type: bool = False
+) -> np.ndarray:
     """
     Get elements at a 'normal' row of elements at a certain height above the interface.
 
     :param coor: Nodal coordinates [nnode, ndim].
     :param conn: Connectivity [nelem, nne].
     :param height: Height in units of the linear block size of the middle layer.
+    :param return_type: Extra return argument: layer if normal (``True``) or refinement (``False``).
     :return: List of element numbers.
     """
 
@@ -61,9 +65,9 @@ def elements_at_height(coor: ArrayLike, conn: ArrayLike, height: float) -> np.nd
 
     dy = mesh.elemrow_nhy
     normal = mesh.elemrow_type == -1
-    n = int((dy.size - dy.size % 2) / 2)
-    dy = dy[n:]
-    normal = normal[n:]
+    mid = int((dy.size - dy.size % 2) / 2)
+    dy = dy[mid:]
+    normal = normal[mid:]
     y = np.cumsum(dy).astype(float) - dy[0]
     i = np.argmin(np.abs(y - height))
 
@@ -78,7 +82,10 @@ def elements_at_height(coor: ArrayLike, conn: ArrayLike, height: float) -> np.nd
         else:
             i += 1
 
-    return mesh.elementsLayer(n + i)
+    if return_type:
+        return mesh.elementsLayer(mid + i), normal[i]
+
+    return mesh.elementsLayer(mid + i)
 
 
 def cli_plot_height(cli_args=None):
@@ -366,6 +373,135 @@ def cli_run(cli_args=None):
                 store = True
 
         file[f"/meta/{progname}"].attrs["completed"] = 1
+
+
+def cli_run_highfrequency(cli_args=None):
+    """
+    Perform a high-frequency measurement on very few observables:
+
+    -   Average stress at the boundary.
+    -   Displacement, velocity, and acceleration sensors at nodes at some ("x", "y") coordinates.
+        These nodes are selected by specifying the number of sensors in each direction.
+        The vertical sensors are placed in the top half of the domain.
+    """
+
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    progname = entry_points[funcname]
+
+    # developer options
+    parser.add_argument("--develop", action="store_true", help="Development mode")
+    parser.add_argument("-v", "--version", action="version", version=version)
+
+    # output selection
+    parser.add_argument("--nx", type=int, default=6, help="Number of sensors in x-direction")
+    parser.add_argument("--ny", type=int, default=2, help="Number of sensors in y-direction")
+    parser.add_argument(
+        "--height",
+        type=int,
+        action="append",
+        default=[],
+        help="Height of extra sensors (units: block size)",
+    )
+
+    # input selection
+    parser.add_argument("--step", required=True, type=int, help="Quasistatic step to run")
+
+    # output file
+    parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
+    parser.add_argument("-o", "--output", type=str, required=True, help="Output file")
+
+    # input files
+    parser.add_argument("file", type=str, help="Simulation from which to run (read-only)")
+
+    args = tools._parse(parser, cli_args)
+    assert os.path.isfile(args.file)
+    assert args.nx > 0
+    assert args.ny > 0
+
+    with h5py.File(args.file) as src, h5py.File(args.output, "w") as file:
+
+        g5.copy(src, file, ["/param", "/realisation", "/meta"])
+
+        meta = QuasiStatic.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
+        meta.attrs["file"] = os.path.basename(args.file)
+        meta.attrs["step"] = args.step
+
+        # select nodes to store
+
+        coor = file["/param/coor"][...]
+        conn = file["/param/conn"][...]
+        mesh = GooseFEM.Mesh.Quad4.FineLayer(coor, conn)
+        dy = mesh.elemrow_nhy
+        mid = int((dy.size - 1) / 2)
+        dy = dy[mid:]
+        y = np.cumsum(dy) - dy[0]
+        nodes = []
+
+        # N.B. y[-1] is boring as the nodes are fixed
+        for height in args.height + list(np.linspace(0, y[-2], args.ny)):
+            elements, normal = elements_at_height(coor, conn, height, return_type=True)
+            if not normal:
+                elements = elements.reshape(-1, 4)[:, -1]
+            nds = conn[elements, 3]
+            idx = np.round(np.linspace(0, len(nds) - 1, args.nx)).astype(int)
+            nodes += list(nds[idx])
+        nodes = np.unique(np.sort(nodes))
+        top = mesh.nodesTopEdge()
+        L = coor[top[1], 0] - coor[top[0], 0]
+
+        meta.attrs["nodes"] = nodes
+        meta.attrs["top"] = top
+
+        # type of triggering
+
+        if "QuasiStatic" in src:
+            typename = "QuasiStatic"
+            sroot = src[typename]
+            kick = sroot["kick"][args.step]
+        elif "Trigger" in src:
+            typename = "Trigger"
+            sroot = src[typename]
+            element = sroot["element"][args.step]
+            meta.attrs["element"] = element
+            assert not sroot["truncated"][args.step - 1]
+            assert element >= 0
+
+        # restore state
+
+        system = QuasiStatic.System(file)
+        system.restore_quasistatic_step(sroot, args.step - 1)
+        deps = file["/param/cusp/epsy/deps"][...]
+
+    with h5py.File(args.output, "a") as file:
+
+        root = file.create_group("DynamicsHighFrequency")
+
+        root["u0_x"] = coor[nodes, 0]
+        root["u0_y"] = coor[nodes, 1]
+
+        if typename == "Trigger":
+            system.triggerElementWithLocalSimpleShear(deps, element)
+        else:
+            system.initEventDrivenSimpleShear()
+            system.eventDrivenStep(deps, kick)
+
+        fext, u_x, u_y, v_x, v_y, a_x, a_y = system.minimise_highfrequency(nodes, top, nmargin=1)
+        root["fext"] = fext / L
+        root["u_x"] = u_x
+        root["u_y"] = u_y
+        root["v_x"] = v_x
+        root["v_y"] = v_y
+        root["a_x"] = a_x
+        root["a_y"] = a_y
 
 
 class BasicAverage(enstat.static):
