@@ -643,8 +643,6 @@ def cli_job_rerun_dynamics(cli_args=None):
             Trigger_EnsembleInfo.h5
     """
 
-    import GooseMPL as gplt  # noqa F401
-
     class MyFmt(
         argparse.RawDescriptionHelpFormatter,
         argparse.ArgumentDefaultsHelpFormatter,
@@ -739,7 +737,7 @@ def cli_job_rerun_dynamics(cli_args=None):
             for i in tools.h5py_read_unique(file, "file", asstr=True)
         ]
 
-        bin_edges = gplt.histogram_bin_edges(sigmastar, bins=args.bins)
+        bin_edges = np.linspace(np.min(sigmastar), np.max(sigmastar), args.bins + 1)
         bins = bin_edges.size - 1
         bin_index = np.digitize(sigmastar, bin_edges) - 1
         bin_index[bin_index == bins] = bins - 1
