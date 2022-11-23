@@ -624,7 +624,13 @@ def cli_job_rerun_eventmap(cli_args=None):
 def cli_job_rerun_dynamics(cli_args=None):
     """
     Create job to rerun and measure the dynamics of system spanning (A == N) events.
-    Optionally an event-map can be obtained instead.
+    Instead of :py:func:`Dynamics.cli_run` one of the following measurements can be performed:
+
+    -    ``--eventmap``: use :py:func:`EventMap.cli_run`.
+    -    ``--highfreq``: use :py:func:`Dyanmics.cli_run_highfrequency`.
+
+    In addition, select ``--avalanche`` and ``--amin`` to run avalanches instead of system spanning
+    events.
 
     Possible usage:
 
@@ -673,14 +679,24 @@ def cli_job_rerun_dynamics(cli_args=None):
         "--nsim",
         type=int,
         default=100,
-        help="Number of simulations to preform (first nsim in order of distance to target stress)",
+        help="Number of simulations (first nsim in order of distance to target stress)",
     )
-    parser.add_argument("--eventmap", action="store_true", help="Run to get event-map instead")
+    parser.add_argument("--eventmap", action="store_true", help="Run to get event-map")
+    parser.add_argument("--highfreq", action="store_true", help="Run high frequency measurement")
     parser.add_argument(
         "--height",
         type=float,
         action="append",
         help="Add element row(s), see " + Dynamics.entry_points["cli_run"],
+    )
+    parser.add_argument(
+        "--avalanche", action="store_true", help="Run avalanches, not system spanning events"
+    )
+    parser.add_argument(
+        "--amin",
+        type=int,
+        default=20,
+        help="Minimal avalanche size, only used if --avalanche is selected",
     )
 
     # paths
@@ -745,7 +761,9 @@ def cli_job_rerun_dynamics(cli_args=None):
                 continue
             target = np.mean(sigmastar[keep])
             sorter = np.argsort(np.abs(sigmastar - target))
-            if not args.test:
+            if args.avalanche or args.test:
+                sorter = sorter[np.logical_and(A[sorter] >= args.amin, A[sorter] < N)]
+            elif not args.test:
                 sorter = sorter[A[sorter] == N]
             for index in sorter[: args.nsim]:
                 base = f"id={sid[index]:d}_incc={step_c[index]:d}_element={element[index]:d}.h5"
@@ -757,6 +775,8 @@ def cli_job_rerun_dynamics(cli_args=None):
 
         if args.eventmap:
             executable = EventMap.entry_points["cli_run"]
+        elif args.highfreq:
+            executable = Dynamics.entry_points["cli_run_highfrequency"]
 
         ret = __job_rerun(file, sims, "TriggerDynamics_conda={conda:s}", executable, args)
 
