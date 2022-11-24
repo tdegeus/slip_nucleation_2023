@@ -9,6 +9,7 @@ import itertools
 import logging
 import os
 import pathlib
+import re
 import shutil
 import tempfile
 import textwrap
@@ -39,6 +40,7 @@ entry_points = dict(
     cli_job_rerun_eventmap="Trigger_JobRerunEventMap",
     cli_run="Trigger_Run",
     cli_transform_deprecated_pack="Trigger_TransformDeprecatedEnsemblePack",
+    cli_transform_deprecated_pack2="Trigger_TransformDeprecatedEnsemblePack2",
 )
 
 file_defaults = dict(
@@ -54,6 +56,27 @@ def replace_ep(doc: str) -> str:
     for ep in entry_points:
         doc = doc.replace(rf":py:func:`{ep:s}`", entry_points[ep])
     return doc
+
+
+def interpret_filename(filename: str) -> dict:
+    """
+    Split filename in useful information.
+    """
+
+    part = re.split("_|/", os.path.splitext(filename)[0])
+    info = {}
+
+    for i in part:
+        key, value = i.split("=")
+        info[key] = value
+
+    for key in ["id", "incc", "element", "istep"]:
+        info[key] = int(info[key])
+
+    for key in ["deltasigma"]:
+        info[key] = float(info[key])
+
+    return info
 
 
 def cli_run(cli_args=None):
@@ -1260,10 +1283,10 @@ def cli_transform_deprecated_pack(cli_args=None):
                             g5.copy(src, tmp, key, key.split(root)[1].replace("/meta", "/param"))
 
                         paths.remove(g5.join(root, "/meta/normalisation"))
+                        g5.copy(tmp, dest, "/realisation/seed", root=root)
 
                         if ifile == 0:
                             g5.copy(tmp, dest, "/param")
-                            g5.copy(tmp, dest, "/realisation/seed", root=root)
                         else:
                             check = list(g5.getdatapaths(tmp))
                             check.remove("/realisation/seed")
@@ -1333,3 +1356,44 @@ def cli_transform_deprecated_pack(cli_args=None):
                     logger.warning("Potentially not be copied:\n" + "\n".join(paths))
 
                 assert len(paths) == 0 or allow_nonempty
+
+
+def cli_transform_deprecated_pack2(cli_args=None):
+    """
+    Add seed
+    This code is considered 'non-maintained'.
+    """
+
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+
+    parser.add_argument("pack", type=str, help="EnsemblePack")
+    parser.add_argument("--source", type=str, help="Source dir")
+
+    args = parser.parse_args(cli_args)
+    sourcedir = pathlib.Path(args.source)
+    assert sourcedir.is_dir()
+
+    with h5py.File(args.pack, "r+") as file:
+
+        for event in tqdm.tqdm(file["event"]):
+
+            if f"/event/{event}/realisation/seed" in file:
+                continue
+
+            sid = interpret_filename(event)["id"]
+
+            with h5py.File(sourcedir / f"id={sid:03d}.h5") as src:
+
+                if "realisation" not in file[f"/event/{event}"]:
+                    g5.copy(src, file, ["/realisation"], root=f"/event/{event}")
+                else:
+                    file[f"/event/{event}/realisation/seed"] = src["/realisation/seed"][...]
