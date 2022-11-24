@@ -698,7 +698,7 @@ def cli_job_rerun_dynamics(cli_args=None):
     parser.add_argument("--highfreq", action="store_true", help="Run high frequency measurement")
     parser.add_argument(
         "--height",
-        type=float,
+        type=int,
         action="append",
         help="Add element row(s), see " + Dynamics.entry_points["cli_run"],
     )
