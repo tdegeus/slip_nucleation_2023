@@ -456,10 +456,22 @@ def cli_ensembleinfo(cli_args=None):
             ret["run_dependencies"].append(";".join(meta.attrs["dependencies"]))
             ret["source"].append(os.path.basename(filepath))
             ret["file"].append(branch.attrs["file"])
-            ret["step"].append(branch.attrs["step"] if "step" in branch.attrs else int(-1))
             ret["inci"].append(branch.attrs["inci"] if "inci" in branch.attrs else int(-1))
-            ret["step_c"].append(branch.attrs["step_c"] if "step_c" in branch.attrs else int(-1))
             ret["stress"].append(branch.attrs["stress"] if "stress" in branch.attrs else int(-1))
+
+            if "step" in branch.attrs:
+                ret["step"].append(branch.attrs["step"])
+            elif "inc" in branch.attrs:
+                ret["step"].append(branch.attrs["inc"])
+            else:
+                ret["step"].append(int(-1))
+
+            if "step_c" in branch.attrs:
+                ret["step_c"].append(branch.attrs["step_c"])
+            elif "incc" in branch.attrs:
+                ret["step_c"].append(branch.attrs["incc"])
+            else:
+                ret["step_c"].append(int(-1))
 
         if "param" in pack:
             g5.copy(pack, output, "/param")
