@@ -1391,6 +1391,6 @@ def cli_transform_deprecated_pack2(cli_args=None):
 
             sid = interpret_filename(event)["id"]
 
-            with h5py.File(sourcedir / f"{sid:03d}.h5") as src:
+            with h5py.File(sourcedir / f"id={sid:03d}.h5") as src:
                 print(src["/realisation/seed"][...])
                 # file[f"/event/{event}/realisation/seed"] = src["/realisation/seed"][...]
