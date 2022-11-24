@@ -1384,7 +1384,7 @@ def cli_transform_deprecated_pack2(cli_args=None):
 
     with h5py.File(args.pack) as file:
 
-        for event in file["event"]:
+        for event in tqdm.tqdm(file["event"]):
 
             if f"/event/{event}/realisation/seed" in file:
                 continue
