@@ -1382,7 +1382,7 @@ def cli_transform_deprecated_pack2(cli_args=None):
     sourcedir = pathlib.Path(args.source)
     assert sourcedir.is_dir()
 
-    with h5py.File(args.pack) as file:
+    with h5py.File(args.pack, "r+") as file:
 
         for event in tqdm.tqdm(file["event"]):
 
@@ -1392,5 +1392,8 @@ def cli_transform_deprecated_pack2(cli_args=None):
             sid = interpret_filename(event)["id"]
 
             with h5py.File(sourcedir / f"id={sid:03d}.h5") as src:
-                print(src["/realisation/seed"][...])
-                # file[f"/event/{event}/realisation/seed"] = src["/realisation/seed"][...]
+
+                if "realisation" not in file[f"/event/{event}"]:
+                    g5.copy(src, file, ["/realisation"], root=f"/event/{event}")
+                else:
+                    file[f"/event/{event}/realisation/seed"] = src["/realisation/seed"][...]
