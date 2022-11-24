@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import inspect
 import os
+import pathlib
 import re
 import sys
 import textwrap
@@ -29,7 +30,6 @@ from numpy.typing import ArrayLike
 
 from . import Dynamics
 from . import EventMap
-from . import slurm
 from . import storage
 from . import tag
 from . import tools
@@ -666,20 +666,19 @@ def cli_generate(cli_args=None):
     parser.add_argument("-N", "--size", type=int, default=2 * (3**6), help="#blocks")
     parser.add_argument("-s", "--start", type=int, default=0, help="Start simulation")
     parser.add_argument("-v", "--version", action="version", version=version)
-    parser.add_argument("-w", "--time", type=str, default="72h", help="Walltime")
     parser.add_argument("outdir", type=str, help="Output directory")
 
     args = tools._parse(parser, cli_args)
 
-    if not os.path.isdir(args.outdir):
-        os.makedirs(args.outdir)
+    outdir = pathlib.Path(args.outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
 
     files = []
 
     for i in range(args.start, args.start + args.nsim):
         files += [f"id={i:03d}.h5"]
         generate(
-            filepath=os.path.join(args.outdir, f"id={i:03d}.h5"),
+            filepath=str(outdir / f"id={i:03d}.h5"),
             N=args.size,
             seed=i * args.size,
             dev=args.develop,
@@ -687,13 +686,7 @@ def cli_generate(cli_args=None):
 
     executable = entry_points["cli_run"]
     commands = [f"{executable} {file}" for file in files]
-    slurm.serial_group(
-        commands,
-        basename=executable,
-        group=1,
-        outdir=args.outdir,
-        sbatch={"time": args.time},
-    )
+    shelephant.yaml.dump(outdir / "commands.yaml", commands)
 
 
 def _compare_versions(ver, cmpver):
@@ -1472,18 +1465,16 @@ def cli_rerun_event_job_systemspanning(cli_args=None):
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
     output = file_defaults[funcname]
 
-    parser.add_argument("--conda", type=str, default=slurm.default_condabase, help="Env-basename")
     parser.add_argument("-f", "--force", action="store_true", help="Force clean output directory")
-    parser.add_argument("-n", "--group", type=int, default=20, help="#increments to group")
     parser.add_argument("-o", "--outdir", type=str, default=output, help="Output directory")
     parser.add_argument("-t", "--truncate", action="store_true", help="Truncate at known Smax")
     parser.add_argument("-v", "--version", action="version", version=version)
-    parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
     parser.add_argument("EnsembleInfo", type=str, help="EnsembleInfo")
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.EnsembleInfo)
     tools._create_or_clear_directory(args.outdir, args.force)
+    outdir = pathlib.Path(args.outdir)
 
     with h5py.File(args.EnsembleInfo, "r") as file:
         N = file["/normalisation/N"][...]
@@ -1513,14 +1504,7 @@ def cli_rerun_event_job_systemspanning(cli_args=None):
         cmd += [os.path.join(relpath, fname)]
         commands.append(" ".join(cmd))
 
-    slurm.serial_group(
-        commands,
-        basename=executable,
-        group=args.group,
-        outdir=args.outdir,
-        conda=dict(condabase=args.conda),
-        sbatch={"time": args.time},
-    )
+    shelephant.yaml.dump(outdir / "commands.yaml", commands)
 
     if cli_args is not None:
         return commands
@@ -1539,17 +1523,15 @@ def cli_rerun_dynamics_job_systemspanning(cli_args=None):
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
     output = file_defaults[funcname]
 
-    parser.add_argument("--conda", type=str, default=slurm.default_condabase, help="Env-basename")
     parser.add_argument("-f", "--force", action="store_true", help="Force clean output directory")
-    parser.add_argument("-n", "--group", type=int, default=20, help="#increments to group")
     parser.add_argument("-o", "--outdir", type=str, default=output, help="Output directory")
     parser.add_argument("-v", "--version", action="version", version=version)
-    parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
     parser.add_argument("EnsembleInfo", type=str, help="EnsembleInfo")
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.EnsembleInfo)
     tools._create_or_clear_directory(args.outdir, args.force)
+    outdir = pathlib.Path(args.outdir)
 
     with h5py.File(args.EnsembleInfo, "r") as file:
         N = file["/normalisation/N"][...]
@@ -1575,14 +1557,7 @@ def cli_rerun_dynamics_job_systemspanning(cli_args=None):
         cmd += [os.path.join(relpath, fname)]
         commands.append(" ".join(cmd))
 
-    slurm.serial_group(
-        commands,
-        basename=executable,
-        group=args.group,
-        outdir=args.outdir,
-        conda=dict(condabase=args.conda),
-        sbatch={"time": args.time},
-    )
+    shelephant.yaml.dump(outdir / "commands.yaml", commands)
 
     if cli_args is not None:
         return commands

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import inspect
 import os
+import pathlib
 import re
 import sys
 import textwrap
@@ -15,11 +16,11 @@ import GooseFEM  # noqa: F401
 import GooseHDF5 as g5
 import h5py
 import numpy as np
+import shelephant
 import tqdm
 from numpy.typing import ArrayLike
 
 from . import QuasiStatic
-from . import slurm
 from . import storage
 from . import tools
 from ._version import version
@@ -201,7 +202,6 @@ def cli_generate(cli_args=None):
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
 
-    parser.add_argument("--conda", type=str, default=slurm.default_condabase, help="Env-basename")
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("--scale-alpha", type=float, help="Scale general damping")
     parser.add_argument("--eta", type=float, help="Damping at the interface")
@@ -209,13 +209,12 @@ def cli_generate(cli_args=None):
     parser.add_argument("-N", "--size", type=int, default=2 * (3**6), help="#blocks")
     parser.add_argument("-s", "--start", type=int, default=0, help="Start simulation")
     parser.add_argument("-v", "--version", action="version", version=version)
-    parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
     parser.add_argument("outdir", type=str, help="Output directory")
 
     args = tools._parse(parser, cli_args)
 
-    if not os.path.isdir(args.outdir):
-        os.makedirs(args.outdir)
+    outdir = pathlib.Path(args.outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
 
     if args.scale_alpha is None and args.eta is None:
         args.scale_alpha = 1.0
@@ -229,7 +228,7 @@ def cli_generate(cli_args=None):
         for j in range(Ensemble.n):
 
             filename = f"id={i:03d}_gammadot={Ensemble.gammadot[j]:.2e}.h5"
-            filepath = os.path.join(args.outdir, filename)
+            filepath = str(outdir / filename)
             filenames.append(filename)
             filepaths.append(filepath)
 
@@ -253,14 +252,7 @@ def cli_generate(cli_args=None):
 
     executable = entry_points["cli_run"]
     commands = [f"{executable} {file}" for file in filenames]
-    slurm.serial_group(
-        commands,
-        basename=executable,
-        group=1,
-        outdir=args.outdir,
-        conda=dict(condabase=args.conda),
-        sbatch={"time": args.time},
-    )
+    shelephant.yaml.dump(outdir / "commands.yaml", commands)
 
     if cli_args is not None:
         return filepaths
@@ -591,17 +583,18 @@ def cli_branch_velocityjump(cli_args=None):
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
     progname = entry_points[funcname]
 
-    parser.add_argument("--conda", type=str, default=slurm.default_condabase, help="Env-basename")
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("-i", "--inc", type=int, required=True, help="Increment to branch")
     parser.add_argument("-o", "--outdir", type=str, required=True, help="Output directory")
     parser.add_argument("-v", "--version", action="version", version=version)
-    parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
     parser.add_argument("file", type=str, help="Flow simulation to branch from")
     parser.add_argument("gammadot", type=float, nargs="*", help="New flow rate")
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)
+
+    outdir = pathlib.Path(args.outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
 
     with h5py.File(args.file) as source:
         assert str(args.inc) in source["Flow"]["snapshot"]["u"]
@@ -622,13 +615,10 @@ def cli_branch_velocityjump(cli_args=None):
 
         name = "id={id}_gammadot={gammadot}_jump={jump:.2e}.h5".format(jump=gammadot, **info)
         out_names.append(name)
-        out_paths.append(os.path.join(args.outdir, name))
+        out_paths.append(str(outdir / name))
         out_gammadots.append(gammadot)
 
     assert not np.any([os.path.exists(f) for f in out_paths])
-
-    if not os.path.isdir(args.outdir):
-        os.makedirs(args.outdir)
 
     with h5py.File(args.file) as source:
 
@@ -684,14 +674,7 @@ def cli_branch_velocityjump(cli_args=None):
 
     executable = entry_points["cli_run"]
     commands = [f"{executable} {file}" for file in out_names]
-    slurm.serial_group(
-        commands,
-        basename=executable,
-        group=1,
-        outdir=args.outdir,
-        conda=dict(condabase=args.conda),
-        sbatch={"time": args.time},
-    )
+    shelephant.yaml.dump(str(outdir / "commands.yaml"), commands, args.develop)
 
     if cli_args is not None:
         return out_paths

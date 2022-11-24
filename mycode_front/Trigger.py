@@ -21,12 +21,12 @@ import GooseFEM  # noqa: F401
 import GooseHDF5 as g5
 import h5py
 import numpy as np
+import shelephant
 import tqdm
 
 from . import Dynamics
 from . import EventMap
 from . import QuasiStatic
-from . import slurm
 from . import storage
 from . import tools
 from ._version import version
@@ -568,14 +568,7 @@ def __job_rerun(file, sims, basename, executable, args):
         commands += [f"{executable} -o {o} --step 1" + height + f"{r}"]
         ret += [f"{executable} -o {output} --step 1" + height + f"{replica}"]
 
-    slurm.serial_group(
-        commands,
-        basename=basename,
-        group=args.group,
-        outdir=args.outdir,
-        conda=dict(condabase=args.conda),
-        sbatch={"time": args.time},
-    )
+    shelephant.yaml.dump(os.path.join(args.outdir, "commands.yaml"), commands, args.force)
 
     return ret
 
@@ -596,10 +589,7 @@ def cli_job_rerun_eventmap(cli_args=None):
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
 
-    parser.add_argument("--conda", type=str, default=slurm.default_condabase, help="Env-basename")
     parser.add_argument("--develop", action="store_true", help="Development mode")
-    parser.add_argument("--group", type=int, default=5, help="#simulations to group")
-    parser.add_argument("--time", type=str, default="24h", help="Walltime")
     parser.add_argument("--amin", type=int, default=20, help="Minimal avalanche size")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument("-n", "--nsim", type=int, help="Number of simulations")
@@ -692,16 +682,6 @@ def cli_job_rerun_dynamics(cli_args=None):
     # development mode
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("--test", action="store_true", help="Test mode")
-
-    # job settings
-    parser.add_argument("--group", type=int, default=5, help="Job: #simulations to group")
-    parser.add_argument("--time", type=str, default="24h", help="Job: walltime")
-    parser.add_argument(
-        "--conda",
-        type=str,
-        default=slurm.default_condabase,
-        help="Job: basename of conda environement",
-    )
 
     # ensemble definition
     parser.add_argument("--bins", type=int, default=7, help="Number of stress bins")
@@ -1051,7 +1031,6 @@ def cli_job_deltasigma(cli_args=None):
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
     progname = entry_points[funcname]
 
-    parser.add_argument("--conda", type=str, default=slurm.default_condabase, help="Env-basename")
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("--filter", type=str, help="Filter completed jobs")
     parser.add_argument("--nmax", type=int, help="Keep first nmax jobs (mostly for testing)")
@@ -1205,14 +1184,8 @@ def cli_job_deltasigma(cli_args=None):
     if args.develop:
         cmd.append("--develop")
 
-    slurm.serial_group(
-        [" ".join(cmd + [os.path.relpath(i, args.outdir)]) for i in outfiles],
-        basename=executable,
-        group=args.group,
-        outdir=args.outdir,
-        conda=dict(condabase=args.conda),
-        sbatch={"time": args.time},
-    )
+    commands = [" ".join(cmd + [os.path.relpath(i, args.outdir)]) for i in outfiles]
+    shelephant.yaml.dump(os.path.join(args.outdir, "commands.yaml"), commands, args.force)
 
     if cli_args is not None:
         return [" ".join(cmd + [i]) for i in outfiles]
