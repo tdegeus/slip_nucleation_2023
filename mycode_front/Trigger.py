@@ -782,22 +782,25 @@ def cli_job_rerun_dynamics(cli_args=None):
                 continue
             target = np.mean(sigmastar[keep])
             sorter = np.argsort(np.abs(sigmastar - target))
-            if args.avalanche or args.test:
+            if args.test:
+                pass
+            elif args.avalanche:
                 sorter = sorter[np.logical_and(A[sorter] >= args.amin, A[sorter] < N)]
-            elif not args.test:
+            else:
                 sorter = sorter[A[sorter] == N]
+
             for index in sorter[: args.nsim]:
                 base = f"id={sid[index]:d}_incc={step_c[index]:d}_element={element[index]:d}.h5"
                 sims["replica"].append(os.path.join(args.outdir, f"bin={ibin:02d}", "src", base))
                 sims["output"].append(os.path.join(args.outdir, f"bin={ibin:02d}", base))
                 sims["index"].append(index)
 
-        executable = Dynamics.entry_points["cli_run"]
-
         if args.eventmap:
             executable = EventMap.entry_points["cli_run"]
         elif args.highfreq:
             executable = Dynamics.entry_points["cli_run_highfrequency"]
+        else:
+            executable = Dynamics.entry_points["cli_run"]
 
         ret = __job_rerun(file, sims, "TriggerDynamics_conda={conda:s}", executable, args)
 
