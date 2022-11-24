@@ -1358,7 +1358,7 @@ def cli_transform_deprecated_pack(cli_args=None):
                 assert len(paths) == 0 or allow_nonempty
 
 
-def cli_transform_deprecated_pack(cli_args=None):
+def cli_transform_deprecated_pack2(cli_args=None):
     """
     Add seed
     This code is considered 'non-maintained'.
