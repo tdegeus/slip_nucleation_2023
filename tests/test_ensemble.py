@@ -371,6 +371,9 @@ class test_Trigger(unittest.TestCase):
 
             trigger.restore_quasistatic_step(file["Trigger"], 0)
             trigger_i_n = np.copy(trigger.plastic.i)
+            if not np.allclose(u, trigger.u):
+                print(u)
+                print(trigger.u)
             self.assertTrue(np.allclose(u, trigger.u))
 
             trigger.restore_quasistatic_step(file["Trigger"], 1)
