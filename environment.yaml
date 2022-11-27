@@ -18,7 +18,7 @@ dependencies:
 - pybind11
 - python
 - python-cppcolormap
-- python-frictionqpotfem >=0.23.0
+- python-frictionqpotfem >=0.23.1
 - python-gmatelastic >0.5.0
 - python-gmatelastoplasticqpot >=0.18.2
 - python-gmattensor >0.9.0

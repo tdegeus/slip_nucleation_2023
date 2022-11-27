@@ -494,14 +494,10 @@ def cli_run_highfrequency(cli_args=None):
             system.initEventDrivenSimpleShear()
             system.eventDrivenStep(deps, kick)
 
-        fext, u_x, u_y, v_x, v_y, a_x, a_y = system.minimise_highfrequency(nodes, top, nmargin=1)
+        fext, u_x, u_y = system.minimise_highfrequency(nodes, top, nmargin=1)
         root["fext"] = fext / L
         root["u_x"] = u_x
         root["u_y"] = u_y
-        root["v_x"] = v_x
-        root["v_y"] = v_y
-        root["a_x"] = a_x
-        root["a_y"] = a_y
 
 
 class BasicAverage(enstat.static):
