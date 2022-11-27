@@ -1243,7 +1243,7 @@ def basic_output(
         i_n = np.copy(i)
         Sig_plas_n = np.copy(Sig_plas)
 
-    ret["dinc"] = np.diff(root["inc"][...], prepend=0)
+    ret["dinc"] = np.diff(root["inc"][...].astype(np.int64), prepend=0)
     ret["duration"] = np.diff(root["inc"][...] * ret["dt"][...], prepend=0) / ret["t0"]
     ret["steadystate"] = steadystate(**ret)
 
