@@ -642,7 +642,7 @@ def cli_job_rerun_eventmap(cli_args=None):
             sims["index"].append(index)
 
         executable = EventMap.entry_points["cli_run"]
-        ret = __job_rerun(file, sims, "TriggerEventMap_conda={conda:s}", executable, args)
+        ret = __job_rerun(file, sims, "TriggerEventMap", executable, args)
 
     if cli_args is not None:
         return ret
@@ -796,7 +796,7 @@ def cli_job_rerun_dynamics(cli_args=None):
         else:
             executable = Dynamics.entry_points["cli_run"]
 
-        ret = __job_rerun(file, sims, "TriggerDynamics_conda={conda:s}", executable, args)
+        ret = __job_rerun(file, sims, "TriggerDynamics", executable, args)
 
     if cli_args is not None:
         return ret
