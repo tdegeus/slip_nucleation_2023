@@ -463,8 +463,6 @@ def cli_ensembleinfo(cli_args=None):
                 ret["step"].append(branch.attrs["step"])
             elif "inc" in branch.attrs:
                 ret["step"].append(branch.attrs["inc"])
-            elif "step_i" in branch.attrs:
-                ret["step"].append(branch.attrs["step_i"])
             else:
                 ret["step"].append(int(-1))
 
