@@ -1032,7 +1032,7 @@ def cli_job_deltasigma(cli_args=None):
     progname = entry_points[funcname]
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
-    parser.add_argument("--filter", type=str, help="Filter completed jobs")
+    parser.add_argument("--filter", type=str, help="Filter completed jobs. Arg: EnsemblePack")
     parser.add_argument("--nmax", type=int, help="Keep first nmax jobs (mostly for testing)")
     parser.add_argument("--truncate-system-spanning", action="store_true", help="Stop large events")
     parser.add_argument(
