@@ -2,10 +2,14 @@ import os
 import shutil
 import sys
 import unittest
+from functools import partialmethod
 
 import GMatTensor.Cartesian2d as tensor
 import h5py
 import numpy as np
+from tqdm import tqdm
+
+tqdm.__init__ = partialmethod(tqdm.__init__, disable=True)
 
 root = os.path.join(os.path.dirname(__file__), "..")
 if os.path.exists(os.path.join(root, "mycode_front", "_version.py")):

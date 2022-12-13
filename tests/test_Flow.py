@@ -3,8 +3,12 @@ import pathlib
 import shutil
 import sys
 import unittest
+from functools import partialmethod
 
 import h5py
+from tqdm import tqdm
+
+tqdm.__init__ = partialmethod(tqdm.__init__, disable=True)
 
 root = pathlib.Path(__file__).parent.joinpath("..").resolve()
 if (root / "mycode_front" / "_version.py").exists():

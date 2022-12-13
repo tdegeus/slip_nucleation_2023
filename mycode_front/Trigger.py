@@ -41,6 +41,7 @@ entry_points = dict(
     cli_run="Trigger_Run",
     cli_transform_deprecated_pack="Trigger_TransformDeprecatedEnsemblePack",
     cli_transform_deprecated_pack2="Trigger_TransformDeprecatedEnsemblePack2",
+    cli_transform_deprecated_pack3="Trigger_TransformDeprecatedEnsemblePack3",
 )
 
 file_defaults = dict(
@@ -58,25 +59,67 @@ def replace_ep(doc: str) -> str:
     return doc
 
 
-def interpret_filename(filename: str) -> dict:
+def interpret_filename(path: str, convert: bool = True) -> dict:
     """
-    Split filename in useful information.
+    Split path in useful information.
+    :param convert: If ``True``, convert to numerical values.
     """
 
-    part = re.split("_|/", os.path.splitext(filename)[0])
-    info = {}
+    if convert:
+        convert = {
+            "id": int,
+            "stepc": int,
+            "element": int,
+            "deltasigma": lambda x: float(x.replace(",", ".")),
+        }
 
-    for i in part:
-        key, value = i.split("=")
-        info[key] = value
+    return tools.read_parameters(os.path.splitext(path)[0], convert)
 
-    for key in ["id", "incc", "element", "istep"]:
-        info[key] = int(info[key])
 
-    for key in ["deltasigma"]:
-        info[key] = float(info[key])
+def filepath2pack(filepath: str) -> str:
+    """
+    Convert a filename to the corresponding 'path' in the 'pack' HDF5 archive. E.g.::
 
-    return info
+        >>> filepath2pack("deltasigma=0,1_id=1_stepc=2_element=3.h5")
+        '/event/deltasigma=0,1/id=1/stepc=2_element=3'
+
+    :param filepath: Filename.
+    :return: Path in the pack.
+    """
+
+    info = interpret_filename(pathlib.Path(filepath).stem)
+    info["deltasigma"] = "{:.5f}".format(info["deltasigma"]).replace(".", ",")
+    return "/event/deltasigma={deltasigma}/id={id}/stepc={stepc}_element={element}".format(**info)
+
+
+def pack2filepath(pack: str) -> str:
+    """
+    Convert a 'path' in the 'pack' HDF5 archive to the corresponding filename. E.g.::
+
+        >>> pack2filepath("/event/deltasigma=0,1/id=1/stepc=2_element=3")
+        'deltasigma=0,1_id=1_stepc=2_element=3.h5'
+
+    :param pack: Path in the pack.
+    :return: Filename.
+    """
+    return pack.split("/event/")[1].replace("/", "_") + ".h5"
+
+
+def pack2paths(file: h5py.File) -> list[str]:
+    """
+    List all paths in the 'pack'.
+    :file: The pack HDF5 archive.
+    :return: List of paths.
+    """
+
+    ret = []
+
+    for dsig in file["event"]:
+        for sid in file["event"][dsig]:
+            for path in file["event"][dsig][sid]:
+                ret.append(f"/event/{dsig}/{sid}/{path}")
+
+    return ret
 
 
 def cli_run(cli_args=None):
@@ -242,21 +285,25 @@ def cli_ensemblepack_merge(cli_args=None):
     assert all([os.path.isfile(file) for file in args.files])
     tools._check_overwrite_file(args.output, args.force)
 
-    with h5py.File(args.output, "w") as output:
-        for ifile, filepath in enumerate(tqdm.tqdm(args.files)):
-            with h5py.File(filepath) as file:
-                if ifile == 0:
-                    g5.copy(file, output, "/param")
-                    if "event" not in output:
-                        output.create_group("event")
-                else:
-                    assert g5.allequal(file, output, g5.getdatapaths(file, "/param"))
+    with h5py.File(args.output, "w") as dest:
 
-                for path in file["event"]:
-                    if path in output["event"]:
-                        assert g5.allequal(file, output, g5.getdatapaths(file, f"/event/{path}"))
+        for ifile, filepath in enumerate(tqdm.tqdm(args.files)):
+
+            with h5py.File(filepath) as src:
+
+                if ifile == 0:
+                    g5.copy(src, dest, "/param")
+                    if "event" not in dest:
+                        dest.create_group("event")
+                else:
+                    assert g5.allequal(src, dest, g5.getdatapaths(src, "/param"))
+
+                for path in pack2paths(src):
+
+                    if path in dest:
+                        assert g5.allequal(src, dest, g5.getdatapaths(src, path))
                     else:
-                        g5.copy(file, output, f"/event/{path}", expand_soft=False)
+                        g5.copy(src, dest, path, expand_soft=False)
 
 
 def cli_ensemblepack(cli_args=None):
@@ -287,25 +334,18 @@ def cli_ensemblepack(cli_args=None):
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
-    parser.add_argument("-a", "--append", action="store_true", help="Append output file")
     parser.add_argument("files", nargs="*", type=str, help="Files to read")
 
     args = tools._parse(parser, cli_args)
     assert len(args.files) > 0
     assert all([os.path.isfile(file) for file in args.files])
-    if not args.append:
-        tools._check_overwrite_file(args.output, args.force)
+    tools._check_overwrite_file(args.output, args.force)
 
     fmt = "{:" + str(max(len(i) for i in args.files)) + "s}"
     pbar = tqdm.tqdm(args.files)
     pbar.set_description(fmt.format(""))
 
-    if args.append:
-        with h5py.File(args.output, "r") as output:
-            for filepath in args.files:
-                assert filepath not in output["event"]
-
-    with h5py.File(args.output, "a" if args.append else "w") as output:
+    with h5py.File(args.output, "w") as output:
 
         for ifile, filepath in enumerate(pbar):
 
@@ -314,7 +354,7 @@ def cli_ensemblepack(cli_args=None):
             with h5py.File(filepath, "r") as file:
 
                 # copy/check global ensemble data
-                if ifile == 0 and not args.append:
+                if ifile == 0:
                     g5.copy(file, output, "/param")
                 else:
                     assert g5.allequal(file, output, list(g5.getdatapaths(file, "/param")))
@@ -330,9 +370,9 @@ def cli_ensemblepack(cli_args=None):
                     continue
 
                 # copy/link event data
-                tid = os.path.basename(filepath)
-                g5.copy(file, output, ["/realisation", "/meta", "/Trigger"], root=f"/event/{tid}")
-                output[f"/event/{tid}/param"] = h5py.SoftLink("/param")
+                path = filepath2pack(filepath)
+                g5.copy(file, output, ["/realisation", "/meta", "/Trigger"], root=path)
+                output[g5.join(path, "param", root=True)] = h5py.SoftLink("/param")
 
 
 def cli_ensembleinfo(cli_args=None):
@@ -389,26 +429,26 @@ def cli_ensembleinfo(cli_args=None):
         source=[],
         file=[],
         step=[],
-        inci=[],
+        step_i=[],
         step_c=[],
         stress=[],
     )
 
-    with h5py.File(args.ensemblepack, "r") as pack, h5py.File(args.output, "w") as output:
+    with h5py.File(args.ensemblepack) as pack, h5py.File(args.output, "w") as output:
 
-        files = [i for i in pack["event"]]
-        assert len(files) > 0
-        simid = [int(tools.read_parameters(i)["id"]) for i in files]
+        paths = pack2paths(pack)
+        assert len(paths) > 0
+        simid = [interpret_filename(i)["id"] for i in paths]
         index = np.argsort(simid)
-        fmt = "{:" + str(max(len(i) for i in files)) + "s}"
+        fmt = "{:" + str(max(len(i) for i in paths)) + "s}"
         pbar = tqdm.tqdm(index)
         pbar.set_description(fmt.format(""))
 
         for i, idx in enumerate(pbar):
 
-            filepath = files[idx]
-            pbar.set_description(fmt.format(filepath), refresh=True)
-            file = pack["event"][filepath]
+            path = paths[idx]
+            pbar.set_description(fmt.format(path), refresh=True)
+            file = pack[path]
 
             if i == 0:
                 system = QuasiStatic.System(file)
@@ -434,7 +474,7 @@ def cli_ensembleinfo(cli_args=None):
             if "try_element" in file["Trigger"]:
                 try_element = file["Trigger"]["try_element"][1]
             else:
-                try_element = int(os.path.basename(filepath).split("element=")[1].split("_")[0])
+                try_element = interpret_filename(path)["elememt"]
 
             ret["S"].append(out["S"][1])
             ret["A"].append(out["A"][1])
@@ -454,9 +494,8 @@ def cli_ensembleinfo(cli_args=None):
             ret["try_element"].append(try_element)
             ret["run_version"].append(meta.attrs["version"])
             ret["run_dependencies"].append(";".join(meta.attrs["dependencies"]))
-            ret["source"].append(os.path.basename(filepath))
+            ret["source"].append(path)
             ret["file"].append(branch.attrs["file"])
-            ret["inci"].append(branch.attrs["inci"] if "inci" in branch.attrs else int(-1))
             ret["stress"].append(branch.attrs["stress"] if "stress" in branch.attrs else int(-1))
 
             if "step" in branch.attrs:
@@ -473,6 +512,13 @@ def cli_ensembleinfo(cli_args=None):
             else:
                 ret["step_c"].append(int(-1))
 
+            if "step_i" in branch.attrs:
+                ret["step_i"].append(branch.attrs["step_i"])
+            elif "inci" in branch.attrs:
+                ret["step_i"].append(branch.attrs["inci"])
+            else:
+                ret["step_i"].append(int(-1))
+
         if "param" in pack:
             g5.copy(pack, output, "/param")
 
@@ -485,8 +531,8 @@ def cli_ensembleinfo(cli_args=None):
         for key in ret:
             output[key] = ret[key]
 
-        QuasiStatic.create_check_meta(output, f"/meta/{progname}", dev=args.develop)
         output["/meta/normalisation/N"] = N
+        QuasiStatic.create_check_meta(output, f"/meta/{progname}", dev=args.develop)
 
 
 def restore_from_ensembleinfo(
@@ -634,7 +680,7 @@ def cli_job_rerun_eventmap(cli_args=None):
         )
 
         for index in select:
-            base = f"id={sid[index]:d}_incc={step_c[index]:d}_element={element[index]:d}.h5"
+            base = f"id={sid[index]:d}_stepc={step_c[index]:d}_element={element[index]:d}.h5"
             sims["replica"].append(os.path.join(args.outdir, "src", base))
             sims["output"].append(os.path.join(args.outdir, base))
             sims["index"].append(index)
@@ -782,7 +828,7 @@ def cli_job_rerun_dynamics(cli_args=None):
                 sorter = sorter[A[sorter] == N]
 
             for index in sorter[: args.nsim]:
-                base = f"id={sid[index]:d}_incc={step_c[index]:d}_element={element[index]:d}.h5"
+                base = f"id={sid[index]:d}_stepc={step_c[index]:d}_element={element[index]:d}.h5"
                 sims["replica"].append(os.path.join(args.outdir, f"bin={ibin:02d}", "src", base))
                 sims["output"].append(os.path.join(args.outdir, f"bin={ibin:02d}", base))
                 sims["index"].append(index)
@@ -997,12 +1043,7 @@ def __filter(ret, filepath, meta):
             raise OSError("Not yet implemented (not very hard though)")
         # cli_ensemblepack
         else:
-            if g5.join("/ensemble", meta[0]) in file:
-                m = file[g5.join("/ensemble", meta[0])]
-                for key in meta[1]:
-                    assert m.attrs[key] == meta[1][key]
-
-            present = sorted(i for i in file["event"])
+            present = sorted([pack2filepath(i) for i in pack2paths(file)])
             ensemble = [os.path.basename(i) for i in ret["dest"]]
             keep = ~np.in1d(ensemble, present)
             for key in ret:
@@ -1042,8 +1083,6 @@ def cli_job_deltasigma(cli_args=None):
         help="Select only specific stress for the list of stresses",
     )
     parser.add_argument("-d", "--delta-sigma", type=float, required=True, help="delta_sigma")
-    parser.add_argument("--slice-start", type=int, default=0, help="Slice selected stresses")
-    parser.add_argument("--slice-step", type=int, default=1, help="Slice selected stresses")
     parser.add_argument("-e", "--element", type=int, action="append", help="Specify element(s)")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument("-n", "--group", type=int, default=50, help="#simulations to group")
@@ -1110,7 +1149,6 @@ def cli_job_deltasigma(cli_args=None):
         sid = filepath.stem
         assert sig_loading[i + 1] > sig[i]
         stress = sig[i] + args.delta_sigma * np.arange(100, dtype=float)
-        stress = stress[args.slice_start :: args.slice_step]
         stress = stress[stress < sig_loading[i + 1]]
 
         if args.istress:
@@ -1123,13 +1161,15 @@ def cli_job_deltasigma(cli_args=None):
             else:
                 j = None  # at fixed stress
 
+            bse = f"{args.outdir}/"
+            dsigname = f"deltasigma={args.delta_sigma * istress:.5f}".replace(".", ",")
+
             if args.subdir:
-                bse = f"{args.outdir}/{sid}/deltasigma={args.delta_sigma:.3f}"
-                if not os.path.isdir(f"{args.outdir}/{sid}"):
-                    os.makedirs(f"{args.outdir}/{sid}")
-            else:
-                bse = f"{args.outdir}/deltasigma={args.delta_sigma:.3f}"
-            out = f"{bse}_{sid}_incc={step[i]:d}_element={elements[0]:d}_istep={istress:02d}.h5"
+                bse = f"{bse}{sid}/"
+                if not os.path.isdir(bse):
+                    os.makedirs(bse)
+
+            out = f"{bse}{dsigname}_{sid}_stepc={step[i]:d}_element={elements[0]:d}.h5"
             ret["source"].append(filepath)
             ret["dest"].append(out)
             ret["step"].append(j)
@@ -1161,10 +1201,10 @@ def cli_job_deltasigma(cli_args=None):
         e0 = elements[0]
         outfiles = []
 
-        with h5py.File(args.ensembleinfo, "r") as file:
+        with h5py.File(args.ensembleinfo) as file:
             for e in elements:
                 r = data.copy()
-                r["dest"] = [i.replace(f"_element={e0}_", f"_element={e:d}_") for i in r["dest"]]
+                r["dest"] = [i.replace(f"element={e0}", f"element={e:d}") for i in r["dest"]]
                 r = __filter(r, args.filter, meta)
                 _write_configurations(e, file, args.force, args.develop, meta=meta, **r)
                 outfiles += [i for i in r["dest"]]
@@ -1172,12 +1212,12 @@ def cli_job_deltasigma(cli_args=None):
     # if no filter is applied: generate for one element and copy + modify for all the other elements
     else:
 
-        with h5py.File(args.ensembleinfo, "r") as file:
+        with h5py.File(args.ensembleinfo) as file:
             _write_configurations(elements[0], file, args.force, args.develop, meta=meta, **ret)
             outfiles = [i for i in ret["dest"]]
 
         for e in elements[1:]:
-            d = [i.replace(f"_element={elements[0]}_", f"_element={e:d}_") for i in ret["dest"]]
+            d = [i.replace(f"element={elements[0]}", f"element={e:d}") for i in ret["dest"]]
             _copy_configurations(e, ret["dest"], d, args.force)
             outfiles += d
 
@@ -1388,3 +1428,47 @@ def cli_transform_deprecated_pack2(cli_args=None):
                     g5.copy(src, file, ["/realisation"], root=f"/event/{event}")
                 else:
                     file[f"/event/{event}/realisation/seed"] = src["/realisation/seed"][...]
+
+
+def cli_transform_deprecated_pack3(cli_args=None):
+    """
+    Rename triggers. Assumes file that is conform :py:func:`cli_transform_deprecated_pack2`.
+    """
+
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+
+    parser.add_argument("input", type=str, help="EnsemblePack")
+    parser.add_argument("output", type=str, help="EnsemblePack")
+
+    args = parser.parse_args(cli_args)
+    assert pathlib.Path(args.input).is_file()
+    assert not pathlib.Path(args.output).is_file()
+
+    with h5py.File(args.input) as src, h5py.File(args.output, "w") as dest:
+
+        g5.copy(src, dest, ["/param"])
+
+        for event in tqdm.tqdm(src["event"]):
+
+            part = re.split("_|/", os.path.splitext(event)[0])
+            info = {}
+
+            for i in part:
+                key, value = i.split("=")
+                info[key] = value
+
+            dsig = float(info["deltasigma"]) * float(info["istep"])
+            info["deltasigma"] = f"{dsig:.5f}".replace(".", ",")
+            info["stepc"] = info.pop("incc")
+
+            ret = "deltasigma={deltasigma}/id={id}/stepc={stepc}_element={element}".format(**info)
+            g5.copy(src, dest, f"/event/{event}", f"/event/{ret}", expand_soft=False)

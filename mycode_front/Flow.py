@@ -314,6 +314,9 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
 
     basename = os.path.basename(filepath)
     progname = entry_points["cli_run"]
+    opts = {}
+    if not progress:
+        opts["disable"] = True
 
     with h5py.File(filepath, "a") as file:
 
@@ -342,7 +345,7 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
 
         boundcheck = file["/Flow/boundcheck"][...]
         nchunk = file["/param/cusp/epsy/nchunk"][...] + 2 - boundcheck
-        pbar = tqdm.tqdm(total=nchunk, disable=not progress, desc=filepath)
+        pbar = tqdm.tqdm(total=nchunk, desc=filepath, **opts)
 
         if "/Flow/restart/u" in file:
             system.u = file["/Flow/restart/u"][...]

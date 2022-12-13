@@ -14,7 +14,7 @@ import h5py
 import numpy as np
 import path
 import shelephant
-import tqdm
+from tqdm import tqdm
 
 tqdm.__init__ = partialmethod(tqdm.__init__, disable=True)
 
@@ -248,7 +248,7 @@ class test_Trigger(unittest.TestCase):
 
         # Check that copying worked
 
-        elem = [int(i.split(" ")[-1].split("element=")[1].split("_")[0]) for i in self.commands]
+        elem = [Trigger.interpret_filename(i)["element"] for i in self.commands]
         elem = np.unique(elem)
         o = [i.split(" ")[-1] for i in self.commands]
         uni = [re.sub(r"(.*)(element)(=[0-9]*)(.*)", r"\1\2=" + str(elem[0]) + r"\4", i) for i in o]
@@ -366,7 +366,7 @@ class test_Trigger(unittest.TestCase):
         with h5py.File(inpath) as file:
             u = file["/Trigger/u/0"][...]
 
-        with h5py.File(triggerdir / "deltasigma=0.120_id=0_incc=11_element=0_istep=00.h5") as file:
+        with h5py.File(triggerdir / "deltasigma=0,00000_id=0_stepc=11_element=0.h5") as file:
             trigger = QuasiStatic.System(file)
 
             trigger.restore_quasistatic_step(file["Trigger"], 0)
@@ -456,7 +456,7 @@ class test_Trigger(unittest.TestCase):
 
         EventMap.cli_run(["--dev", "-f"] + commands[0].split(" ")[1:])
 
-        with h5py.File(triggerdir / "deltasigma=0.120_id=0_incc=11_element=5_istep=00.h5") as file:
+        with h5py.File(triggerdir / "deltasigma=0,00000_id=0_stepc=11_element=5.h5") as file:
             system = QuasiStatic.System(file)
             system.restore_quasistatic_step(file["Trigger"], 0)
             i_n = np.copy(system.plastic.i).astype(np.int64)
