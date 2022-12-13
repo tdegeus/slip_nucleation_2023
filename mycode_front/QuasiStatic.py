@@ -1203,7 +1203,11 @@ def basic_output(
     dV_plas = system.plastic_dV(rank=2)
     i_n = None
 
-    for step in tqdm.tqdm(steps, disable=not verbose):
+    opts = {}
+    if not verbose:
+        opts["disable"] = True
+
+    for step in tqdm.tqdm(steps, **opts):
 
         system.restore_quasistatic_step(root=root, step=step)
 
