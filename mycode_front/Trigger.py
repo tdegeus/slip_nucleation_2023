@@ -333,7 +333,7 @@ def cli_move_completed(cli_args=None):
     assert np.all([i.is_file() for i in files])
     dest.mkdir(parents=True, exist_ok=True)
 
-    for filename in args.files[:-1]:
+    for filename in tqdm.tqdm(files):
 
         with h5py.File(filename) as file:
             if "/meta/Trigger_Run" not in file:
