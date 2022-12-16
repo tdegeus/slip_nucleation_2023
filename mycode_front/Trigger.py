@@ -39,6 +39,7 @@ entry_points = dict(
     cli_job_rerun_dynamics="Trigger_JobRerunDynamics",
     cli_job_rerun_eventmap="Trigger_JobRerunEventMap",
     cli_run="Trigger_Run",
+    cli_move_completed="Trigger_MoveCompleted",
     cli_transform_deprecated_pack="Trigger_TransformDeprecatedEnsemblePack",
     cli_transform_deprecated_pack2="Trigger_TransformDeprecatedEnsemblePack2",
     cli_transform_deprecated_pack3="Trigger_TransformDeprecatedEnsemblePack3",
@@ -304,6 +305,45 @@ def cli_ensemblepack_merge(cli_args=None):
                         assert g5.allequal(src, dest, g5.getdatapaths(src, path))
                     else:
                         g5.copy(src, dest, path, expand_soft=False)
+
+
+def cli_move_completed(cli_args=None):
+    """
+    Check which files are marked completed, and move them to a different directory.
+    """
+
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+
+    parser.add_argument("-v", "--version", action="version", version=version)
+    parser.add_argument("files", nargs="*", type=str, help="<file>... <destination>")
+
+    args = tools._parse(parser, cli_args)
+    assert len(args.files) >= 2
+    dest = pathlib.Path(args.files[-1])
+    files = [pathlib.Path(i) for i in args.files[:-1]]
+    assert np.all([i.is_file() for i in files])
+    dest.mkdir(parents=True, exist_ok=True)
+
+    for filename in args.files[:-1]:
+
+        with h5py.File(filename) as file:
+            if "/meta/Trigger_Run" not in file:
+                continue
+            if "completed" not in file["/meta/Trigger_Run"].attrs:
+                continue
+            if not file["/meta/Trigger_Run"].attrs["completed"]:
+                continue
+
+        os.rename(filename, dest / filename)
 
 
 def cli_ensemblepack(cli_args=None):
