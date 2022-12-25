@@ -629,6 +629,8 @@ def cli_branch_velocityjump(cli_args=None):
     parser.add_argument("file", type=str, help="Flow simulation to branch from")
     parser.add_argument("gammadot", type=float, nargs="*", help="New flow rate")
 
+    raise NotImplementedError("Reimplement for v.")
+
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)
 
@@ -638,10 +640,7 @@ def cli_branch_velocityjump(cli_args=None):
     with h5py.File(args.file) as source:
         assert str(args.inc) in source["Flow"]["snapshot"]["u"]
 
-    if len(args.gammadot) == 0:
-        Gammadot = DefaultEnsemble.gammadot
-    else:
-        Gammadot = np.array(args.gammadot)
+    Gammadot = np.array(args.gammadot)
 
     out_names = []
     out_paths = []
