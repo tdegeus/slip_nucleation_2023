@@ -212,6 +212,7 @@ def cli_generate(cli_args=None):
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
 
+    parser.add_argument("--force", action="store_true", help="Overwrite job")
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("--scale-alpha", type=float, help="Scale general damping")
     parser.add_argument("--eta", type=float, help="Damping at the interface")
@@ -288,7 +289,7 @@ def cli_generate(cli_args=None):
 
     executable = entry_points["cli_run"]
     commands = [f"{executable} {file}" for file in filenames]
-    shelephant.yaml.dump(outdir / "commands.yaml", commands)
+    shelephant.yaml.dump(outdir / "commands.yaml", commands, args.force)
 
     if cli_args is not None:
         return filepaths
