@@ -518,7 +518,7 @@ def basic_output(file: h5py.File, interval=400) -> dict:
     data["t"] = inc * dt / t0
     data["epsdot"] = np.diff(data["eps"], prepend=0) / np.diff(data["t"], prepend=1)
     data["epspdot"] = np.diff(data["epsp"], prepend=0) / np.diff(data["t"], prepend=1)
-    data["epsdotbar"] = vtop / norm["l0"] * np.ones_like(data["eps"])
+    data["epsdotbar"] = 0.5 * vtop / norm["l0"] * np.ones_like(data["eps"])
 
     dinc = np.diff(inc)
     assert np.all(dinc == dinc[0])
