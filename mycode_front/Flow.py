@@ -781,14 +781,14 @@ def cli_paraview(cli_args=None):
     tools._check_overwrite_file(f"{args.output}.h5", args.force)
     tools._check_overwrite_file(f"{args.output}.xdmf", args.force)
 
-    with h5py.File(args.file) as file, h5py.File(f"{args.output}.h5", "w") as output:
+    with h5py.File(args.file) as file, h5py.File(f"{args.output}.h5", "w") as output, xh.TimeSeries(
+        f"{args.output}.xdmf"
+    ) as xdmf:
 
         system = QuasiStatic.System(file)
 
         output["/coor"] = system.coor
         output["/conn"] = system.conn
-
-        series = xh.TimeSeries()
 
         for inc in file["/Flow/snapshot/inc"][...]:
 
@@ -811,16 +811,15 @@ def cli_paraview(cli_args=None):
                 np.mean(system.Epsddot() / system.eps0 * system.t0**2, axis=1)
             )
 
-            series.push_back(
-                xh.Unstructured(output, "/coor", "/conn", "Quadrilateral"),
-                xh.Attribute(output, f"/disp/{inc:d}", "Node", name="Displacement"),
-                xh.Attribute(output, f"/Sig/{inc:d}", "Cell", name="Stress"),
-                xh.Attribute(output, f"/Eps/{inc:d}", "Cell", name="Strain"),
-                xh.Attribute(output, f"/Epsdot/{inc:d}", "Cell", name="Strain rate"),
-                xh.Attribute(output, f"/Epsddot/{inc:d}", "Cell", name="Symgrad of accelerations"),
+            xdmf += xh.TimeStep()
+            xdmf += xh.Unstructured(output["/coor"], output["/conn"], "Quadrilateral")
+            xdmf += xh.Attribute(output[f"/disp/{inc:d}"], "Node", name="Displacement")
+            xdmf += xh.Attribute(output[f"/Sig/{inc:d}"], "Cell", name="Stress")
+            xdmf += xh.Attribute(output[f"/Eps/{inc:d}"], "Cell", name="Strain")
+            xdmf += xh.Attribute(output[f"/Epsdot/{inc:d}"], "Cell", name="Strain rate")
+            xdmf += xh.Attribute(
+                output[f"/Epsddot/{inc:d}"], "Cell", name="Symgrad of accelerations"
             )
-
-    xh.write(series, f"{args.output}.xdmf")
 
 
 def cli_plot(cli_args=None):
