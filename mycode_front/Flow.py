@@ -31,6 +31,7 @@ entry_points = dict(
     cli_ensembleinfo="Flow_EnsembleInfo",
     cli_ensembleinfo_velocityjump="Flow_VelocityJump_EnsembleInfo",
     cli_generate="Flow_Generate",
+    cli_rename="Flow_Rename",
     cli_paraview="Flow_Paraview",
     cli_plot="Flow_Plot",
     cli_plot_velocityjump="Flow_VelocityJump_Plot",
@@ -954,3 +955,53 @@ def cli_transform_deprecated(cli_args=None):
                 dest["/meta/Flow_Run"].attrs["uuid"] = str(uuid.uuid4())
 
         assert len(paths) == 0
+
+
+def cli_rename(cli_args=None):
+    """
+    Update file name to the current version.
+    """
+
+    class MyFmt(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+        argparse.MetavarTypeHelpFormatter,
+    ):
+        pass
+
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+
+    parser.add_argument("files", type=str, nargs="*", help="Files")
+    args = tools._parse(parser, cli_args)
+    newnames = []
+
+    for filename in args.files:
+
+        assert len(pathlib.Path(filename).stem.split("id")) == 2
+        assert len(pathlib.Path(filename).stem.split("gammadot")) == 2
+
+        with h5py.File(filename) as file:
+
+            gammadot = file["/Flow/gammadot"][...]
+            norm = QuasiStatic.normalisation(file)
+
+            t0 = norm["t0"]
+            eps0 = norm["eps0"]
+            y = file["/param/coor"][:, 1]
+            L = np.max(y) - np.min(y)
+            vtop = gammadot * L / eps0 * t0
+            v = 0.5 * vtop / norm["l0"]
+
+        i = int(pathlib.Path(filename).stem.split("id=")[1].split("_")[0])
+        newnames.append(f"id={i:03d}_v={v:.3f}.h5".replace(".", ","))
+
+    for old, new in zip(args.files, newnames):
+        print(f"{old} -> {new}")
+
+    if not click.confirm("Continue?"):
+        raise OSError("Cancelled")
+
+    for old, new in zip(args.files, newnames):
+        os.rename(old, new)
