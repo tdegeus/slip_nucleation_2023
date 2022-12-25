@@ -127,10 +127,12 @@ def generate(*args, **kwargs):
     """
 
     kwargs.setdefault("init_run", False)
-    v = kwargs.pop("v")
+    v = kwargs.pop("v", None)
+    gammadot = kwargs.pop("gammadot", None)
     output = kwargs.pop("output")
     restart = kwargs.pop("restart")
     snapshot = kwargs.pop("snapshot")
+    assert v is not None or gammadot is not None
 
     progname = entry_points["cli_generate"]
     QuasiStatic.generate(*args, **kwargs)
@@ -140,13 +142,14 @@ def generate(*args, **kwargs):
         meta = file.create_group(f"/meta/{progname}")
         meta.attrs["version"] = version
 
-        norm = QuasiStatic.normalisation(file)
-        y = file["/param/coor"][:, 1]
-        L = np.max(y) - np.min(y)
-        t0 = norm["t0"]
-        eps0 = norm["eps0"]
-        vtop = 2 * v * norm["l0"]
-        gammadot = vtop / (L / eps0 * t0)
+        if gammadot is None:
+            norm = QuasiStatic.normalisation(file)
+            y = file["/param/coor"][:, 1]
+            L = np.max(y) - np.min(y)
+            t0 = norm["t0"]
+            eps0 = norm["eps0"]
+            vtop = 2 * v * norm["l0"]
+            gammadot = vtop / (L / eps0 * t0)
 
         storage.dump_with_atttrs(
             file,
@@ -215,6 +218,9 @@ def cli_generate(cli_args=None):
     parser.add_argument(
         "--slip-rate", type=float, action="append", default=[], help="Run at specific slip rate"
     )
+    parser.add_argument(
+        "--gammadot", type=float, action="append", default=[], help="Run at specific gammadot"
+    )
     parser.add_argument("-n", "--nsim", type=int, default=1, help="#simulations")
     parser.add_argument("-N", "--size", type=int, default=4 * (3**6), help="#blocks")
     parser.add_argument("-s", "--start", type=int, default=0, help="Start simulation")
@@ -222,6 +228,7 @@ def cli_generate(cli_args=None):
     parser.add_argument("outdir", type=str, help="Output directory")
 
     args = tools._parse(parser, cli_args)
+    assert not (len(args.slip_rate) > 0 and len(args.gammadot) > 0)
 
     outdir = pathlib.Path(args.outdir)
     outdir.mkdir(parents=True, exist_ok=True)
@@ -235,9 +242,20 @@ def cli_generate(cli_args=None):
 
     if len(args.slip_rate) > 0:
         Ensemble.v = np.array(args.slip_rate)
-        Ensemble.output = np.array([Ensemble.output[0]]) * np.ones_like(Ensemble.v)
-        Ensemble.restart = np.array([Ensemble.restart[0]]) * np.ones_like(Ensemble.v)
-        Ensemble.snapshot = np.array([Ensemble.snapshot[0]]) * np.ones_like(Ensemble.v)
+
+    if len(args.gammadot) > 0:
+        Ensemble.v = np.array(args.gammadot)
+
+    if len(args.slip_rate) > 0 or len(args.gammadot) > 0:
+        Ensemble.output = Ensemble.output[0] * np.ones(
+            Ensemble.v.shape, dtype=Ensemble.output.dtype
+        )
+        Ensemble.restart = Ensemble.restart[0] * np.ones(
+            Ensemble.v.shape, dtype=Ensemble.restart.dtype
+        )
+        Ensemble.snapshot = Ensemble.snapshot[0] * np.ones(
+            Ensemble.v.shape, dtype=Ensemble.snapshot.dtype
+        )
         Ensemble.n = Ensemble.v.size
 
     for i in tqdm.tqdm(range(args.start, args.start + args.nsim)):
@@ -250,9 +268,13 @@ def cli_generate(cli_args=None):
             filenames.append(filename)
             filepaths.append(filepath)
 
+            if len(args.gammadot) > 0:
+                opts = {"gammadot": Ensemble.v[j]}
+            else:
+                opts = {"v": Ensemble.v[j]}
+
             generate(
                 filepath=filepath,
-                v=Ensemble.v[j],
                 output=Ensemble.output[j],
                 restart=Ensemble.restart[j],
                 snapshot=Ensemble.snapshot[j],
@@ -261,6 +283,7 @@ def cli_generate(cli_args=None):
                 scale_alpha=args.scale_alpha,
                 eta=args.eta,
                 dev=args.develop,
+                **opts,
             )
 
     executable = entry_points["cli_run"]

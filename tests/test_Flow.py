@@ -45,7 +45,7 @@ class MyTests(unittest.TestCase):
         """
 
         N = 9
-        files = Flow.cli_generate(["-N", N, "--dev", dirname])
+        files = Flow.cli_generate(["-N", N, "--dev", dirname, "--gammadot", "2e-9"])
 
         with h5py.File(files[-1], "a") as file:
             file["/param/cusp/epsy/nchunk"][...] = 200
