@@ -9,6 +9,7 @@ import sys
 import textwrap
 import uuid
 
+import click
 import FrictionQPotFEM  # noqa: F401
 import GMatElastoPlasticQPot  # noqa: F401
 import GMatElastoPlasticQPot.Cartesian2d as GMat
@@ -37,8 +38,6 @@ entry_points = dict(
     cli_plot_velocityjump="Flow_VelocityJump_Plot",
     cli_run="Flow_Run",
     cli_update_branch_velocityjump="Flow_VelocityJump_UpdateBranch",
-    cli_update_generate="Flow_GenerateUpdate",
-    cli_update_run="Flow_RunUpdate",
     cli_transform_deprecated="Flow_TransformDeprecated",
 )
 
@@ -121,14 +120,14 @@ def generate(*args, **kwargs):
     Generate input file.
     See :py:func:`mycode_front.QuasiStatic.generate`. On top of that:
 
-    :param gammadot: The shear-rate to prescribe.
+    :param v: Slip-rate to apply.
     :param output: Output storage interval.
     :param restart: Restart storage interval.
     :param snapshot: Snapshot storage interval.
     """
 
     kwargs.setdefault("init_run", False)
-    gammadot = kwargs.pop("gammadot")
+    v = kwargs.pop("v")
     output = kwargs.pop("output")
     restart = kwargs.pop("restart")
     snapshot = kwargs.pop("snapshot")
@@ -140,6 +139,14 @@ def generate(*args, **kwargs):
 
         meta = file.create_group(f"/meta/{progname}")
         meta.attrs["version"] = version
+
+        norm = QuasiStatic.normalisation(file)
+        y = file["/param/coor"][:, 1]
+        L = np.max(y) - np.min(y)
+        t0 = norm["t0"]
+        eps0 = norm["eps0"]
+        vtop = 2 * v * norm["l0"]
+        gammadot = vtop / (L / eps0 * t0)
 
         storage.dump_with_atttrs(
             file,
@@ -179,12 +186,11 @@ def generate(*args, **kwargs):
 
 class DefaultEnsemble:
 
-    gammadot = np.array([5e-11, 8e-11] + np.linspace(1e-10, 2e-9, 20).tolist())
-    eps0 = 1.0e-3 / 2.0 / 10.0
-    output = 500 * np.ones(gammadot.shape, dtype=int)
-    restart = 10000 * np.ones(gammadot.shape, dtype=int)
-    snapshot = 500 * 500 * np.ones(gammadot.shape, dtype=int)
-    n = gammadot.size
+    v = np.linspace(0.0, 0.4, 21)[1:]
+    output = 500 * np.ones(v.shape, dtype=int)
+    restart = 10000 * np.ones(v.shape, dtype=int)
+    snapshot = 500 * 500 * np.ones(v.shape, dtype=int)
+    n = v.size
 
 
 def cli_generate(cli_args=None):
@@ -206,6 +212,9 @@ def cli_generate(cli_args=None):
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("--scale-alpha", type=float, help="Scale general damping")
     parser.add_argument("--eta", type=float, help="Damping at the interface")
+    parser.add_argument(
+        "--slip-rate", type=float, action="append", default=[], help="Run at specific slip rate"
+    )
     parser.add_argument("-n", "--nsim", type=int, default=1, help="#simulations")
     parser.add_argument("-N", "--size", type=int, default=4 * (3**6), help="#blocks")
     parser.add_argument("-s", "--start", type=int, default=0, help="Start simulation")
@@ -224,18 +233,26 @@ def cli_generate(cli_args=None):
     filenames = []
     filepaths = []
 
+    if len(args.slip_rate) > 0:
+        Ensemble.v = np.array(args.slip_rate)
+        Ensemble.output = np.array([Ensemble.output[0]]) * np.ones_like(Ensemble.v)
+        Ensemble.restart = np.array([Ensemble.restart[0]]) * np.ones_like(Ensemble.v)
+        Ensemble.snapshot = np.array([Ensemble.snapshot[0]]) * np.ones_like(Ensemble.v)
+        Ensemble.n = Ensemble.v.size
+
     for i in tqdm.tqdm(range(args.start, args.start + args.nsim)):
 
         for j in range(Ensemble.n):
 
-            filename = f"id={i:03d}_gammadot={Ensemble.gammadot[j]:.2e}.h5"
+            filename = f"id={i:03d}_v={Ensemble.v[j]:.3f}.h5".replace(".", ",")
             filepath = str(outdir / filename)
+            assert not pathlib.Path(filepath).exists()
             filenames.append(filename)
             filepaths.append(filepath)
 
             generate(
                 filepath=filepath,
-                gammadot=Ensemble.gammadot[j],
+                v=Ensemble.v[j],
                 output=Ensemble.output[j],
                 restart=Ensemble.restart[j],
                 snapshot=Ensemble.snapshot[j],
@@ -245,11 +262,6 @@ def cli_generate(cli_args=None):
                 eta=args.eta,
                 dev=args.develop,
             )
-
-            # warning: Gammadot hard-coded here, check that yield strains did not change
-            with h5py.File(filepath, "r") as file:
-                assert not isinstance(file["/param/cusp/epsy"], h5py.Dataset)
-                assert np.isclose(file["/param/cusp/epsy/weibull/typical"][...], Ensemble.eps0)
 
     executable = entry_points["cli_run"]
     commands = [f"{executable} {file}" for file in filenames]
