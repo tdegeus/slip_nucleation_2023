@@ -263,7 +263,7 @@ def cli_generate(cli_args=None):
 
         for j in range(Ensemble.n):
 
-            filename = f"id={i:03d}_v={Ensemble.v[j]:.4f}.h5".replace(".", ",")
+            filename = f"id={i:03d}_v={Ensemble.v[j]:.4f}".replace(".", ",") + ".h5"
             filepath = str(outdir / filename)
             assert not pathlib.Path(filepath).exists()
             filenames.append(filename)
@@ -1029,7 +1029,7 @@ def cli_rename(cli_args=None):
             v = 0.5 * vtop / norm["l0"]
 
         i = int(pathlib.Path(filename).stem.split("id=")[1].split("_")[0])
-        newnames.append(f"id={i:03d}_v={v:.4f}.h5".replace(".", ","))
+        newnames.append(f"id={i:03d}_v={v:.4f}".replace(".", ",") + ".h5")
 
     for old, new in zip(args.files, newnames):
         print(f"{old} -> {new}")
