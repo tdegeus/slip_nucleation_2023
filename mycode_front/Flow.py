@@ -844,6 +844,7 @@ def cli_plot(cli_args=None):
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
 
     parser.add_argument("--sigma-max", type=float, help="Set limit of y-axis of left panel")
+    parser.add_argument("--interval", type=int, help="Averaging interval")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument("-o", "--output", type=str, help="Save the image")
     parser.add_argument("-v", "--version", action="version", version=version)
@@ -853,7 +854,10 @@ def cli_plot(cli_args=None):
     assert os.path.isfile(args.file)
 
     with h5py.File(args.file) as file:
-        out = basic_output(file)
+        if args.interval:
+            out = basic_output(file, interval=args.interval)
+        else:
+            out = basic_output(file)
 
     meps = out["eps"][...]
     msig = out["sig"][...]
