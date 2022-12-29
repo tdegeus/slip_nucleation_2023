@@ -494,27 +494,23 @@ def cli_run(cli_args=None):
     run(args.file, dev=args.develop, progress=not args.quiet)
 
 
-def basic_output(file: h5py.File, interval=400) -> dict:
+def basic_output(file: h5py.File) -> dict:
     """
-    Extract basic output averaged on a time interval.
+    Extract basic output.
     Strain rate are obtained simply by taking the ratio of the differences in strain rate
     and time interval of to subsequent stored states (interval controlled in ``/output/interval``).
 
     :param file: HDF5-archive.
 
-    :param interval:
-        Number of stored increment to average.
-        Note that the time window that will be averaged will depend on the interval at which
-        ``/output/interval``.
-
     :return: Basic output as follows::
+        t: Time [n].
         sig: Mean stress at the interface [n].
         eps: Mean strain at the interface [n].
+        epsp: Mean plastic strain at the interface [n].
         fext: External force [n].
         epsdot: Strain rate [n].
         epspdot: Plastic strain rate [n].
-        epsdot_remote: Strain rate imposed at the boundary [n].
-        fext_std: Standard deviation corresponding to time averaging ``fext`` [n].
+        epsdotbar: Imposed at the boundary [n].
     """
 
     gammadot = file["/Flow/gammadot"][...]
@@ -534,34 +530,22 @@ def basic_output(file: h5py.File, interval=400) -> dict:
     if sig.size == 0:
         return {}
 
-    data = {}
-    data["fext"] = file["/Flow/output/fext"][...]
-    data["epsp"] = file["/Flow/output/epsp"][...]
-    data["sig"] = tools.sigd(xx=sig[0, :], xy=sig[1, :], yy=sig[2, :]).ravel()
-    data["eps"] = tools.epsd(xx=eps[0, :], xy=eps[1, :], yy=eps[2, :]).ravel()
-    data["t"] = inc * dt / t0
-    data["epsdot"] = np.diff(data["eps"], prepend=0) / np.diff(data["t"], prepend=1)
-    data["epspdot"] = np.diff(data["epsp"], prepend=0) / np.diff(data["t"], prepend=1)
-    data["epsdotbar"] = 0.5 * vtop / norm["l0"] * np.ones_like(data["eps"])
+    ret = {}
+    ret["fext"] = file["/Flow/output/fext"][...]
+    ret["epsp"] = file["/Flow/output/epsp"][...]
+    ret["sig"] = tools.sigd(xx=sig[0, :], xy=sig[1, :], yy=sig[2, :]).ravel()
+    ret["eps"] = tools.epsd(xx=eps[0, :], xy=eps[1, :], yy=eps[2, :]).ravel()
+    ret["t"] = inc * dt / t0
+    ret["epsdot"] = np.diff(ret["eps"], prepend=0) / np.diff(ret["t"], prepend=1)
+    ret["epspdot"] = np.diff(ret["epsp"], prepend=0) / np.diff(ret["t"], prepend=1)
+    ret["epsdotbar"] = 0.5 * vtop / norm["l0"] * np.ones_like(ret["eps"])
 
     dinc = np.diff(inc)
     assert np.all(dinc == dinc[0])
-    dinc = dinc[0]
 
-    store = ["eps", "sig", "fext", "epsdot", "epspdot", "epsdotbar"]
-
-    n = int((inc.size - inc.size % interval) / interval)
-    ret = {}
-    for key in store:
-        ret[key] = np.zeros(n, dtype=float)
-        ret[f"{key}_std"] = np.zeros(n, dtype=float)
-        ret[f"{key}_full"] = data[key]
-
-    for i in range(0, inc.size, interval):
-        u = i + interval
-        for key in store:
-            ret[key][int(i / interval - 1)] = np.mean(data[key][i:u])
-            ret[f"{key}_std"][int(i / interval - 1)] = np.std(data[key][i:u])
+    funcname = inspect.getframeinfo(inspect.currentframe()).function
+    doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
+    tools.check_docstring(doc, ret, ":return:")
 
     return ret
 
@@ -844,7 +828,6 @@ def cli_plot(cli_args=None):
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
 
     parser.add_argument("--sigma-max", type=float, help="Set limit of y-axis of left panel")
-    parser.add_argument("--interval", type=int, help="Averaging interval")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument("-o", "--output", type=str, help="Save the image")
     parser.add_argument("-v", "--version", action="version", version=version)
@@ -854,28 +837,13 @@ def cli_plot(cli_args=None):
     assert os.path.isfile(args.file)
 
     with h5py.File(args.file) as file:
-        if args.interval:
-            out = basic_output(file, interval=args.interval)
-        else:
-            out = basic_output(file)
-
-    meps = out["eps"][...]
-    msig = out["sig"][...]
-    mfext = out["fext"][...]
-
-    i = np.argsort(out["eps_full"])
-
-    for key in out:
-        if re.match("(.*)(_full)", key):
-            out[key] = out[key][i]
+        out = basic_output(file)
 
     fig, axes = gplt.subplots(ncols=2)
 
     ax = axes[0]
-    ax.plot(out["eps_full"], out["sig_full"], c="k", label=r"$\sigma_\text{interface}$")
-    ax.plot(out["eps_full"], out["fext_full"], c="r", label=r"$f_\text{ext}$")
-    ax.plot(meps, msig, c="b", marker="o", ls="none", label=r"$\bar{\sigma}_\text{interface}$")
-    ax.plot(meps, mfext, c="tab:orange", marker="o", ls="none", label=r"$\bar{f}_\text{ext}$")
+    ax.plot(out["eps"], out["sig"], c="k", label=r"$\sigma_\text{interface}$")
+    ax.plot(out["eps"], out["fext"], c="r", label=r"$f_\text{ext}$")
 
     ax.set_xlim([0, ax.get_xlim()[-1]])
 
@@ -892,8 +860,8 @@ def cli_plot(cli_args=None):
     ax = axes[1]
 
     n = r"\dot{\varepsilon}"
-    ax.plot(out["eps_full"], out["epsdot_full"], c="k", label=rf"${n}_\text{{interface}}$")
-    ax.plot(out["eps_full"], out["epsdotbar_full"], c="r", label=rf"${n}_\text{{applied}}$")
+    ax.plot(out["eps"], out["epsdot"], c="k", label=rf"${n}_\text{{interface}}$")
+    ax.plot(out["eps"], out["epsdotbar"], c="r", label=rf"${n}_\text{{applied}}$")
 
     ax.set_xlabel(r"$\varepsilon$")
     ax.set_ylabel(r"$\dot{\varepsilon}$")
