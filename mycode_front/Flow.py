@@ -440,9 +440,14 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
                 for key in ["/Flow/output/inc", "/Flow/output/fext", "/Flow/output/epsp"]:
                     file[key].resize((i + 1,))
 
-                for key in ["/Flow/output/sig", "/Flow/output/eps"]:
+                for key in ["/Flow/output/sig_damp", "/Flow/output/sig", "/Flow/output/eps"]:
                     file[key].resize((3, i + 1))
 
+                Sigdamp_weak = np.average(
+                    system.eta * system.Epsdot()[system.plastic_elem, ...] / system.sig0,
+                    weights=dV,
+                    axis=(0, 1),
+                )
                 Eps_weak = np.average(system.plastic.Eps / system.eps0, weights=dV, axis=(0, 1))
                 Sig_weak = np.average(system.plastic.Sig / system.sig0, weights=dV, axis=(0, 1))
 
@@ -455,6 +460,7 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
                 file["/Flow/output/epsp"][i] = np.mean(system.plastic.epsp / system.eps0)
                 file["/Flow/output/eps"][:, i] = Eps_weak.ravel()[[0, 1, 3]]
                 file["/Flow/output/sig"][:, i] = Sig_weak.ravel()[[0, 1, 3]]
+                file["/Flow/output/sig_damp"][:, i] = Sigdamp_weak.ravel()[[0, 1, 3]]
                 file.flush()
 
             if inc % restart == 0:
@@ -504,6 +510,7 @@ def basic_output(file: h5py.File) -> dict:
 
     :return: Basic output as follows::
         t: Time [n].
+        sig_damp: Stress due to damping [n].
         sig: Mean stress at the interface [n].
         eps: Mean strain at the interface [n].
         epsp: Mean plastic strain at the interface [n].
@@ -524,6 +531,7 @@ def basic_output(file: h5py.File) -> dict:
     inc = file["/Flow/output/inc"][...]
     vtop = gammadot * L / eps0 * t0
 
+    sig_damp = file["/Flow/output/sig_damp"][...]
     sig = file["/Flow/output/sig"][...]
     eps = file["/Flow/output/eps"][...]
 
@@ -533,6 +541,7 @@ def basic_output(file: h5py.File) -> dict:
     ret = {}
     ret["fext"] = file["/Flow/output/fext"][...]
     ret["epsp"] = file["/Flow/output/epsp"][...]
+    ret["sig_damp"] = tools.sigd(xx=sig_damp[0, :], xy=sig_damp[1, :], yy=sig_damp[2, :]).ravel()
     ret["sig"] = tools.sigd(xx=sig[0, :], xy=sig[1, :], yy=sig[2, :]).ravel()
     ret["eps"] = tools.epsd(xx=eps[0, :], xy=eps[1, :], yy=eps[2, :]).ravel()
     ret["t"] = inc * dt / t0
@@ -842,8 +851,9 @@ def cli_plot(cli_args=None):
     fig, axes = gplt.subplots(ncols=2)
 
     ax = axes[0]
+    ax.plot(out["eps"], out["fext"], c="r", label=r"$f_\text{ext}$", zorder=100)
     ax.plot(out["eps"], out["sig"], c="k", label=r"$\sigma_\text{interface}$")
-    ax.plot(out["eps"], out["fext"], c="r", label=r"$f_\text{ext}$")
+    ax.plot(out["eps"], out["sig_damp"], c="g", label=r"$\sigma_\text{damping}$")
 
     ax.set_xlim([0, ax.get_xlim()[-1]])
 
