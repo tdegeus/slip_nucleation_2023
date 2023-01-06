@@ -23,6 +23,7 @@ from numpy.typing import ArrayLike
 
 from . import QuasiStatic
 from . import storage
+from . import tag
 from . import tools
 from ._version import version
 
@@ -313,6 +314,7 @@ def run_create_extendible(file: h5py.File):
     storage.create_extendible(output, "fext", np.float64, unit="sig0 (normalised stress)")
 
     # averaged on the weak layer
+    storage.create_extendible(output, "sig_damp", np.float64, ndim=2, unit="sig0", **flatindex)
     storage.create_extendible(output, "sig", np.float64, ndim=2, unit="sig0", **flatindex)
     storage.create_extendible(output, "eps", np.float64, ndim=2, unit="eps0", **flatindex)
     storage.create_extendible(output, "epsp", np.float64, unit="eps0")
@@ -453,7 +455,8 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
 
                 fext = system.fext[top, 0]
                 fext[0] += fext[-1]
-                fext = np.mean(fext[:-1]) / h / system.normalisation["sig0"]
+                fext = 2 * np.mean(fext[:-1]) / h / system.normalisation["sig0"]
+                # factor 2 because of normalisation of equivalent stress
 
                 file["/Flow/output/inc"][i] = inc
                 file["/Flow/output/fext"][i] = fext
@@ -531,9 +534,13 @@ def basic_output(file: h5py.File) -> dict:
     inc = file["/Flow/output/inc"][...]
     vtop = gammadot * L / eps0 * t0
 
-    sig_damp = file["/Flow/output/sig_damp"][...]
     sig = file["/Flow/output/sig"][...]
     eps = file["/Flow/output/eps"][...]
+
+    if "sig_damp" in file["/Flow/output"]:
+        sig_damp = file["/Flow/output/sig_damp"][...]
+    else:
+        sig_damp = np.zeros_like(sig)
 
     if sig.size == 0:
         return {}
@@ -548,6 +555,9 @@ def basic_output(file: h5py.File) -> dict:
     ret["epsdot"] = np.diff(ret["eps"], prepend=0) / np.diff(ret["t"], prepend=1)
     ret["epspdot"] = np.diff(ret["epsp"], prepend=0) / np.diff(ret["t"], prepend=1)
     ret["epsdotbar"] = 0.5 * vtop / norm["l0"] * np.ones_like(ret["eps"])
+
+    if tag.less_equal(file["/meta/Flow_Run"].attrs["version"], "15.12"):
+        ret["fext"] *= 2
 
     dinc = np.diff(inc)
     assert np.all(dinc == dinc[0])
