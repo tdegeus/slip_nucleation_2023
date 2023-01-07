@@ -387,7 +387,10 @@ def generate(
     :param N: The number of blocks.
     :param seed: Base seed to use to generate the disorder.
     :param scale_alpha: Scale default general damping ``alpha`` by factor.
-    :param eta: Set damping coefficient at the interface.
+    :param eta:
+        Damping coefficient at the interface.
+        Note: :math:`\eta / \eta_\mathrm{rd} = \eta / (2 G t_0)
+
     :param init_run: Initialise for use with :py:func:`run`.
     :param dev: Allow uncommitted changes.
     """
@@ -1123,7 +1126,10 @@ def normalisation(file: h5py.File):
     ret["G"] = root["G"][...]
     ret["K"] = root["K"][...]
     ret["rho"] = root["rho"][...]
-    ret["seed"] = file["realisation"]["seed"][...]
+    ret["seed"] = None
+
+    if "realisation" in file:
+        ret["seed"] = file["realisation"]["seed"][...]
 
     # interpret / store additional normalisation
     kappa = ret["K"] / 3.0

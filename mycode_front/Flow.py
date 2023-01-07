@@ -314,7 +314,7 @@ def run_create_extendible(file: h5py.File):
     storage.create_extendible(output, "fext", np.float64, unit="sig0 (normalised stress)")
 
     # averaged on the weak layer
-    storage.create_extendible(output, "sig_damp", np.float64, ndim=2, unit="sig0", **flatindex)
+    storage.create_extendible(output, "sig_visco", np.float64, ndim=2, unit="sig0", **flatindex)
     storage.create_extendible(output, "sig", np.float64, ndim=2, unit="sig0", **flatindex)
     storage.create_extendible(output, "eps", np.float64, ndim=2, unit="eps0", **flatindex)
     storage.create_extendible(output, "epsp", np.float64, unit="eps0")
@@ -442,7 +442,7 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
                 for key in ["/Flow/output/inc", "/Flow/output/fext", "/Flow/output/epsp"]:
                     file[key].resize((i + 1,))
 
-                for key in ["/Flow/output/sig_damp", "/Flow/output/sig", "/Flow/output/eps"]:
+                for key in ["/Flow/output/sig_visco", "/Flow/output/sig", "/Flow/output/eps"]:
                     file[key].resize((3, i + 1))
 
                 Sigdamp_weak = np.average(
@@ -463,7 +463,7 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
                 file["/Flow/output/epsp"][i] = np.mean(system.plastic.epsp / system.eps0)
                 file["/Flow/output/eps"][:, i] = Eps_weak.ravel()[[0, 1, 3]]
                 file["/Flow/output/sig"][:, i] = Sig_weak.ravel()[[0, 1, 3]]
-                file["/Flow/output/sig_damp"][:, i] = Sigdamp_weak.ravel()[[0, 1, 3]]
+                file["/Flow/output/sig_visco"][:, i] = Sigdamp_weak.ravel()[[0, 1, 3]]
                 file.flush()
 
             if inc % restart == 0:
@@ -512,15 +512,16 @@ def basic_output(file: h5py.File) -> dict:
     :param file: HDF5-archive.
 
     :return: Basic output as follows::
+        v: Imposed slip rate at the boundary (scalar).
         t: Time [n].
-        sig_damp: Stress due to damping [n].
+        eps_applied: Applied strain [n].
+        sig_visco: Stress due to viscous damping [n].
+        fext: External force (stress at the boundary) [n].
         sig: Mean stress at the interface [n].
         eps: Mean strain at the interface [n].
         epsp: Mean plastic strain at the interface [n].
-        fext: External force [n].
-        epsdot: Strain rate [n].
-        epspdot: Plastic strain rate [n].
-        epsdotbar: Imposed at the boundary [n].
+        epsdot: Strain rate at the interface [n].
+        epspdot: Plastic strain rate at the interface [n].
     """
 
     gammadot = file["/Flow/gammadot"][...]
@@ -537,10 +538,14 @@ def basic_output(file: h5py.File) -> dict:
     sig = file["/Flow/output/sig"][...]
     eps = file["/Flow/output/eps"][...]
 
-    if "sig_damp" in file["/Flow/output"]:
-        sig_damp = file["/Flow/output/sig_damp"][...]
+    if "sig_visco" in file["/Flow/output"]:
+        sig_visco = file["/Flow/output/sig_visco"][...]
+    elif "sig_damp" in file["/Flow/output"]:
+        assert tag.less_equal(file["/meta/Flow_Run"].attrs["version"], "15.13")
+        sig_visco = file["/Flow/output/sig_damp"][...]
     else:
-        sig_damp = np.zeros_like(sig)
+        epsdot = np.diff(eps * eps0, prepend=0, axis=1) / np.diff(inc * dt, prepend=1)
+        sig_visco = file["/param/eta"][...] * epsdot / norm["sig0"]
 
     if sig.size == 0:
         return {}
@@ -548,13 +553,16 @@ def basic_output(file: h5py.File) -> dict:
     ret = {}
     ret["fext"] = file["/Flow/output/fext"][...]
     ret["epsp"] = file["/Flow/output/epsp"][...]
-    ret["sig_damp"] = tools.sigd(xx=sig_damp[0, :], xy=sig_damp[1, :], yy=sig_damp[2, :]).ravel()
+    ret["sig_visco"] = tools.sigd(
+        xx=sig_visco[0, :], xy=sig_visco[1, :], yy=sig_visco[2, :]
+    ).ravel()
     ret["sig"] = tools.sigd(xx=sig[0, :], xy=sig[1, :], yy=sig[2, :]).ravel()
     ret["eps"] = tools.epsd(xx=eps[0, :], xy=eps[1, :], yy=eps[2, :]).ravel()
     ret["t"] = inc * dt / t0
+    ret["eps_applied"] = inc * dt * file["/Flow/gammadot"][...] / eps0
     ret["epsdot"] = np.diff(ret["eps"], prepend=0) / np.diff(ret["t"], prepend=1)
     ret["epspdot"] = np.diff(ret["epsp"], prepend=0) / np.diff(ret["t"], prepend=1)
-    ret["epsdotbar"] = 0.5 * vtop / norm["l0"] * np.ones_like(ret["eps"])
+    ret["v"] = 0.5 * vtop / norm["l0"]
 
     if tag.less_equal(file["/meta/Flow_Run"].attrs["version"], "15.12"):
         ret["fext"] *= 2
@@ -597,13 +605,50 @@ def cli_ensembleinfo(cli_args=None):
     assert np.all([os.path.isfile(i) for i in args.files])
     tools._check_overwrite_file(args.output, args.force)
 
+    pbar = tqdm.tqdm(args.files)
+
     with h5py.File(args.output, "w") as output:
-        for filename in tqdm.tqdm(args.files):
+
+        for ifile, filename in enumerate(pbar):
+
+            pbar.set_description(filename)
+            pbar.refresh()
+
             prefix = os.path.relpath(filename, os.path.dirname(args.output))
+
             with h5py.File(filename) as file:
+
+                if ifile == 0:
+                    g5.copy(file, output, "/param")
+                else:
+                    test = g5.compare(
+                        file,
+                        output,
+                        g5.getdatapaths(file, root="/param"),
+                        g5.getdatapaths(output, root="/param"),
+                        attrs=False,
+                        close=True,
+                    )
+
+                    if "/param/cusp/epsy/deps" in test["->"]:
+                        g5.copy(file, output, "/param/cusp/epsy/deps")
+                        test["->"].remove("/param/cusp/epsy/deps")
+                        test["=="].append("/param/cusp/epsy/deps")
+                    if "/param/cusp/epsy/deps" in test["<-"]:
+                        test["<-"].remove("/param/cusp/epsy/deps")
+
+                    assert len(test["!="]) == 0
+                    assert len(test["->"]) == 0
+                    assert len(test["<-"]) == 0
+                    assert len(test["=="]) > 0
+
                 out = basic_output(file)
                 for key in out:
                     output[g5.join(f"/full/{prefix}/{key}")] = out[key]
+
+                src = g5.getdatapaths(file, root="/realisation")
+                dest = [g5.join(f"/full/{prefix}/{i.split('/realisation/')[1]}") for i in src]
+                g5.copy(file, output, src, dest)
 
 
 def cli_branch_velocityjump(cli_args=None):
@@ -857,13 +902,20 @@ def cli_plot(cli_args=None):
 
     with h5py.File(args.file) as file:
         out = basic_output(file)
+        N = file["/param/normalisation/N"][...]
 
-    fig, axes = gplt.subplots(ncols=2)
+    fig, axes = gplt.subplots(ncols=3)
 
     ax = axes[0]
-    ax.plot(out["eps"], out["fext"], c="r", label=r"$f_\text{ext}$", zorder=100)
-    ax.plot(out["eps"], out["sig"], c="k", label=r"$\sigma_\text{interface}$")
-    ax.plot(out["eps"], out["sig_damp"], c="g", label=r"$\sigma_\text{damping}$")
+
+    ax.plot(out["eps_applied"], out["fext"], c="k", label=r"$f_\text{ext}$", zorder=100)
+    ax.plot(out["eps_applied"], out["sig"], c="r", label=r"$\sigma_\text{interface}$")
+    ax.plot(
+        out["eps_applied"],
+        out["sig"] + out["sig_visco"],
+        c="g",
+        label=r"$\sigma_\text{interface} + \sigma_\text{damping}$",
+    )
 
     ax.set_xlim([0, ax.get_xlim()[-1]])
 
@@ -872,7 +924,7 @@ def cli_plot(cli_args=None):
     else:
         ax.set_ylim([0, ax.get_ylim()[-1]])
 
-    ax.set_xlabel(r"$\varepsilon$")
+    ax.set_xlabel(r"$\bar{\varepsilon}$")
     ax.set_ylabel(r"$\sigma$")
 
     ax.legend()
@@ -880,13 +932,20 @@ def cli_plot(cli_args=None):
     ax = axes[1]
 
     n = r"\dot{\varepsilon}"
-    ax.plot(out["eps"], out["epsdot"], c="k", label=rf"${n}_\text{{interface}}$")
-    ax.plot(out["eps"], out["epsdotbar"], c="r", label=rf"${n}_\text{{applied}}$")
+    ax.plot(out["eps_applied"], out["epsdot"], c="k", label=rf"${n}_\text{{interface}}$")
+    ax.axhline(out["v"], c="r", label=rf"${n}_\text{{applied}}$")
 
-    ax.set_xlabel(r"$\varepsilon$")
+    ax.set_xlabel(r"$\bar{\varepsilon}$")
     ax.set_ylabel(r"$\dot{\varepsilon}$")
 
     ax.legend()
+
+    ax = axes[2]
+
+    ax.plot(out["eps_applied"], out["epsp"] / N, c="k")
+
+    ax.set_xlabel(r"$\bar{\varepsilon}$")
+    ax.set_ylabel(r"$\varepsilon_\mathrm{p} / N$")
 
     if args.output:
         tools._check_overwrite_file(args.output, args.force)
