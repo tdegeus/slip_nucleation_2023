@@ -389,7 +389,7 @@ def generate(
     :param scale_alpha: Scale default general damping ``alpha`` by factor.
     :param eta:
         Damping coefficient at the interface.
-        Note: :math:`\eta / \eta_\mathrm{rd} = \eta / (2 G t_0)
+        Note: :math:`\eta / \eta_\mathrm{rd} = \eta / (G t_0)
 
     :param init_run: Initialise for use with :py:func:`run`.
     :param dev: Allow uncommitted changes.
@@ -1114,6 +1114,7 @@ def normalisation(file: h5py.File):
         N: Number of blocks (int).
         t0: Unit of time == l0 / cs (float).
         dt: Time step of time discretisation.
+        eta0: Normalisation of the viscosity of the interface.
     """
 
     ret = {}
@@ -1141,6 +1142,7 @@ def normalisation(file: h5py.File):
     ret["N"] = N
     ret["t0"] = ret["l0"] / ret["cs"]
     ret["dt"] = file["param"]["dt"][...]
+    ret["eta0"] = ret["G"] * ret["t0"]
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
