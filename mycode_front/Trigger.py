@@ -314,13 +314,16 @@ def cli_ensemblepack_merge(cli_args=None):
                 for path in pack2paths(src):
 
                     if path in dest:
+
                         equal = g5.allequal(src, dest, g5.getdatapaths(src, path))
+
                         if not equal:
                             paths = g5.getdatapaths(src, root=path)
                             test = g5.compare(src, dest, paths)
                             test = g5.compare_allow(test, allowed, root=path)
 
                             if len(test["!="]) != 0 or len(test["->"]) != 0 or len(test["<-"]) != 0:
+                                print(test)
                                 raise ValueError(f"{filepath}:{path} != {args.output}:{path}")
                     else:
                         g5.copy(src, dest, path, expand_soft=False)
