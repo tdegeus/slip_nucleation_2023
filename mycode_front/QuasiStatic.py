@@ -380,7 +380,7 @@ def generate(
     init_run: bool = True,
     dev: bool = False,
 ):
-    """
+    r"""
     Generate input file. See :py:func:`read_epsy` for different strategies to store yield strains.
 
     :param filepath: The filepath of the input file.
