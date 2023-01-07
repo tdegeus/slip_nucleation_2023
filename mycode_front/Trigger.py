@@ -322,6 +322,9 @@ def cli_ensemblepack_merge(cli_args=None):
                             test = g5.compare(src, dest, paths)
                             test = g5.compare_allow(test, allowed, root=path)
 
+                            if g5.join(path, "/Trigger/element", root=True) in test["=="]:
+                                test = g5.compare_allow(test, "/Trigger/try_element", root=path)
+
                             if len(test["!="]) != 0 or len(test["->"]) != 0 or len(test["<-"]) != 0:
                                 print(test)
                                 raise ValueError(f"{filepath}:{path} != {args.output}:{path}")
