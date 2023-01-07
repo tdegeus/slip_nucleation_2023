@@ -286,9 +286,14 @@ def cli_ensemblepack_merge(cli_args=None):
     assert all([os.path.isfile(file) for file in args.files])
     tools._check_overwrite_file(args.output, args.force)
 
+    pbar = tqdm.tqdm(args.files)
+
     with h5py.File(args.output, "w") as dest:
 
-        for ifile, filepath in enumerate(tqdm.tqdm(args.files)):
+        for ifile, filepath in enumerate(pbar):
+
+            pbar.set_description(filepath)
+            pbar.refresh()
 
             with h5py.File(filepath) as src:
 
@@ -302,7 +307,8 @@ def cli_ensemblepack_merge(cli_args=None):
                 for path in pack2paths(src):
 
                     if path in dest:
-                        assert g5.allequal(src, dest, g5.getdatapaths(src, path))
+                        if not g5.allequal(src, dest, g5.getdatapaths(src, path)):
+                            raise ValueError(f"{filepath}:{path} != {args.output}:{path}")
                     else:
                         g5.copy(src, dest, path, expand_soft=False)
 
