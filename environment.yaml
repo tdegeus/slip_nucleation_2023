@@ -5,7 +5,7 @@ dependencies:
 - click
 - enstat >=0.5.0
 - furo
-- goosehdf5 >=0.20.0
+- goosehdf5 >=0.20.5
 - goosempl
 - gooseslurm
 - h5py

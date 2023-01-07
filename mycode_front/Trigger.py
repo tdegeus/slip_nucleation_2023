@@ -277,7 +277,6 @@ def cli_ensemblepack_merge(cli_args=None):
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
-    parser.add_argument("--skip", action="store_true", help="Skip duplicates")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument("-o", "--output", type=str, required=True, help="Output file")
     parser.add_argument("files", nargs="*", type=str, help="Files to merge")
@@ -286,6 +285,13 @@ def cli_ensemblepack_merge(cli_args=None):
     assert len(args.files) > 0
     assert all([os.path.isfile(file) for file in args.files])
     tools._check_overwrite_file(args.output, args.force)
+
+    allowed = [
+        "/meta/QuasiStatic_Run",
+        "/meta/Trigger_JobDeltaSigma",
+        "/meta/Trigger_Run",
+        "/meta/branch_fixed_stress_1",
+    ]
 
     pbar = tqdm.tqdm(args.files)
 
@@ -309,11 +315,13 @@ def cli_ensemblepack_merge(cli_args=None):
 
                     if path in dest:
                         equal = g5.allequal(src, dest, g5.getdatapaths(src, path))
-                        msg = f"{filepath}:{path} != {args.output}:{path}"
-                        if not equal and not args.skip:
-                            raise ValueError(msg)
-                        else:
-                            print(msg)
+                        if not equal:
+                            paths = g5.getdatapaths(src, root=path)
+                            test = g5.compare(src, dest, paths)
+                            test = g5.compare_allow(test, allowed, root=path)
+
+                            if len(test["!="]) != 0 or len(test["->"]) != 0 or len(test["<-"]) != 0:
+                                raise ValueError(f"{filepath}:{path} != {args.output}:{path}")
                     else:
                         g5.copy(src, dest, path, expand_soft=False)
 
