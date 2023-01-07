@@ -277,6 +277,7 @@ def cli_ensemblepack_merge(cli_args=None):
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
+    parser.add_argument("--skip", action="store_true", help="Skip duplicates")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument("-o", "--output", type=str, required=True, help="Output file")
     parser.add_argument("files", nargs="*", type=str, help="Files to merge")
@@ -307,8 +308,12 @@ def cli_ensemblepack_merge(cli_args=None):
                 for path in pack2paths(src):
 
                     if path in dest:
-                        if not g5.allequal(src, dest, g5.getdatapaths(src, path)):
-                            raise ValueError(f"{filepath}:{path} != {args.output}:{path}")
+                        equal = g5.allequal(src, dest, g5.getdatapaths(src, path))
+                        msg = f"{filepath}:{path} != {args.output}:{path}"
+                        if not equal and not args.skip:
+                            raise ValueError(msg)
+                        else:
+                            print(msg)
                     else:
                         g5.copy(src, dest, path, expand_soft=False)
 
