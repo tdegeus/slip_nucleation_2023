@@ -1114,7 +1114,7 @@ def normalisation(file: h5py.File):
         N: Number of blocks (int).
         t0: Unit of time == l0 / cs (float).
         dt: Time step of time discretisation.
-        eta0: Normalisation of the viscosity of the interface.
+        eta0: Normalisation of the viscosity of the interface (float).
     """
 
     ret = {}
@@ -1188,6 +1188,7 @@ def basic_output(
         N: Number of blocks (int).
         t0: Unit of time == l0 / cs (float).
         dt: Time step of time discretisation.
+        eta0: Normalisation of the viscosity of the interface (float).
     """
 
     root = file[root]
