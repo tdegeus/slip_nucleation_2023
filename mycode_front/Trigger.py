@@ -329,7 +329,7 @@ def cli_ensemblepack_merge(cli_args=None):
                                 print(test)
                                 raise ValueError(f"{filepath}:{path} != {args.output}:{path}")
                     else:
-                        g5.copy(src, dest, path, expand_soft=False)
+                        g5.copy(src, dest, path)
 
 
 def cli_move_completed(cli_args=None):
@@ -1537,4 +1537,4 @@ def cli_transform_deprecated_pack3(cli_args=None):
             info["stepc"] = info.pop("incc")
 
             ret = "deltasigma={deltasigma}/id={id}/stepc={stepc}_element={element}".format(**info)
-            g5.copy(src, dest, f"/event/{event}", f"/event/{ret}", expand_soft=False)
+            g5.copy(src, dest, f"/event/{event}", f"/event/{ret}")
