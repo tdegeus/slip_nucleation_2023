@@ -103,10 +103,6 @@ def pack2filepath(pack: str) -> str:
     :param pack: Path in the pack.
     :return: Filename.
     """
-    def zpad(match):
-        return match.group(1) + match.group(2) + f"{int(match.group(3)):03d}" + match.group(4)
-
-    pack = re.sub(r"(.*)(id=)([0-9]*)(.*)", zpad, pack)
     return pack.split("/event/")[1].replace("/", "_") + ".h5"
 
 
@@ -1114,6 +1110,8 @@ def __filter(ret, filepath):
         else:
             present = sorted([pack2filepath(i) for i in pack2paths(file)])
             ensemble = [os.path.basename(i) for i in ret["dest"]]
+            present = [re.sub(r"(.*)(id=)(0*)(.*)", r"\1\2\4", i) for i in present]
+            ensemble = [re.sub(r"(.*)(id=)(0*)(.*)", r"\1\2\4", i) for i in ensemble]
             keep = ~np.in1d(ensemble, present)
             for key in ret:
                 ret[key] = list(itertools.compress(ret[key], keep))

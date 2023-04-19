@@ -294,6 +294,7 @@ class test_Trigger(unittest.TestCase):
         Trigger.cli_ensemblepack(["-f", "-o", p1, *self.files[:2]])
         Trigger.cli_ensemblepack(["-f", "-o", p2, *self.files[2:]])
         Trigger.cli_ensemblepack_merge(["-f", "-o", t2, p1, p2])
+        self.assertLess(np.abs(t1.stat().st_size - t2.stat().st_size) / t1.stat().st_size, 1e-2)
 
         with h5py.File(t1) as file, h5py.File(t2) as dest:
             res = g5.compare(file, dest)
