@@ -1095,30 +1095,6 @@ def _copy_configurations(try_element: int, source: list[str], dest: list[str], f
             dest["/Trigger/try_element"][1] = try_element
 
 
-def __filter(ret, filepath):
-    """
-    Filter already run simulations.
-    """
-
-    assert os.path.isfile(filepath)
-
-    with h5py.File(filepath, "r") as file:
-        # cli_ensembleinfo
-        if "sig0" in file:
-            raise OSError("Not yet implemented (not very hard though)")
-        # cli_ensemblepack
-        else:
-            present = sorted([pack2filepath(i) for i in pack2paths(file)])
-            ensemble = [os.path.basename(i) for i in ret["dest"]]
-            present = [re.sub(r"(.*)(id=)(0*)(.*)", r"\1\2\4", i) for i in present]
-            ensemble = [re.sub(r"(.*)(id=)(0*)(.*)", r"\1\2\4", i) for i in ensemble]
-            keep = ~np.in1d(ensemble, present)
-            for key in ret:
-                ret[key] = list(itertools.compress(ret[key], keep))
-
-    return ret
-
-
 def cli_job_deltasigma(cli_args=None):
     """
     Create jobs to trigger at fixed stress increase ``delta_sigma``
@@ -1263,6 +1239,10 @@ def cli_job_deltasigma(cli_args=None):
     # (this could be made more clever, but it would take some more coding)
     if args.filter:
 
+        with h5py.File(args.filter) as file:
+            present = sorted([pack2filepath(i) for i in pack2paths(file)])
+            present = [re.sub(r"(.*)(id=)(0*)(.*)", r"\1\2\4", i) for i in present]
+
         data = ret.copy()
         e0 = elements[0]
         outfiles = []
@@ -1271,7 +1251,11 @@ def cli_job_deltasigma(cli_args=None):
             for e in elements:
                 r = data.copy()
                 r["dest"] = [i.replace(f"element={e0}", f"element={e:d}") for i in r["dest"]]
-                r = __filter(r, args.filter)
+                ensemble = [os.path.basename(i) for i in ret["dest"]]
+                ensemble = [re.sub(r"(.*)(id=)(0*)(.*)", r"\1\2\4", i) for i in ensemble]
+                keep = ~np.in1d(ensemble, present)
+                for key in ret:
+                    r[key] = list(itertools.compress(r[key], keep))
                 _write_configurations(e, file, args.force, args.develop, meta=meta, **r)
                 outfiles += [i for i in r["dest"]]
 
