@@ -24,7 +24,6 @@ class MyTests(unittest.TestCase):
     """
 
     def test_PartialDisplacement(self):
-
         mesh = GooseFEM.Mesh.Quad4.Regular(4, 4)
         conn = mesh.conn()
         dofs = mesh.dofsPeriodic()
@@ -54,7 +53,6 @@ class MyTests(unittest.TestCase):
         self.assertTrue(np.all(np.argwhere(na_is_stored).ravel() == store.nodeassembly_list()))
 
     def test_h5py_save_unique(self):
-
         dirname = "mytest"
         filepath = os.path.join(dirname, "foo.h5")
 
@@ -103,7 +101,6 @@ class MyTests(unittest.TestCase):
         shutil.rmtree(dirname)
 
     def test_check_docstring(self):
-
         docstring = """\
         Foo bar.
 
@@ -154,7 +151,6 @@ class MyTests(unittest.TestCase):
         tools.check_docstring(docstring, dict(a=None, b=None))
 
     def test_read_parameters(self):
-
         a = "/this/is/my/a=10_b=20/c=30.2"
         b = f"{a}.txt"
 
@@ -181,7 +177,6 @@ class MyTests(unittest.TestCase):
         self.assertEqual(tools.read_parameters(a, convert=convert), value)
 
     def test_center_avalanche(self):
-
         S = np.array([1, 1, 0, 0, 0])
         T = np.array([0, 0, 1, 1, 0])
 
@@ -191,7 +186,6 @@ class MyTests(unittest.TestCase):
         self.assertTrue(np.all(C == T))
 
     def test_center_avalanche_per_row_a(self):
-
         S = np.array([[1, 1, 0, 0, 0], [3, 3, 0, 0, 0], [0, 0, 0, 4, 4], [0, 0, 7, 9, 0]])
 
         T = np.array([[0, 0, 1, 1, 0], [0, 0, 3, 3, 0], [0, 0, 4, 4, 0], [0, 0, 7, 9, 0]])
@@ -202,7 +196,6 @@ class MyTests(unittest.TestCase):
         self.assertTrue(np.all(C == T))
 
     def test_center_avalanche_per_row_aa(self):
-
         S = np.array(
             [
                 [1, 1, 0, 0, 0, 0],
@@ -227,7 +220,6 @@ class MyTests(unittest.TestCase):
         self.assertTrue(np.all(C == T))
 
     def test_center_avalanche_per_row_aaa(self):
-
         S = np.array(
             [
                 [0, 0, 0, 0, 0, 0],
@@ -254,7 +246,6 @@ class MyTests(unittest.TestCase):
         self.assertTrue(np.all(C == T))
 
     def test_center_avalanche_per_row_aaaa(self):
-
         S = np.array(
             [
                 [1, 1, 0, 0, 0, 0],
@@ -281,7 +272,6 @@ class MyTests(unittest.TestCase):
         self.assertTrue(np.all(C == T))
 
     def test_center_avalanche_per_row_missing(self):
-
         S = np.array(
             [
                 [1, 1, 0, 0, 0, 0],
@@ -306,7 +296,6 @@ class MyTests(unittest.TestCase):
         self.assertTrue(np.all(C == T))
 
     def test_center_avalanche_per_row_b(self):
-
         S = np.array([[1, 1, 0, 0, 0], [3, 3, 0, 0, 0], [4, 4, 0, 0, 4], [7, 8, 9, 0, 8]])
 
         T = np.array([[0, 0, 1, 1, 0], [0, 0, 3, 3, 0], [0, 4, 4, 4, 0], [0, 8, 7, 8, 9]])
@@ -317,7 +306,6 @@ class MyTests(unittest.TestCase):
         self.assertTrue(np.all(C == T))
 
     def test_fill_avalanche(self):
-
         a = np.array([0, 0, 0, 1, 1, 1, 0, 0, 0])
         b = np.array([0, 0, 0, 1, 1, 1, 0, 0, 0])
 
@@ -359,7 +347,6 @@ class MyTests(unittest.TestCase):
             self.assertTrue(np.all(tools.fill_avalanche(a) == b))
 
     def test_distance(self):
-
         a = np.random.random((10, 3))
         b = np.random.random((15, 3))
 
@@ -375,7 +362,6 @@ class MyTests(unittest.TestCase):
         self.assertTrue(np.allclose(D, tools.distance(a, b)))
 
     def test_minimal_distance(self):
-
         a = np.array(
             [
                 [0, 0],
@@ -397,7 +383,6 @@ class MyTests(unittest.TestCase):
         self.assertTrue(np.all(np.equal(closest, np.argmin(tools.distance(a, b), axis=1))))
 
     def test_distance1d(self):
-
         a = np.random.random(10)
         b = np.random.random(15)
 
@@ -412,7 +397,6 @@ class MyTests(unittest.TestCase):
         self.assertTrue(np.allclose(D, tools.distance1d(a, b)))
 
     def test_minimal_distance1d(self):
-
         a = np.array([0, 1, 2, 3])
         b = np.array([3, 0])
         closest = np.array([1, 1, 0, 0])
@@ -420,7 +404,6 @@ class MyTests(unittest.TestCase):
         self.assertTrue(np.all(np.equal(closest, np.argmin(tools.distance1d(a, b), axis=1))))
 
     def test_minimal_distance1d_negative(self):
-
         a = np.array([0, 1, 2, 3])
         b = np.array([-2, -1, 0, 1])
         closest = np.array([0, 0, 0, 1])
@@ -429,5 +412,4 @@ class MyTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-
     unittest.main()

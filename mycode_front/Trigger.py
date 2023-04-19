@@ -176,7 +176,6 @@ def cli_run(cli_args=None):
     pbar = tqdm.tqdm(total=1, desc=args.file)
 
     with h5py.File(args.file, "a") as file:
-
         root = file["Trigger"]
         assert root["element"].size == root["try_element"].size
         assert root["kick"].size == root["element"].size - 1
@@ -203,11 +202,9 @@ def cli_run(cli_args=None):
         # search for the element to run
 
         if search_element:
-
             element = try_element
 
             for itry in range(args.retry + 1):
-
                 assert itry <= args.retry, "Maximum number of tries reached"
                 assert itry == 0 or element != try_element, "All elements tried"
 
@@ -228,7 +225,6 @@ def cli_run(cli_args=None):
             root["element"][step + 1] = element
 
         elif args.rerun:
-
             system.timeSteps(args.niter)
 
         # run the dynamics
@@ -296,14 +292,11 @@ def cli_ensemblepack_merge(cli_args=None):
     pbar = tqdm.tqdm(args.files)
 
     with h5py.File(args.output, "w") as dest:
-
         for ifile, filepath in enumerate(pbar):
-
             pbar.set_description(filepath)
             pbar.refresh()
 
             with h5py.File(filepath) as src:
-
                 if ifile == 0:
                     g5.copy(src, dest, "/param")
                     if "event" not in dest:
@@ -312,9 +305,7 @@ def cli_ensemblepack_merge(cli_args=None):
                     assert g5.allequal(src, dest, g5.getdatapaths(src, "/param"))
 
                 for path in pack2paths(src):
-
                     if path in dest:
-
                         equal = g5.allequal(src, dest, g5.getdatapaths(src, path))
 
                         if not equal:
@@ -359,7 +350,6 @@ def cli_move_completed(cli_args=None):
     dest.mkdir(parents=True, exist_ok=True)
 
     for filename in tqdm.tqdm(files):
-
         with h5py.File(filename) as file:
             if "/meta/Trigger_Run" not in file:
                 continue
@@ -411,13 +401,10 @@ def cli_ensemblepack(cli_args=None):
     pbar.set_description(fmt.format(""))
 
     with h5py.File(args.output, "w") as output:
-
         for ifile, filepath in enumerate(pbar):
-
             pbar.set_description(fmt.format(filepath), refresh=True)
 
             with h5py.File(filepath, "r") as file:
-
                 # copy/check global ensemble data
                 if ifile == 0:
                     g5.copy(file, output, "/param")
@@ -500,7 +487,6 @@ def cli_ensembleinfo(cli_args=None):
     )
 
     with h5py.File(args.ensemblepack) as pack, h5py.File(args.output, "w") as output:
-
         paths = pack2paths(pack)
         assert len(paths) > 0
         simid = [interpret_filename(i)["id"] for i in paths]
@@ -510,7 +496,6 @@ def cli_ensembleinfo(cli_args=None):
         pbar.set_description(fmt.format(""))
 
         for i, idx in enumerate(pbar):
-
             path = paths[idx]
             pbar.set_description(fmt.format(path), refresh=True)
             file = pack[path]
@@ -629,7 +614,6 @@ def restore_from_ensembleinfo(
         raise OSError(f'File not found: "{sourcepath}"')
 
     with h5py.File(sourcepath, "r") as source, h5py.File(destpath, "w") as dest:
-
         QuasiStatic.branch_fixed_stress(
             source=source,
             dest=dest,
@@ -650,7 +634,6 @@ def restore_from_ensembleinfo(
 
 
 def __job_rerun(file, sims, basename, executable, args):
-
     if not args.force:
         if any([os.path.isfile(i) for i in sims["replica"]]) or any(
             [os.path.isfile(i) for i in sims["output"]]
@@ -717,7 +700,6 @@ def cli_job_rerun_eventmap(cli_args=None):
     ret = []
 
     with h5py.File(args.ensembleinfo) as file:
-
         if "/meta/normalisation/N" not in file:
             A = file["A"][...]
             truncated = file["truncated"][...]
@@ -844,7 +826,6 @@ def cli_job_rerun_dynamics(cli_args=None):
     args.height = [] if args.height is None else args.height
 
     with h5py.File(args.ensembleinfo) as file:
-
         if "/meta/normalisation/N" not in file:
             A = file["A"][...]
             truncated = file["truncated"][...]
@@ -875,7 +856,6 @@ def cli_job_rerun_dynamics(cli_args=None):
         )
 
         for ibin in range(args.skip, args.bins):
-
             if args.ibin is not None:
                 if ibin != args.ibin:
                     continue
@@ -1017,13 +997,11 @@ def _write_configurations(
     tmp = tempfile.mkstemp(suffix=".h5", dir=os.path.dirname(dest[0]))[1]
 
     for i, idx in enumerate(pbar):
-
         s = source[idx]
         d = dest[idx]
         pbar.set_description(fmt.format(str(s)), refresh=True)
 
         with h5py.File(s, "r") as source_file:
-
             if i == 0:
                 system = QuasiStatic.System(source_file)
                 output = {
@@ -1051,7 +1029,6 @@ def _write_configurations(
             shutil.copy(tmp, d)
 
             with h5py.File(d, "a") as dest_file:
-
                 QuasiStatic.branch_fixed_stress(
                     source=source_file,
                     dest=dest_file,
@@ -1087,7 +1064,6 @@ def _copy_configurations(try_element: int, source: list[str], dest: list[str], f
                 raise OSError("Cancelled")
 
     for s, d in zip(source, dest):
-
         shutil.copy(s, d)
 
         with h5py.File(d, "a") as dest:
@@ -1183,7 +1159,6 @@ def cli_job_deltasigma(cli_args=None):
         basecommand += ["--truncate-system-spanning"]
 
     for i in range(sig.size - 1):
-
         if ifile[i] != ifile_loading[i + 1]:
             continue
 
@@ -1197,7 +1172,6 @@ def cli_job_deltasigma(cli_args=None):
             stress = [stress[i] for i in args.istress]
 
         for istress, s in enumerate(stress):
-
             if istress == 0:
                 j = step[i]  # directly after system-spanning events
             else:
@@ -1238,7 +1212,6 @@ def cli_job_deltasigma(cli_args=None):
     # instead generate per element after filtering
     # (this could be made more clever, but it would take some more coding)
     if args.filter:
-
         with h5py.File(args.filter) as file:
             present = sorted([pack2filepath(i) for i in pack2paths(file)])
             present = [re.sub(r"(.*)(id=)(0*)(.*)", r"\1\2\4", i) for i in present]
@@ -1261,7 +1234,6 @@ def cli_job_deltasigma(cli_args=None):
 
     # if no filter is applied: generate for one element and copy + modify for all the other elements
     else:
-
         with h5py.File(args.ensembleinfo) as file:
             _write_configurations(elements[0], file, args.force, args.develop, meta=meta, **ret)
             outfiles = [i for i in ret["dest"]]
@@ -1318,12 +1290,10 @@ def cli_transform_deprecated_pack(cli_args=None):
     logger.addHandler(handler)
 
     with tempfile.TemporaryDirectory() as temp_dir:
-
         temp_file = os.path.join(temp_dir, "tmp.h5")
         temp_file = "mytmp.h5"
 
         with h5py.File(args.source) as src, h5py.File(args.dest, "w-") as dest:
-
             paths = list(g5.getdatasets(src, fold="event", fold_symbol=""))
             paths.remove("/event")
 
@@ -1333,7 +1303,6 @@ def cli_transform_deprecated_pack(cli_args=None):
             pbar = tqdm.tqdm(src["event"])
 
             for ifile, name in enumerate(pbar):
-
                 pbar.set_description(f"{name}")
                 root = f"/event/{name}"
                 dest.create_group(root)
@@ -1353,9 +1322,7 @@ def cli_transform_deprecated_pack(cli_args=None):
 
                 # copy/check parameters
                 try:
-
                     with h5py.File(temp_file, "w") as tmp:
-
                         paths = QuasiStatic.transform_deprecated_param(
                             src, tmp, paths, source_root=root
                         )
@@ -1374,7 +1341,6 @@ def cli_transform_deprecated_pack(cli_args=None):
                             assert g5.allequal(tmp, dest, check)
 
                 except:  # noqa: E722
-
                     if ifile > 0:
                         logger.warning(f'Failed to read parameters "{name}"')
                         allow_nonempty = True
@@ -1464,16 +1430,13 @@ def cli_transform_deprecated_pack2(cli_args=None):
     assert sourcedir.is_dir()
 
     with h5py.File(args.pack, "r+") as file:
-
         for event in tqdm.tqdm(file["event"]):
-
             if f"/event/{event}/realisation/seed" in file:
                 continue
 
             sid = interpret_filename(event)["id"]
 
             with h5py.File(sourcedir / f"id={sid:03d}.h5") as src:
-
                 if "realisation" not in file[f"/event/{event}"]:
                     g5.copy(src, file, ["/realisation"], root=f"/event/{event}")
                 else:
@@ -1504,11 +1467,9 @@ def cli_transform_deprecated_pack3(cli_args=None):
     assert not pathlib.Path(args.output).is_file()
 
     with h5py.File(args.input) as src, h5py.File(args.output, "w") as dest:
-
         g5.copy(src, dest, ["/param"])
 
         for event in tqdm.tqdm(src["event"]):
-
             part = re.split("_|/", os.path.splitext(event)[0])
             info = {}
 

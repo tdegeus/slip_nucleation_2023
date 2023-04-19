@@ -167,7 +167,6 @@ class test_QuasiStatic(unittest.TestCase):
             check = file[f"/full/{inpath}/sig"][step]
 
         with path.Path(outdir):
-
             Dynamics.cli_run(commands[0].split(" ")[1:] + ["--dev"])
 
             with h5py.File(outpath) as file:
@@ -193,7 +192,6 @@ class test_QuasiStatic(unittest.TestCase):
             check = np.average(system.Sig(), weights=system.dV(rank=2), axis=(0, 1))[0, 1]
 
         with path.Path(outdir):
-
             Dynamics.cli_run_highfrequency(commands[0].split(" ")[1:] + ["--dev"])
 
             with h5py.File(outpath) as file:
@@ -215,7 +213,6 @@ class test_QuasiStatic(unittest.TestCase):
             check = file[f"/full/{inpath}/S"][step]
 
         with path.Path(outdir):
-
             EventMap.cli_run(commands[0].split(" ")[1:] + ["--dev"])
 
             with h5py.File(outpath) as file:
@@ -325,7 +322,6 @@ class test_Trigger(unittest.TestCase):
         Trigger.cli_run(["--dev", "--rerun", clonename])
 
         with h5py.File(self.files[0]) as source, h5py.File(clonename) as dest:
-
             paths = list(g5.getdatapaths(source))
 
             for key in [
@@ -380,7 +376,6 @@ class test_Trigger(unittest.TestCase):
             trigger.restore_quasistatic_step(file["Trigger"], 1)
 
         with path.Path(outdir):
-
             Dynamics.cli_run(commands[0].split(" ")[1:] + ["--dev"])
 
             with h5py.File(outpath) as file:
@@ -525,7 +520,6 @@ class test_Dynamics(unittest.TestCase):
         self.assertTrue(np.allclose(Sig_p, system.Sig()[plastic, ...] / system.sig0))
 
     def test_AlignedAverage(self):
-
         N = 10
         nip = 4
         elem = np.arange(N)
@@ -560,5 +554,4 @@ class test_Dynamics(unittest.TestCase):
 
 
 if __name__ == "__main__":
-
     unittest.main(verbosity=2)

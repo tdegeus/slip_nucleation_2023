@@ -302,7 +302,6 @@ def branch_fixed_stress(
 
     # determine at which step to branch
     if step is None:
-
         assert step_c is not None and stress is not None
 
         next_step = int(step_c) + np.argwhere(output["A"][step_c:] == output["N"]).ravel()[1]
@@ -441,7 +440,6 @@ def generate(
     dt = (1 / (c * qh)) / 10
 
     with h5py.File(filepath, "w") as file:
-
         storage.dump_with_atttrs(
             file,
             "/realisation/seed",
@@ -693,7 +691,6 @@ def cli_generate(cli_args=None):
 
 
 def _compare_versions(ver, cmpver):
-
     if tag.greater_equal(cmpver, "14.0"):
         if tag.greater_equal(ver, cmpver):
             return True
@@ -793,7 +790,6 @@ def cli_move_meta(cli_args=None):
     assert args.develop or not tag.any_has_uncommitted(deps)
 
     with h5py.File(args.file, "a") as file:
-
         assert args.old_name in file
 
         g5.copy(file, file, args.old_name, args.new_name)
@@ -834,7 +830,6 @@ def cli_run(cli_args=None):
     basename = os.path.basename(args.file)
 
     with h5py.File(args.file, "a") as file:
-
         system = System(file)
         meta = create_check_meta(file, f"/meta/{progname}", dev=args.develop)
 
@@ -857,12 +852,10 @@ def cli_run(cli_args=None):
         )
 
         for step in range(step, sys.maxsize):
-
             kick = not kick
             system.eventDrivenStep(deps, kick)
 
             if kick:
-
                 inc_n = system.inc
                 ret = system.minimise(nmargin=5)
 
@@ -934,7 +927,6 @@ def cli_status(cli_args=None):
 
     for filepath in tqdm.tqdm(args.files):
         with h5py.File(filepath, "r") as file:
-
             if args.key not in file:
                 ret["new"].append(filepath)
                 continue
@@ -1047,9 +1039,7 @@ def interface_state(filepaths: dict[int], read_disp: dict[str] = None) -> dict[n
     i = 0
 
     for filepath in tqdm.tqdm(filepaths):
-
         with h5py.File(filepath, "r") as file:
-
             if i == 0:
                 system = System(file)
                 dV = system.plastic_dV()
@@ -1068,7 +1058,6 @@ def interface_state(filepaths: dict[int], read_disp: dict[str] = None) -> dict[n
                 system.reset(file)
 
             for j, step in enumerate(filepaths[filepath]):
-
                 if read_disp:
                     with h5py.File(read_disp[filepath][j], "r") as disp:
                         system.u = disp[f"/QuasiStatic/u/{step:d}"][...]
@@ -1217,7 +1206,6 @@ def basic_output(
         opts["disable"] = True
 
     for step in tqdm.tqdm(steps, **opts):
-
         system.restore_quasistatic_step(root=root, step=step)
 
         if i_n is None:
@@ -1325,13 +1313,10 @@ def cli_ensembleinfo(cli_args=None):
     pbar.set_description(fmt.format(""))
 
     with h5py.File(args.output, "w") as output:
-
         for i, (filename, filepath) in enumerate(zip(pbar, args.files)):
-
             pbar.set_description(fmt.format(filename), refresh=True)
 
             with h5py.File(filepath, "r") as file:
-
                 if i == 0:
                     system = System(file)
                 else:
@@ -1766,7 +1751,6 @@ def cli_transform_deprecated(cli_args=None):
     os.rename(args.file, args.file + ".bak")
 
     with h5py.File(args.file + ".bak") as src, h5py.File(args.file, "w") as dest:
-
         paths = list(g5.getdatapaths(src, fold="/meta/normalisation", fold_symbol=""))
         paths = transform_deprecated_param(src, dest, paths)
         dest.create_group("QuasiStatic")

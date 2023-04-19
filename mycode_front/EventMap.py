@@ -92,7 +92,6 @@ def run_event_basic(system: QuasiStatic.System, file: h5py.File, step: int, Smax
     S = []
 
     while True:
-
         ret = system.timeStepsUntilEvent()
         i = system.plastic.i[:, 0].astype(int)
 
@@ -226,7 +225,6 @@ def cli_basic_output(cli_args=None):
     # store (compress where possible)
 
     with h5py.File(args.output, "w") as file:
-
         for key in ["t", "A", "S", "step"]:
             file[key] = data[key]
 

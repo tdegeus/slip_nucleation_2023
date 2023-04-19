@@ -24,7 +24,6 @@ class MyTests(unittest.TestCase):
     """
 
     def test_symtens2(self):
-
         dirname = "mytest"
         filename = "foo.h5"
         filepath = os.path.join(dirname, filename)
@@ -37,7 +36,6 @@ class MyTests(unittest.TestCase):
         data = tensor.A4_ddot_B2(tensor.Array1d([50]).I4s, data)
 
         with h5py.File(filepath, "w") as file:
-
             storage.symtens2_create(file, key, np.float64)
 
             for i in range(data.shape[0]):
@@ -48,7 +46,6 @@ class MyTests(unittest.TestCase):
         shutil.rmtree(dirname)
 
     def test_extend1d(self):
-
         dirname = "mytest"
         filename = "foo.h5"
         filepath = os.path.join(dirname, filename)
@@ -60,7 +57,6 @@ class MyTests(unittest.TestCase):
         data = np.random.random(50)
 
         with h5py.File(filepath, "w") as file:
-
             storage.create_extendible(file, key, np.float64)
 
             for i, d in enumerate(data):
@@ -71,7 +67,6 @@ class MyTests(unittest.TestCase):
         shutil.rmtree(dirname)
 
     def test_dump_overwrite(self):
-
         dirname = "mytest"
         filename = "foo.h5"
         filepath = os.path.join(dirname, filename)
@@ -83,7 +78,6 @@ class MyTests(unittest.TestCase):
         data = np.random.random(50)
 
         with h5py.File(filepath, "w") as file:
-
             for i in range(3):
                 storage.dump_overwrite(file, key, data)
                 self.assertTrue(np.allclose(data, file[key][...]))
@@ -92,5 +86,4 @@ class MyTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-
     unittest.main()

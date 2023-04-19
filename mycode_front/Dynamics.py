@@ -211,7 +211,6 @@ def cli_run(cli_args=None):
     assert args.A_step > 0 or args.t_step > 0
 
     with h5py.File(args.file) as src, h5py.File(args.output, "w") as file:
-
         g5.copy(src, file, ["/param", "/realisation", "/meta"])
 
         meta = QuasiStatic.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
@@ -261,7 +260,6 @@ def cli_run(cli_args=None):
         maxiter = sroot["inc"][args.step] - sroot["inc"][args.step - 1]
 
     with h5py.File(args.output, "a") as file:
-
         root = file["Dynamics"]
 
         # variables needed to write output
@@ -307,9 +305,7 @@ def cli_run(cli_args=None):
         last_stored_iiter = -1  # last written increment
 
         while True:
-
             if store:
-
                 if iiter != last_stored_iiter:
                     root["u"][str(istore)] = system.vector.AsDofs(system.u)[keepdof]
                     Epsbar = np.average(system.Eps(), weights=dV, axis=(0, 1))
@@ -326,11 +322,9 @@ def cli_run(cli_args=None):
                 pbar.refresh()
 
             if stop:
-
                 break
 
             if trigger:
-
                 trigger = False
                 if typename == "Trigger":
                     system.triggerElementWithLocalSimpleShear(deps, element)
@@ -339,7 +333,6 @@ def cli_run(cli_args=None):
                     system.eventDrivenStep(deps, kick)
 
             if A_check:
-
                 niter = system.timeStepsUntilEvent()
                 iiter += niter
                 stop = niter == 0
@@ -362,7 +355,6 @@ def cli_run(cli_args=None):
                         stop = True
 
             else:
-
                 inc_n = system.inc
                 ret = system.minimise(max_iter=args.t_step, max_iter_is_error=False, nmargin=5)
                 assert ret >= 0
@@ -428,7 +420,6 @@ def cli_run_highfrequency(cli_args=None):
     assert args.ny > 0
 
     with h5py.File(args.file) as src, h5py.File(args.output, "w") as file:
-
         g5.copy(src, file, ["/param", "/realisation", "/meta"])
 
         meta = QuasiStatic.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
@@ -482,7 +473,6 @@ def cli_run_highfrequency(cli_args=None):
         deps = file["/param/cusp/epsy/deps"][...]
 
     with h5py.File(args.output, "a") as file:
-
         root = file.create_group("DynamicsHighFrequency")
 
         root["u0_x"] = coor[nodes, 0]
@@ -627,13 +617,10 @@ def cli_average_systemspanning(cli_args=None):
     t_end = []
 
     for ifile, filepath in enumerate(args.files):
-
         with h5py.File(filepath, "r") as file:
-
             root = file["Dynamics"]
 
             if ifile == 0:
-
                 system = QuasiStatic.System(file)
                 N = system.N
                 dV = system.dV()
@@ -656,7 +643,6 @@ def cli_average_systemspanning(cli_args=None):
                 doflist = partial.dof_list()
 
             else:
-
                 assert N == system.N
                 assert np.all(
                     np.equal(height, file[f"/meta/{entry_points['cli_run']}"].attrs["height"])
@@ -680,7 +666,6 @@ def cli_average_systemspanning(cli_args=None):
     # allocate averages
 
     def allocate(n, element_list, dV, dV2):
-
         ret = dict(
             delta_t=BasicAverage(shape=n),
             Epsbar=BasicAverage(shape=(n, 2, 2)),
@@ -724,11 +709,9 @@ def cli_average_systemspanning(cli_args=None):
     pbar.set_description(fmt.format(""))
 
     for ifile, filepath in enumerate(pbar):
-
         pbar.set_description(fmt.format(filepath), refresh=True)
 
         with h5py.File(filepath, "r") as file:
-
             root = file["Dynamics"]
 
             if ifile > 0:
@@ -775,7 +758,6 @@ def cli_average_systemspanning(cli_args=None):
             syncA["Sigbar"].add_subsample(A[items_syncA], Sigbar[items_syncA])
 
             for item in tqdm.tqdm(range(nitem)):
-
                 if item not in items_syncA and t_ibin[item] < 0 and item > 0:
                     continue
 
@@ -813,7 +795,6 @@ def cli_average_systemspanning(cli_args=None):
                     [t_ibin[item] >= 0, item in items_syncA],
                     [t_ibin[item], A[item]],
                 ):
-
                     if not store:
                         continue
 
@@ -833,7 +814,6 @@ def cli_average_systemspanning(cli_args=None):
                 # syncA["align"]
 
                 if item in items_syncA and np.sum(broken) > 0:
-
                     j = A[item]
                     roll = tools.center_avalanche(broken)
 
@@ -852,11 +832,9 @@ def cli_average_systemspanning(cli_args=None):
                     syncA["align_moving"][0]["s"].add_subsample(j, s, roll, broken)
 
     with h5py.File(args.output, "w") as file:
-
         QuasiStatic.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
 
         for title, data in zip(["sync-t", "sync-A"], [synct, syncA]):
-
             for key in ["delta_t", "Epsbar", "Sigbar"]:
                 file[f"/{title}/{key}/first"] = data[key].first
                 file[f"/{title}/{key}/second"] = data[key].second
@@ -927,7 +905,6 @@ def cli_transform_deprecated(cli_args=None):
     os.rename(args.file, args.file + ".bak")
 
     with h5py.File(args.file + ".bak") as src, h5py.File(args.file, "w") as dest:
-
         fold = ["/meta/normalisation", "/dynamics"]
         paths = list(g5.getdatapaths(src, fold=fold, fold_symbol=""))
         paths = QuasiStatic.transform_deprecated_param(src, dest, paths)

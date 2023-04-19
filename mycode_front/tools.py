@@ -42,7 +42,6 @@ class PartialDisplacement:
         node_list: ArrayLike = None,
         element_list: ArrayLike = None,
     ):
-
         kwargs = locals()
         del kwargs["conn"]
         del kwargs["dofs"]
@@ -350,7 +349,6 @@ def signal_filter(xn):
 
 
 def sigd(xx, xy, yy):
-
     Sig = np.empty(list(xx.shape) + [2, 2])
     Sig[..., 0, 0] = xx
     Sig[..., 0, 1] = xy
@@ -360,7 +358,6 @@ def sigd(xx, xy, yy):
 
 
 def epsd(xx, xy, yy):
-
     Eps = np.empty(list(xx.shape) + [2, 2])
     Eps[..., 0, 0] = xx
     Eps[..., 0, 1] = xy
@@ -550,7 +547,6 @@ def distance1d(a: ArrayLike, b: ArrayLike) -> np.ndarray:
 
 
 def _parse(parser: argparse.ArgumentParser, cli_args: list[str]) -> argparse.ArgumentParser:
-
     if cli_args is None:
         return parser.parse_args(sys.argv[1:])
 
@@ -558,7 +554,6 @@ def _parse(parser: argparse.ArgumentParser, cli_args: list[str]) -> argparse.Arg
 
 
 def _check_overwrite_file(filepath: str, force: bool):
-
     if force or not os.path.isfile(filepath):
         return
 
@@ -567,9 +562,7 @@ def _check_overwrite_file(filepath: str, force: bool):
 
 
 def _create_or_clear_directory(dirpath: str, force: bool):
-
     if os.path.isdir(dirpath):
-
         if not force:
             if not click.confirm(f'Clear "{dirpath}"?'):
                 raise OSError("Cancelled")

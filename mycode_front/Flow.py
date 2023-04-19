@@ -139,7 +139,6 @@ def generate(*args, **kwargs):
     QuasiStatic.generate(*args, **kwargs)
 
     with h5py.File(kwargs["filepath"], "a") as file:
-
         meta = file.create_group(f"/meta/{progname}")
         meta.attrs["version"] = version
 
@@ -189,7 +188,6 @@ def generate(*args, **kwargs):
 
 
 class DefaultEnsemble:
-
     v = np.linspace(0.0, 0.4, 21)[1:]
     output = 500 * np.ones(v.shape, dtype=int)
     restart = 10000 * np.ones(v.shape, dtype=int)
@@ -261,9 +259,7 @@ def cli_generate(cli_args=None):
         Ensemble.n = Ensemble.v.size
 
     for i in tqdm.tqdm(range(args.start, args.start + args.nsim)):
-
         for j in range(Ensemble.n):
-
             filename = f"id={i:03d}_v={Ensemble.v[j]:.4f}".replace(".", ",") + ".h5"
             filepath = str(outdir / filename)
             assert not pathlib.Path(filepath).exists()
@@ -325,12 +321,10 @@ def run_create_extendible(file: h5py.File):
 
 
 def __velocity_preparation(system, gammadot):
-
     return system.affineSimpleShear(gammadot)
 
 
 def __velocity_steadystate(system, gammadot):
-
     conn = system.conn
     coor = system.coor
     mesh = GooseFEM.Mesh.Quad4.FineLayer(coor=coor, conn=conn)
@@ -358,7 +352,6 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
         opts["disable"] = True
 
     with h5py.File(filepath, "a") as file:
-
         system = QuasiStatic.System(file)
         meta = QuasiStatic.create_check_meta(file, f"/meta/{progname}", dev=dev)
         dV = system.plastic_dV(rank=2)
@@ -399,7 +392,6 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
         h = system.coor[top[1], 0] - system.coor[top[0], 0]
 
         while True:
-
             if init:
                 if np.all(system.plastic.i.astype(int) - i_n > 1):
                     v = __velocity_steadystate(system, file["/Flow/gammadot"][...])
@@ -423,7 +415,6 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
             inc += n
 
             if inc % snapshot == 0:
-
                 i = int(inc / snapshot)
 
                 for key in ["/Flow/snapshot/inc"]:
@@ -436,7 +427,6 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
                 file.flush()
 
             if inc % output == 0:
-
                 i = int(inc / output)
 
                 for key in ["/Flow/output/inc", "/Flow/output/fext", "/Flow/output/epsp"]:
@@ -467,7 +457,6 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
                 file.flush()
 
             if inc % restart == 0:
-
                 storage.dump_overwrite(file, "/Flow/restart/u", system.u)
                 storage.dump_overwrite(file, "/Flow/restart/v", system.v)
                 storage.dump_overwrite(file, "/Flow/restart/a", system.a)
@@ -608,16 +597,13 @@ def cli_ensembleinfo(cli_args=None):
     pbar = tqdm.tqdm(args.files)
 
     with h5py.File(args.output, "w") as output:
-
         for ifile, filename in enumerate(pbar):
-
             pbar.set_description(filename)
             pbar.refresh()
 
             prefix = os.path.relpath(filename, os.path.dirname(args.output))
 
             with h5py.File(filename) as file:
-
                 if ifile == 0:
                     g5.copy(file, output, "/param")
                 else:
@@ -699,7 +685,6 @@ def cli_branch_velocityjump(cli_args=None):
     include = np.logical_not(np.isclose(Gammadot / float(info["gammadot"]), 1.0))
 
     for gammadot in Gammadot[include]:
-
         name = "id={id}_gammadot={gammadot}_jump={jump:.2e}.h5".format(jump=gammadot, **info)
         out_names.append(name)
         out_paths.append(str(outdir / name))
@@ -708,11 +693,8 @@ def cli_branch_velocityjump(cli_args=None):
     assert not np.any([os.path.exists(f) for f in out_paths])
 
     with h5py.File(args.file) as source:
-
         for out_gammadot, out_path in zip(tqdm.tqdm(out_gammadots), out_paths):
-
             with h5py.File(out_path, "w") as dest:
-
                 meta = f"/meta/{entry_points['cli_run']}"
                 paths = g5.getdatapaths(source)
                 paths = [p for p in paths if not re.match(r"(/Flow/snapshot/)(.*)", p)]
@@ -832,14 +814,12 @@ def cli_paraview(cli_args=None):
     with h5py.File(args.file) as file, h5py.File(f"{args.output}.h5", "w") as output, xh.TimeSeries(
         f"{args.output}.xdmf"
     ) as xdmf:
-
         system = QuasiStatic.System(file)
 
         output["/coor"] = system.coor
         output["/conn"] = system.conn
 
         for inc in file["/Flow/snapshot/inc"][...]:
-
             if inc == 0 and f"/Flow/snapshot/u/{inc:d}" not in file:
                 system.u = np.zeros_like(system.coor)
                 system.v = np.zeros_like(system.coor)
@@ -1012,7 +992,6 @@ def cli_transform_deprecated(cli_args=None):
     os.rename(args.file, args.file + ".bak")
 
     with h5py.File(args.file + ".bak") as src, h5py.File(args.file, "w") as dest:
-
         old = ["/boundcheck", "/gammadot", "/output", "/snapshot", "/restart"]
         fold = old + ["/meta/normalisation"]
         paths = list(g5.getdatapaths(src, fold=fold, fold_symbol=""))
@@ -1063,12 +1042,10 @@ def cli_rename(cli_args=None):
     newnames = []
 
     for filename in args.files:
-
         assert len(pathlib.Path(filename).stem.split("id")) == 2
         assert len(pathlib.Path(filename).stem.split("gammadot")) == 2
 
         with h5py.File(filename) as file:
-
             gammadot = file["/Flow/gammadot"][...]
             norm = QuasiStatic.normalisation(file)
 

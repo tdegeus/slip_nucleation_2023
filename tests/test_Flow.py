@@ -44,7 +44,6 @@ class TestPhysics(unittest.TestCase):
     """
 
     def test_fext(self):
-
         mesh = GooseFEM.Mesh.Quad4.Regular(5, 5)
         coor = mesh.coor()
 
@@ -128,5 +127,4 @@ class TestFlow(unittest.TestCase):
 
 
 if __name__ == "__main__":
-
     unittest.main()
