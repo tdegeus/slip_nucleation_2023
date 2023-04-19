@@ -103,6 +103,10 @@ def pack2filepath(pack: str) -> str:
     :param pack: Path in the pack.
     :return: Filename.
     """
+    def zpad(match):
+        return match.group(1) + match.group(2) + f"{int(match.group(3)):03d}" + match.group(4)
+
+    pack = re.sub(r"(.*)(id=)([0-9]*)(.*)", zpad, pack)
     return pack.split("/event/")[1].replace("/", "_") + ".h5"
 
 
@@ -115,7 +119,7 @@ def pack2paths(file: h5py.File) -> list[str]:
 
     ret = []
 
-    for dsig in file["event"]:
+    for dsig in tqdm.tqdm(file["event"], desc="reading"):
         for sid in file["event"][dsig]:
             for path in file["event"][dsig][sid]:
                 ret.append(f"/event/{dsig}/{sid}/{path}")
