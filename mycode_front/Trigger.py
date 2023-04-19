@@ -1095,7 +1095,7 @@ def _copy_configurations(try_element: int, source: list[str], dest: list[str], f
             dest["/Trigger/try_element"][1] = try_element
 
 
-def __filter(ret, filepath, meta):
+def __filter(ret, filepath):
     """
     Filter already run simulations.
     """
@@ -1155,7 +1155,6 @@ def cli_job_deltasigma(cli_args=None):
     parser.add_argument("-p", "--pushes", type=int, default=3, help="#elements per configuration")
     parser.add_argument("-r", "--subdir", action="store_true", help="Separate in directories")
     parser.add_argument("-v", "--version", action="version", version=version)
-    parser.add_argument("-w", "--time", type=str, default="24h", help="Walltime")
     parser.add_argument("ensembleinfo", type=str, help="EnsembleInfo (read-only)")
 
     args = tools._parse(parser, cli_args)
@@ -1270,7 +1269,7 @@ def cli_job_deltasigma(cli_args=None):
             for e in elements:
                 r = data.copy()
                 r["dest"] = [i.replace(f"element={e0}", f"element={e:d}") for i in r["dest"]]
-                r = __filter(r, args.filter, meta)
+                r = __filter(r, args.filter)
                 _write_configurations(e, file, args.force, args.develop, meta=meta, **r)
                 outfiles += [i for i in r["dest"]]
 
@@ -1293,7 +1292,7 @@ def cli_job_deltasigma(cli_args=None):
         cmd.append("--develop")
 
     commands = [" ".join(cmd + [os.path.relpath(i, args.outdir)]) for i in outfiles]
-    shelephant.yaml.dump(os.path.join(args.outdir, "commands.yaml"), commands, args.force)
+    shelephant.yaml.dump(os.path.join(args.outdir, "commands.yaml"), sorted(commands), args.force)
 
     if cli_args is not None:
         return [" ".join(cmd + [i]) for i in outfiles]
