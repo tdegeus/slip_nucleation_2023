@@ -687,7 +687,7 @@ def cli_generate(cli_args=None):
 
     executable = entry_points["cli_run"]
     commands = [f"{executable} {file}" for file in files]
-    shelephant.yaml.dump(outdir / "commands.yaml", commands)
+    shelephant.yaml.dump(outdir / "commands_run.yaml", commands)
 
 
 def _compare_versions(ver, cmpver):
@@ -1502,7 +1502,7 @@ def cli_rerun_event_job_systemspanning(cli_args=None):
         cmd += [os.path.join(relpath, fname)]
         commands.append(" ".join(cmd))
 
-    shelephant.yaml.dump(outdir / "commands.yaml", commands)
+    shelephant.yaml.dump(outdir / "commands_system-spanning_event.yaml", commands)
 
     if cli_args is not None:
         return commands
@@ -1555,7 +1555,7 @@ def cli_rerun_dynamics_job_systemspanning(cli_args=None):
         cmd += [os.path.join(relpath, fname)]
         commands.append(" ".join(cmd))
 
-    shelephant.yaml.dump(outdir / "commands.yaml", commands)
+    shelephant.yaml.dump(outdir / "commands_system-spanning_dynamics.yaml", commands)
 
     if cli_args is not None:
         return commands

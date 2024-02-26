@@ -357,9 +357,8 @@ def cli_run(cli_args=None):
             else:
                 inc_n = system.inc
                 ret = system.minimise(max_iter=args.t_step, max_iter_is_error=False, nmargin=5)
-                assert ret >= 0
-                iiter += system.inc - inc_n
                 stop = ret == 0
+                iiter += system.inc - inc_n
                 storage.dset_extend1d(root, "sync-t", t_istore, istore)
                 t_istore += 1
                 store = True
