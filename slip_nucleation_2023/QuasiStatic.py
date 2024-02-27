@@ -37,14 +37,6 @@ from ._version import version
 plt.style.use(["goose", "goose-latex"])
 
 
-file_defaults = dict(
-    EnsembleInfo="QuasiStatic_EnsembleInfo.h5",
-    MakeJobDynamicsOfSystemSpanning="RunDynamicsOfSystemSpanning",
-    MakeJobEventMapOfSystemSpanning="RunEventMapOfSystemSpanning",
-    StateAfterSystemSpanning="QuasiStatic_StateAfterSystemSpanning.h5",
-)
-
-
 class System(model.System):
     """
     The system.
@@ -1234,7 +1226,6 @@ def EnsembleInfo(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    output = file_defaults[funcname]
 
     class MyFmt(
         argparse.RawDescriptionHelpFormatter,
@@ -1247,7 +1238,9 @@ def EnsembleInfo(cli_args=None):
 
     parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
-    parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
+    parser.add_argument(
+        "-o", "--output", type=str, default="QuasiStatic_EnsembleInfo.h5", help="Output file"
+    )
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("files", nargs="*", type=str, help="Files to read")
 
@@ -1430,10 +1423,14 @@ def MakeJobEventMapOfSystemSpanning(cli_args=None):
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
-    output = file_defaults[funcname]
-
     parser.add_argument("-f", "--force", action="store_true", help="Force clean output directory")
-    parser.add_argument("-o", "--outdir", type=str, default=output, help="Output directory")
+    parser.add_argument(
+        "-o",
+        "--outdir",
+        type=str,
+        default="QuasiStatic_EventMapOfSystemSpanning",
+        help="Output directory",
+    )
     parser.add_argument("-t", "--truncate", action="store_true", help="Truncate at known Smax")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("EnsembleInfo", type=str, help="EnsembleInfo")
@@ -1487,10 +1484,14 @@ def MakeJobDynamicsOfSystemSpanning(cli_args=None):
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
-    output = file_defaults[funcname]
-
     parser.add_argument("-f", "--force", action="store_true", help="Force clean output directory")
-    parser.add_argument("-o", "--outdir", type=str, default=output, help="Output directory")
+    parser.add_argument(
+        "-o",
+        "--outdir",
+        type=str,
+        default="QuasiStatic_DynamicsOfSystemSpanning",
+        help="Output directory",
+    )
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("EnsembleInfo", type=str, help="EnsembleInfo")
 
@@ -1539,15 +1540,19 @@ def StateAfterSystemSpanning(cli_args=None):
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
-    output = file_defaults[funcname]
-
     parser.add_argument("--all", action="store_true", help="Store all output")
     parser.add_argument("--sig", action="store_true", help="Include sig in output")
     parser.add_argument("--eps", action="store_true", help="Include eps in output")
     parser.add_argument("--epsp", action="store_true", help="Include epsp in output")
     parser.add_argument("--size", action="store_true", help="Include S in output")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
-    parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        default="QuasiStatic_StateAfterSystemSpanning.h5",
+        help="Output file",
+    )
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("EnsembleInfo", type=str, help="EnsembleInfo")
 

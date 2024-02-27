@@ -30,11 +30,6 @@ from . import storage
 from . import tools
 from ._version import version
 
-file_defaults = dict(
-    EnsembleInfo="Trigger_EnsembleInfo.h5",
-    EnsemblePack="Trigger_EnsemblePack.h5",
-)
-
 
 def interpret_filename(path: str, convert: bool = True) -> dict:
     """
@@ -359,11 +354,11 @@ def EnsemblePack(cli_args=None):
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
-    output = file_defaults[funcname]
-
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
-    parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
+    parser.add_argument(
+        "-o", "--output", type=str, default="Trigger_EnsemblePack.h5", help="Output file"
+    )
     parser.add_argument("files", nargs="*", type=str, help="Files to read")
 
     args = tools._parse(parser, cli_args)
@@ -422,11 +417,11 @@ def EnsembleInfo(cli_args=None):
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
-    output = file_defaults[funcname]
-
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
-    parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
+    parser.add_argument(
+        "-o", "--output", type=str, default="Trigger_EnsembleInfo.h5", help="Output file"
+    )
     parser.add_argument("ensemblepack", type=str, help="File to read")
 
     args = tools._parse(parser, cli_args)

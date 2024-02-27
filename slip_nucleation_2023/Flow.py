@@ -27,11 +27,6 @@ from . import tag
 from . import tools
 from ._version import version
 
-file_defaults = dict(
-    EnsembleInfo="Flow_EnsembleInfo.h5",
-    EnsembleInfo_velocityjump="Flow_VelocityJump_EnsembleInfo.h5",
-)
-
 
 def _interpret(part: list[str], convert: bool = False) -> dict:
     """
@@ -554,11 +549,11 @@ def EnsembleInfo(cli_args=None):
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
-    output = file_defaults[funcname]
-
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite")
-    parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
+    parser.add_argument(
+        "-o", "--output", type=str, default="Flow_EnsembleInfo.h5", help="Output file"
+    )
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("files", nargs="*", type=str, help="Simulation output")
 

@@ -26,11 +26,6 @@ from . import tag
 from . import tools
 from ._version import version
 
-file_defaults = dict(
-    AverageSystemSpanning="MeasureDynamics_average_systemspanning.h5",
-    PlotMeshHeight="MeasureDynamics_plot_height",
-)
-
 
 def elements_at_height(
     coor: ArrayLike, conn: ArrayLike, height: float, return_type: bool = False
@@ -94,7 +89,7 @@ def PlotMeshHeight(cli_args=None):
     # output
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument(
-        "-o", "--output", type=str, default=file_defaults[funcname], help="Basename of output"
+        "-o", "--output", type=str, default="Dynamics_PlotMeshHeight", help="Basename of output"
     )
 
     # input
@@ -580,11 +575,11 @@ def AverageSystemSpanning(cli_args=None):
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
-    output = file_defaults[funcname]
-
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
-    parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
+    parser.add_argument(
+        "-o", "--output", type=str, default="Dynamics_AverageSystemSpanning.h5", help="Output file"
+    )
     parser.add_argument("files", nargs="*", type=str, help="See Dynamics_Run")
 
     args = tools._parse(parser, cli_args)
