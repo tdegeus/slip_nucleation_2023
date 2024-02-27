@@ -14,14 +14,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runs-on: [ubuntu-latest]
+        runs-on: [macos-latest]
 
     defaults:
       run:
         shell: bash -e -l {0}
 
     name: ${{ matrix.code }}
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
 
     steps:
 
