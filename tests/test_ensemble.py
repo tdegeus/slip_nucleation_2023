@@ -17,9 +17,9 @@ import shelephant
 from mycode_front import Dynamics
 from mycode_front import EventMap
 from mycode_front import QuasiStatic
+from mycode_front import Trigger
 from mycode_front import storage
 from mycode_front import tools
-from mycode_front import Trigger
 
 
 @pytest.fixture(scope="module")

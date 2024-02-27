@@ -4,6 +4,7 @@
 -   Run simulation.
 -   Get basic output.
 """
+
 from __future__ import annotations
 
 import argparse

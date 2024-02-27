@@ -1,6 +1,7 @@
 """
 Take the system to a certain state and trigger an event.
 """
+
 from __future__ import annotations
 
 import argparse
