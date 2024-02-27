@@ -15,7 +15,8 @@ jobs:
       matrix:
         runs-on: [macos-latest]
         # ubuntu has pybind11-abi incompatibilities:
-        # not all C++ deps are built with the same compiler
+        # not all C++ dependencies are built with the same compiler
+        # to use ubuntu one has to locally compile relevant C++ dependencies
 
     defaults:
       run:
