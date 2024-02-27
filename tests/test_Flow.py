@@ -83,5 +83,5 @@ def test_small(tmp_path):
     Flow.EnsembleInfo(["-o", os.path.join(tmp_path, "einfo.h5"), files[-1]])
     Flow.Paraview(["-o", os.path.join(tmp_path, "tmp"), files[-1]])
 
-    # branch = Flow.VelocityJump(["--dev", "-o", tmp_path, "-i", "250000", files[-1]])
+    # branch = Flow.VelocityJump_Branch(["--dev", "-o", tmp_path, "-i", "250000", files[-1]])
     # Flow.Run(["--dev", branch[-1]])
