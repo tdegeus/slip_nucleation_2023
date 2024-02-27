@@ -29,7 +29,6 @@ import shelephant
 import tqdm
 from numpy.typing import ArrayLike
 
-from . import EventMap
 from . import storage
 from . import tag
 from . import tools
