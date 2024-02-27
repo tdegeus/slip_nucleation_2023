@@ -165,6 +165,7 @@ class DefaultEnsemble:
     n = v.size
 
 
+@tools.docstring_append_cli()
 def Generate(cli_args: list = None, _return_parser: bool = False):
     """
     Generate IO files, including job-scripts to run simulations.
@@ -437,6 +438,7 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
         meta.attrs["completed"] = 1
 
 
+@tools.docstring_append_cli()
 def Run(cli_args: list = None, _return_parser: bool = False):
     """
     Run flow simulation.
@@ -540,6 +542,7 @@ def basic_output(file: h5py.File) -> dict:
     return ret
 
 
+@tools.docstring_append_cli()
 def EnsembleInfo(cli_args: list = None, _return_parser: bool = False):
     """
     Collect basic ensemble information.
@@ -614,6 +617,7 @@ def EnsembleInfo(cli_args: list = None, _return_parser: bool = False):
                 g5.copy(file, output, src, dest)
 
 
+@tools.docstring_append_cli()
 def VelocityJump_Branch(cli_args: list = None, _return_parser: bool = False):
     """
     Branch simulation to a velocity jump experiment:
@@ -763,6 +767,7 @@ def moving_average_y(x: ArrayLike, y: ArrayLike, n: int) -> ArrayLike:
     return x[s:], moving_average(y, n)
 
 
+@tools.docstring_append_cli()
 def Paraview(cli_args: list = None, _return_parser: bool = False):
     """
     Prepare snapshots to be viewed with ParaView.
@@ -833,6 +838,7 @@ def Paraview(cli_args: list = None, _return_parser: bool = False):
             )
 
 
+@tools.docstring_append_cli()
 def Plot(cli_args: list = None, _return_parser: bool = False):
     """
     Plot overview of flow simulation.
@@ -922,6 +928,7 @@ def Plot(cli_args: list = None, _return_parser: bool = False):
     plt.close(fig)
 
 
+@tools.docstring_append_cli()
 def TransformDeprecated(cli_args: list = None, _return_parser: bool = False):
     """
     Transform old data structure to the current one.
@@ -1009,6 +1016,7 @@ def TransformDeprecated(cli_args: list = None, _return_parser: bool = False):
         assert len(paths) == 0
 
 
+@tools.docstring_append_cli()
 def Rename(cli_args: list = None, _return_parser: bool = False):
     """
     Update file name to the current version.
