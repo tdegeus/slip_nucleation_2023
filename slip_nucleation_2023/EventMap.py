@@ -27,12 +27,6 @@ from ._version import version
 plt.style.use(["goose", "goose-latex"])
 
 
-file_defaults = dict(
-    Run="EventMap.h5",
-    Info="EventMapInfo.h5",
-)
-
-
 def run_event_basic(system: QuasiStatic.System, file: h5py.File, step: int, Smax=None) -> dict:
     """
     Rerun increment and get basic event information.
@@ -115,12 +109,10 @@ def Run(cli_args=None):
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
-    output = file_defaults[funcname]
-
     parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output file")
     parser.add_argument("--step", required=True, type=int, help="Quasi-static step to rerun")
-    parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
+    parser.add_argument("-o", "--output", type=str, default="EventMap_Run.h5", help="Output file")
     parser.add_argument("-s", "--smax", type=int, help="Truncate at a maximum total S")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("file", type=str, help="Simulation file")
@@ -160,11 +152,11 @@ def Info(cli_args=None):
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
-    output = file_defaults[funcname]
-
     parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
-    parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
+    parser.add_argument(
+        "-o", "--output", type=str, default="EventMap_EventMap.h5", help="Output file"
+    )
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("files", nargs="*", type=str, help="Files to read")
 
