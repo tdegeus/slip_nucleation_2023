@@ -610,7 +610,7 @@ def EnsembleInfo(cli_args=None):
                 g5.copy(file, output, src, dest)
 
 
-def VelocityJump(cli_args=None):
+def VelocityJump_Branch(cli_args=None):
     """
     Branch simulation to a velocity jump experiment:
     Copies a snapshot as restart.
@@ -686,7 +686,7 @@ def VelocityJump(cli_args=None):
                 )
 
                 meta = QuasiStatic.create_check_meta(
-                    dest, "/meta/Flow_VelocityJump", dev=args.develop
+                    dest, "/meta/Flow_VelocityJump_Branch", dev=args.develop
                 )
                 meta.attrs["inc"] = args.inc
 
