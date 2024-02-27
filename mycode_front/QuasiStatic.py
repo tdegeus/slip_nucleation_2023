@@ -403,18 +403,18 @@ def generate(
 
     # define mesh and element sets
     mesh = GooseFEM.Mesh.Quad4.FineLayer(N, N, h)
-    coor = mesh.coor()
-    conn = mesh.conn()
-    plastic = mesh.elementsMiddleLayer()
+    coor = mesh.coor
+    conn = mesh.conn
+    plastic = mesh.elementsMiddleLayer
 
     # extract node sets to set the boundary conditions
-    top = mesh.nodesTopEdge()
-    bottom = mesh.nodesBottomEdge()
-    left = mesh.nodesLeftOpenEdge()
-    right = mesh.nodesRightOpenEdge()
+    top = mesh.nodesTopEdge
+    bottom = mesh.nodesBottomEdge
+    left = mesh.nodesLeftOpenEdge
+    right = mesh.nodesRightOpenEdge
 
     # periodicity in horizontal direction
-    dofs = mesh.dofs()
+    dofs = mesh.dofs
     dofs[right, :] = dofs[left, :]
     dofs = GooseFEM.Mesh.renumber(dofs)
 

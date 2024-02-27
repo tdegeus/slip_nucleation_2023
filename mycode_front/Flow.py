@@ -331,7 +331,7 @@ def __velocity_steadystate(system, gammadot):
     H = np.max(coor[:, 1]) - np.min(coor[:, 0])
 
     v = np.zeros_like(coor)
-    v[mesh.nodesTopEdge(), 0] = gammadot * H
+    v[mesh.nodesTopEdge, 0] = gammadot * H
 
     return v
 
@@ -388,7 +388,7 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
             pbar.refresh()
 
         mesh = GooseFEM.Mesh.Quad4.FineLayer(system.coor, system.conn)
-        top = mesh.nodesTopEdge()
+        top = mesh.nodesTopEdge
         h = system.coor[top[1], 0] - system.coor[top[0], 0]
 
         while True:
