@@ -67,21 +67,14 @@ def elements_at_height(
     return mesh.elementsLayer(mid + i)
 
 
-def PlotMeshHeight(cli_args=None):
+@tools.docstring_append_cli()
+def PlotMeshHeight(cli_args: list = None, _return_parser: bool = False):
     """
     Plot geometry with elements at certain heights marked.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     # developer options
     parser.add_argument("-v", "--version", action="version", version=version)
@@ -95,6 +88,9 @@ def PlotMeshHeight(cli_args=None):
     # input
     parser.add_argument("--height", type=float, action="append", help="Add element row(s)")
     parser.add_argument("file", type=str, help="Simulation from which to run (read-only)")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     args.height = [] if args.height is None else args.height
@@ -127,42 +123,42 @@ def PlotMeshHeight(cli_args=None):
         xh.write(grid, args.output + ".xdmf")
 
 
-def Run(cli_args=None):
+@tools.docstring_append_cli()
+def Run(cli_args: list = None, _return_parser: bool = False):
     """
     Rerun an event and store output at different increments that are selected at:
+
     *   Given event sizes "A" unit the event is system spanning (``--A-step`` controls interval).
     *   Given time-steps if no longer checking at "A" (interval controlled by ``--t-step``).
 
     Customisation:
+
     *   ``--t-step=0``: Break simulation when ``A = N``.
     *   ``--A-step=0``: Store at fixed time intervals from the beginning.
 
     Storage:
+
     *   An exact copy of the input file.
     *   The macroscopic stress tensor ("/dynamics/Sigbar/{iiter:d}").
     *   The macroscopic strain tensor ("/dynamics/Epsbar/{iiter:d}").
     *   The displacement ("/dynamics/u/{iiter:d}") of a selection of DOFs ("/dynamics/doflist") from:
+
         - elements along the weak layer,
         - element row(s) at (a) given height(s) above the weak layer.
+
         The mechanical state can be fully restored for the saved elements (but nowhere else).
+
     *   Metadata:
+
         - "/dynamics/t": Time.
         - "/dynamics/A": Actual number of blocks that yielded at least once.
         - "/dynamics/stored": The stored "iiter".
         - "/dynamics/sync-A": List of "iiter" stored due to given "A".
         - "/dynamics/sync-t": List of "iiter" stored due to given "t" after checking for "A".
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     # developer options
     parser.add_argument("--develop", action="store_true", help="Development mode")
@@ -182,6 +178,9 @@ def Run(cli_args=None):
 
     # input files
     parser.add_argument("file", type=str, help="Simulation from which to run (read-only)")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     args.height = [] if args.height is None else args.height
@@ -344,7 +343,8 @@ def Run(cli_args=None):
         file["/meta/Dynamics_Run"].attrs["completed"] = 1
 
 
-def RunHighFrequency(cli_args=None):
+@tools.docstring_append_cli()
+def RunHighFrequency(cli_args: list = None, _return_parser: bool = False):
     """
     Perform a high-frequency measurement on very few observables:
 
@@ -353,17 +353,9 @@ def RunHighFrequency(cli_args=None):
         These nodes are selected by specifying the number of sensors in each direction.
         The vertical sensors are placed in the top half of the domain.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     # developer options
     parser.add_argument("--develop", action="store_true", help="Development mode")
@@ -389,6 +381,9 @@ def RunHighFrequency(cli_args=None):
 
     # input files
     parser.add_argument("file", type=str, help="Simulation from which to run (read-only)")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)
@@ -470,7 +465,7 @@ def RunHighFrequency(cli_args=None):
 
 class BasicAverage(enstat.static):
     """
-    Support class for :py:func:`cli_average_systemspanning`.
+    Support class for :py:func:`AverageSystemSpanning`.
     This class writes on item at a time using :py:func:`BasicAverage.add_subsample`,
     and it does so by selecting the relevant elements from a field and
     computing the relevant volume average.
@@ -515,7 +510,7 @@ class BasicAverage(enstat.static):
 
 class AlignedAverage(BasicAverage):
     """
-    Support class for :py:func:`cli_average_systemspanning`.
+    Support class for :py:func:`AverageSystemSpanning`.
     Similar to :py:class:`BasicAverage`, but it aligns blocks and averages per blocks
     (not on all blocks).
     """
@@ -553,9 +548,10 @@ class AlignedAverage(BasicAverage):
             self.norm[index, incl, ...] += 1
 
 
-def AverageSystemSpanning(cli_args=None):
+@tools.docstring_append_cli()
+def AverageSystemSpanning(cli_args: list = None, _return_parser: bool = False):
     """
-    Compute averages from output of :py:func:`cli_run`:
+    Compute averages from output of :py:func:`Run`:
 
     -   'Simple' averages (macroscopic, per element row, on moving blocks):
 
@@ -564,23 +560,18 @@ def AverageSystemSpanning(cli_args=None):
 
     -   'Aligned' averages (for different element rows), for fixed A.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument(
         "-o", "--output", type=str, default="Dynamics_AverageSystemSpanning.h5", help="Output file"
     )
     parser.add_argument("files", nargs="*", type=str, help="See Dynamics_Run")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert len(args.files) > 0
@@ -831,7 +822,8 @@ def AverageSystemSpanning(cli_args=None):
                     file[f"/sync-A/{title}/{i}/{key}/norm"] = syncA[title][i][key].norm
 
 
-def TransformDeprecated(cli_args=None):
+@tools.docstring_append_cli()
+def TransformDeprecated(cli_args: list = None, _return_parser: bool = False):
     """
     Transform old data structure to the current one.
     This code is considered 'non-maintained'.
@@ -859,21 +851,16 @@ def TransformDeprecated(cli_args=None):
             -r "/meta/MeasureDynamics_run" "/meta/Dynamics_Run" \
             foo.h5.bak foo.h5
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("file", type=str, help="File to transform: .bak appended")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)
@@ -929,3 +916,29 @@ def TransformDeprecated(cli_args=None):
             print(paths)
 
         assert len(paths) == 0
+
+
+# <autodoc> generated by docs/conf.py
+
+
+def _AverageSystemSpanning_parser() -> argparse.ArgumentParser:
+    return AverageSystemSpanning(_return_parser=True)
+
+
+def _PlotMeshHeight_parser() -> argparse.ArgumentParser:
+    return PlotMeshHeight(_return_parser=True)
+
+
+def _Run_parser() -> argparse.ArgumentParser:
+    return Run(_return_parser=True)
+
+
+def _RunHighFrequency_parser() -> argparse.ArgumentParser:
+    return RunHighFrequency(_return_parser=True)
+
+
+def _TransformDeprecated_parser() -> argparse.ArgumentParser:
+    return TransformDeprecated(_return_parser=True)
+
+
+# </autodoc>

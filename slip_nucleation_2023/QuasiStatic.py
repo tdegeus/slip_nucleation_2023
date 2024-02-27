@@ -353,7 +353,7 @@ def generate(
     :param scale_alpha: Scale default general damping ``alpha`` by factor.
     :param eta:
         Damping coefficient at the interface.
-        Note: :math:`\eta / \eta_\mathrm{rd} = \eta / (G t_0)
+        Note: :math:`\eta / \eta_\mathrm{rd} = \eta / (G t_0)`
 
     :param init_run: Initialise for use with :py:func:`run`.
     :param dev: Allow uncommitted changes.
@@ -610,21 +610,14 @@ def generate(
             _init_run_state(root=file.create_group("QuasiStatic"), u=np.zeros_like(coor))
 
 
-def Generate(cli_args=None):
+@tools.docstring_append_cli()
+def Generate(cli_args: list = None, _return_parser: bool = False):
     """
     Generate IO files (including job-scripts) to run simulations.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-n", "--nsim", type=int, default=1, help="#simulations")
@@ -632,6 +625,9 @@ def Generate(cli_args=None):
     parser.add_argument("-s", "--start", type=int, default=0, help="Start simulation")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("outdir", type=str, help="Output directory")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
 
@@ -719,22 +715,15 @@ def create_check_meta(
     return meta
 
 
-def MoveMeta(cli_args=None):
+@tools.docstring_append_cli()
+def MoveMeta(cli_args: list = None, _return_parser: bool = False):
     """
     Create a copy of meta-data, and overwrite the version information with the current information
     and a new UUID.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-v", "--version", action="version", version=version)
@@ -742,6 +731,9 @@ def MoveMeta(cli_args=None):
     parser.add_argument("old_name", type=str, help="Former name (overwritten with new versions)")
     parser.add_argument("new_name", type=str, help="Former name (overwritten with new versions)")
     parser.add_argument("file", type=str, help="Simulation file")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)
@@ -767,25 +759,21 @@ def MoveMeta(cli_args=None):
             meta.attrs["completed"] = 0
 
 
-def Run(cli_args=None):
+@tools.docstring_append_cli()
+def Run(cli_args: list = None, _return_parser: bool = False):
     """
     Run simulation.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("file", type=str, help="Simulation file")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)
@@ -842,7 +830,8 @@ def Run(cli_args=None):
         meta.attrs["completed"] = 1
 
 
-def SimulationStatus(cli_args=None):
+@tools.docstring_append_cli()
+def SimulationStatus(cli_args: list = None, _return_parser: bool = False):
     """
     Find status for files.
 
@@ -858,17 +847,9 @@ def SimulationStatus(cli_args=None):
         - ...
         - ...
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("-c", "--completed", action="store_true", help="List completed simulations")
     parser.add_argument("-e", "--partial", action="store_true", help="List partial simulations")
@@ -878,6 +859,9 @@ def SimulationStatus(cli_args=None):
     parser.add_argument("-o", "--output", type=str, help="YAML-file")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("files", nargs="*", type=str, help="Simulation files")
+    if _return_parser:
+        return parser
+
     args = tools._parse(parser, cli_args)
     assert np.all([os.path.isfile(file) for file in args.files])
 
@@ -962,11 +946,11 @@ def interface_state(filepaths: dict[int], read_disp: dict[str] = None) -> dict[n
     """
     State of the interface at one or several increments per realisation.
 
-    :oaram filepaths:
+    :param filepaths:
         Dictionary with a list of increments to consider per file, e.g.
         ``{"id=0.h5": [10, 20, 30], "id=1.h5": [20, 30, 40]}``
 
-    :oaram read_disp:
+    :param read_disp:
         Dictionary with a file-paths to read the displacement field from, e.g.
         ``{"id=0.h5": "mydisplacement.h5"}``, whereby the increment numbers should correspond
         to those in ``mydisplacement.h5``.
@@ -976,7 +960,10 @@ def interface_state(filepaths: dict[int], read_disp: dict[str] = None) -> dict[n
         A dictionary with per field a matrix of shape ``[n, N]``,
         with each row corresponding to an increment of a file,
         and the columns corresponding to the spatial distribution.
-        The output is dimensionless, and consists of::
+        The output is dimensionless, and consists of:
+
+        .. code-block:: python
+
             sig_xx: xx-component of the average stress tensor of a block.
             sig_xy: xy-component of the average stress tensor of a block.
             sig_yy: yy-component of the average stress tensor of a block.
@@ -1217,7 +1204,8 @@ def basic_output(
     return ret
 
 
-def EnsembleInfo(cli_args=None):
+@tools.docstring_append_cli()
+def EnsembleInfo(cli_args: list = None, _return_parser: bool = False):
     """
     Read information (avalanche size, stress, strain, ...) of an ensemble,
     see :py:func:`basic_output`.
@@ -1226,15 +1214,7 @@ def EnsembleInfo(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
@@ -1243,6 +1223,9 @@ def EnsembleInfo(cli_args=None):
     )
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("files", nargs="*", type=str, help="Files to read")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert len(args.files) > 0
@@ -1366,26 +1349,22 @@ def EnsembleInfo(cli_args=None):
         meta = create_check_meta(output, "/meta/QuasiStatic_EnsembleInfo", dev=args.develop)
 
 
-def Plot(cli_args=None):
+@tools.docstring_append_cli()
+def Plot(cli_args: list = None, _return_parser: bool = False):
     """
     Plot overview of simulation.
     Plots the stress-strain response and the identified steady-state.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("-m", "--marker", type=str, help="Use marker")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("file", type=str, help="Simulation file")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)
@@ -1412,7 +1391,8 @@ def Plot(cli_args=None):
     plt.show()
 
 
-def MakeJobEventMapOfSystemSpanning(cli_args=None):
+@tools.docstring_append_cli()
+def MakeJobEventMapOfSystemSpanning(cli_args: list = None, _return_parser: bool = False):
     """
     Generate a job to rerun all system-spanning events and generate an event-map.
     """
@@ -1422,7 +1402,7 @@ def MakeJobEventMapOfSystemSpanning(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
     parser.add_argument("-f", "--force", action="store_true", help="Force clean output directory")
     parser.add_argument(
         "-o",
@@ -1434,6 +1414,9 @@ def MakeJobEventMapOfSystemSpanning(cli_args=None):
     parser.add_argument("-t", "--truncate", action="store_true", help="Truncate at known Smax")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("EnsembleInfo", type=str, help="EnsembleInfo")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.EnsembleInfo)
@@ -1473,7 +1456,8 @@ def MakeJobEventMapOfSystemSpanning(cli_args=None):
         return commands
 
 
-def MakeJobDynamicsOfSystemSpanning(cli_args=None):
+@tools.docstring_append_cli()
+def MakeJobDynamicsOfSystemSpanning(cli_args: list = None, _return_parser: bool = False):
     """
     Generate a job to rerun all system-spanning events and measure the dynamics.
     """
@@ -1483,7 +1467,7 @@ def MakeJobDynamicsOfSystemSpanning(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
     parser.add_argument("-f", "--force", action="store_true", help="Force clean output directory")
     parser.add_argument(
         "-o",
@@ -1494,6 +1478,9 @@ def MakeJobDynamicsOfSystemSpanning(cli_args=None):
     )
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("EnsembleInfo", type=str, help="EnsembleInfo")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.EnsembleInfo)
@@ -1529,7 +1516,8 @@ def MakeJobDynamicsOfSystemSpanning(cli_args=None):
         return commands
 
 
-def StateAfterSystemSpanning(cli_args=None):
+@tools.docstring_append_cli()
+def StateAfterSystemSpanning(cli_args: list = None, _return_parser: bool = False):
     """
     Extract state after system-spanning avalanches.
     """
@@ -1539,7 +1527,7 @@ def StateAfterSystemSpanning(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
     parser.add_argument("--all", action="store_true", help="Store all output")
     parser.add_argument("--sig", action="store_true", help="Include sig in output")
     parser.add_argument("--eps", action="store_true", help="Include eps in output")
@@ -1555,6 +1543,9 @@ def StateAfterSystemSpanning(cli_args=None):
     )
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("EnsembleInfo", type=str, help="EnsembleInfo")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.EnsembleInfo)
@@ -1670,7 +1661,8 @@ def transform_deprecated_param(src, dest, paths, source_root: str = "/"):
     return paths
 
 
-def TransformDeprecated(cli_args=None):
+@tools.docstring_append_cli()
+def TransformDeprecated(cli_args: list = None, _return_parser: bool = False):
     """
     Transform old data structure to the current one.
     This code is considered 'non-maintained'.
@@ -1700,21 +1692,16 @@ def TransformDeprecated(cli_args=None):
             -r "/meta/Run" "/meta/QuasiStatic_Run" \
             foo.h5.bak foo.h5
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("file", type=str, help="File to transform: .bak appended")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)
@@ -1753,3 +1740,49 @@ def TransformDeprecated(cli_args=None):
             dest["/meta/QuasiStatic_Run"].attrs["uuid"] = str(uuid.uuid4())
 
         assert len(paths) == 0
+
+
+# <autodoc> generated by docs/conf.py
+
+
+def _EnsembleInfo_parser() -> argparse.ArgumentParser:
+    return EnsembleInfo(_return_parser=True)
+
+
+def _Generate_parser() -> argparse.ArgumentParser:
+    return Generate(_return_parser=True)
+
+
+def _MakeJobDynamicsOfSystemSpanning_parser() -> argparse.ArgumentParser:
+    return MakeJobDynamicsOfSystemSpanning(_return_parser=True)
+
+
+def _MakeJobEventMapOfSystemSpanning_parser() -> argparse.ArgumentParser:
+    return MakeJobEventMapOfSystemSpanning(_return_parser=True)
+
+
+def _MoveMeta_parser() -> argparse.ArgumentParser:
+    return MoveMeta(_return_parser=True)
+
+
+def _Plot_parser() -> argparse.ArgumentParser:
+    return Plot(_return_parser=True)
+
+
+def _Run_parser() -> argparse.ArgumentParser:
+    return Run(_return_parser=True)
+
+
+def _SimulationStatus_parser() -> argparse.ArgumentParser:
+    return SimulationStatus(_return_parser=True)
+
+
+def _StateAfterSystemSpanning_parser() -> argparse.ArgumentParser:
+    return StateAfterSystemSpanning(_return_parser=True)
+
+
+def _TransformDeprecated_parser() -> argparse.ArgumentParser:
+    return TransformDeprecated(_return_parser=True)
+
+
+# </autodoc>

@@ -94,7 +94,8 @@ def pack2paths(file: h5py.File) -> list[str]:
     return ret
 
 
-def Run(cli_args=None):
+@tools.docstring_append_cli()
+def Run(cli_args: list = None, _return_parser: bool = False):
     """
     Trigger event and minimise energy.
 
@@ -102,6 +103,7 @@ def Run(cli_args=None):
     If not, recursively try the neighbouring element until a plastic event is found.
     Due to this feature, the time of the event may be overestimated for small events.
     To skip this functionality:
+
     -   Use ``--retry=0``.
     -   Specify `file["/Trigger/element"][-1] >= 0`
         (you are responsible to have something meaningful in `file["/Trigger/try_element"][-1]`).
@@ -110,17 +112,9 @@ def Run(cli_args=None):
     In that case the ``truncated`` meta-attribute will be ``True``.
     The displacement field will not correspond to a mechanical equilibrium.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("-v", "--version", action="version", version=version)
@@ -137,6 +131,9 @@ def Run(cli_args=None):
         "-t", "--niter", type=int, default=20000, help="#iterations to use to try element"
     )
     parser.add_argument("file", type=str, help="Input/output file")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)
@@ -226,26 +223,22 @@ def Run(cli_args=None):
     return args.file
 
 
-def EnsemblePackMerge(cli_args=None):
+@tools.docstring_append_cli()
+def EnsemblePackMerge(cli_args: list = None, _return_parser: bool = False):
     """
-    Merge files created by :py:func:`cli_ensemblepack`.
+    Merge files created by :py:func:`EnsemblePack`.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument("-o", "--output", type=str, required=True, help="Output file")
     parser.add_argument("files", nargs="*", type=str, help="Files to merge")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert len(args.files) > 0
@@ -293,24 +286,20 @@ def EnsemblePackMerge(cli_args=None):
                         g5.copy(src, dest, path)
 
 
-def MoveCompleted(cli_args=None):
+@tools.docstring_append_cli()
+def MoveCompleted(cli_args: list = None, _return_parser: bool = False):
     """
     Check which files are marked completed, and move them to a different directory.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("files", nargs="*", type=str, help="<file>... <destination>")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert len(args.files) >= 2
@@ -331,7 +320,8 @@ def MoveCompleted(cli_args=None):
         os.rename(filename, dest / filename)
 
 
-def EnsemblePack(cli_args=None):
+@tools.docstring_append_cli()
+def EnsemblePack(cli_args: list = None, _return_parser: bool = False):
     """
     Pack pushes into a single file with soft links.
     The individual pushes are listed as::
@@ -343,23 +333,18 @@ def EnsemblePack(cli_args=None):
 
         /event/filename_of_trigger/param  ->  /param
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument(
         "-o", "--output", type=str, default="Trigger_EnsemblePack.h5", help="Output file"
     )
     parser.add_argument("files", nargs="*", type=str, help="Files to read")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert len(args.files) > 0
@@ -397,32 +382,28 @@ def EnsemblePack(cli_args=None):
                 output[g5.join(path, "param", root=True)] = h5py.SoftLink("/param")
 
 
-def EnsembleInfo(cli_args=None):
+@tools.docstring_append_cli()
+def EnsembleInfo(cli_args: list = None, _return_parser: bool = False):
     """
     Read and store basic info from individual pushes.
-    Can only be read from output of :py:func:`cli_ensemblepack`.
+    Can only be read from output of :py:func:`EnsemblePack`.
 
     .. warning::
 
         This function currently just extracts the first push.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument(
         "-o", "--output", type=str, default="Trigger_EnsembleInfo.h5", help="Output file"
     )
     parser.add_argument("ensemblepack", type=str, help="File to read")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.ensemblepack)
@@ -560,7 +541,7 @@ def restore_from_ensembleinfo(
     """
     Restore the begin state of a specific push.
 
-    :param ensembleinfo: Opened Trigger-EnsembleInfo, see :py:func:`cli_ensembleinfo`.
+    :param ensembleinfo: Opened Trigger-EnsembleInfo, see :py:func:`EnsembleInfo`.
     :param index: Item from ``ensembleinfo``.
     :param destpath: Path where to write restored state.
     :param dev: Allow uncommitted changes.
@@ -636,21 +617,14 @@ def __job_rerun(file, sims, basename, executable, args):
     return ret
 
 
-def JobRerunEventMap(cli_args=None):
+@tools.docstring_append_cli()
+def JobRerunEventMap(cli_args: list = None, _return_parser: bool = False):
     """
     Rerun to get an event-map for avalanches resulting from triggers after system spanning events.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("--amin", type=int, default=20, help="Minimal avalanche size")
@@ -659,6 +633,9 @@ def JobRerunEventMap(cli_args=None):
     parser.add_argument("-o", "--outdir", type=str, required=True, help="Output directory")
     parser.add_argument("-s", "--sourcedir", type=str, default=".", help="Path to sim-dir.")
     parser.add_argument("ensembleinfo", type=str, help="EnsembleInfo (read)")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.ensembleinfo)
@@ -707,20 +684,21 @@ def JobRerunEventMap(cli_args=None):
         return ret
 
 
-def JobRerunDynamics(cli_args=None):
+@tools.docstring_append_cli()
+def JobRerunDynamics(cli_args: list = None, _return_parser: bool = False):
     """
     Create job to rerun and measure the dynamics of system spanning (A == N) events.
     Instead of :py:func:`Dynamics.Run` one of the following measurements can be performed:
 
     -    ``--eventmap``: use :py:func:`EventMap.Run`.
-    -    ``--highfreq``: use :py:func:`Dyanmics.cli_RunHighFrequency`.
+    -    ``--highfreq``: use :py:func:`Dyanmics.RunHighFrequency`.
 
     In addition, select ``--avalanche`` and ``--amin`` to run avalanches instead of system spanning
     events.
 
     Possible usage:
 
-        :py:func:`cli_job_rerun_dynamics`
+        Trigger_JobRerunDynamics
             --ibin=1
             --nsim=100
             --height=20
@@ -728,17 +706,9 @@ def JobRerunDynamics(cli_args=None):
             -s ../Run
             Trigger_EnsembleInfo.h5
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     # development mode
     parser.add_argument("--develop", action="store_true", help="Development mode")
@@ -785,6 +755,9 @@ def JobRerunDynamics(cli_args=None):
     )
 
     parser.add_argument("ensembleinfo", type=str, help="Input, see Trigger_EnsembleInfo")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.ensembleinfo)
@@ -1037,24 +1010,17 @@ def _copy_configurations(try_element: int, source: list[str], dest: list[str], f
             dest["/Trigger/try_element"][1] = try_element
 
 
-def JobDeltaSigma(cli_args=None):
+@tools.docstring_append_cli()
+def JobDeltaSigma(cli_args: list = None, _return_parser: bool = False):
     """
     Create jobs to trigger at fixed stress increase ``delta_sigma``
     since the last system-spanning event:
     ``stress[i] = sigma_c[i] + j * delta_sigma`` with ``j = 0, 1, ...``.
     The highest stress is thereby always lower than that of the next system spanning event.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("--filter", type=str, help="Filter completed jobs. Arg: EnsemblePack")
@@ -1075,6 +1041,9 @@ def JobDeltaSigma(cli_args=None):
     parser.add_argument("-r", "--subdir", action="store_true", help="Separate in directories")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("ensembleinfo", type=str, help="EnsembleInfo (read-only)")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.ensembleinfo)
@@ -1221,30 +1190,29 @@ def JobDeltaSigma(cli_args=None):
         return [" ".join(cmd + [i]) for i in outfiles]
 
 
-def TransformDeprecatedEnsemblePack(cli_args=None):
+@tools.docstring_append_cli()
+def TransformDeprecatedEnsemblePack(cli_args: list = None, _return_parser: bool = False):
     """
     Transform old data structure to the current one.
     This code is considered 'non-maintained'.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument(
-        "--log", default="Trigger_TransformDeprecatedEnsemblePack.log", help="Log file"
+        "--log",
+        type=pathlib.Path,
+        default="Trigger_TransformDeprecatedEnsemblePack.log",
+        help="Log file",
     )
     parser.add_argument("source", type=str, help="Source (read only)")
     parser.add_argument("dest", type=str, help="Destination (overwritten)")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
 
@@ -1373,25 +1341,21 @@ def TransformDeprecatedEnsemblePack(cli_args=None):
                 assert len(paths) == 0 or allow_nonempty
 
 
-def TransformDeprecatedEnsemblePack2(cli_args=None):
+@tools.docstring_append_cli()
+def TransformDeprecatedEnsemblePack2(cli_args: list = None, _return_parser: bool = False):
     """
     Add seed
     This code is considered 'non-maintained'.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("pack", type=str, help="EnsemblePack")
     parser.add_argument("--source", type=str, help="Source dir")
+
+    if _return_parser:
+        return parser
 
     args = parser.parse_args(cli_args)
     sourcedir = pathlib.Path(args.source)
@@ -1411,24 +1375,20 @@ def TransformDeprecatedEnsemblePack2(cli_args=None):
                     file[f"/event/{event}/realisation/seed"] = src["/realisation/seed"][...]
 
 
-def TransformDeprecatedEnsemblePack3(cli_args=None):
+@tools.docstring_append_cli()
+def TransformDeprecatedEnsemblePack3(cli_args: list = None, _return_parser: bool = False):
     """
-    Rename triggers. Assumes file that is conform :py:func:`cli_transform_deprecated_pack2`.
+    Rename triggers. Assumes file that is conform :py:func:`TransformDeprecatedEnsemblePack2`.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("input", type=str, help="EnsemblePack")
     parser.add_argument("output", type=str, help="EnsemblePack")
+
+    if _return_parser:
+        return parser
 
     args = parser.parse_args(cli_args)
     assert pathlib.Path(args.input).is_file()
@@ -1451,3 +1411,53 @@ def TransformDeprecatedEnsemblePack3(cli_args=None):
 
             ret = "deltasigma={deltasigma}/id={id}/stepc={stepc}_element={element}".format(**info)
             g5.copy(src, dest, f"/event/{event}", f"/event/{ret}")
+
+
+# <autodoc> generated by docs/conf.py
+
+
+def _EnsembleInfo_parser() -> argparse.ArgumentParser:
+    return EnsembleInfo(_return_parser=True)
+
+
+def _EnsemblePack_parser() -> argparse.ArgumentParser:
+    return EnsemblePack(_return_parser=True)
+
+
+def _EnsemblePackMerge_parser() -> argparse.ArgumentParser:
+    return EnsemblePackMerge(_return_parser=True)
+
+
+def _JobDeltaSigma_parser() -> argparse.ArgumentParser:
+    return JobDeltaSigma(_return_parser=True)
+
+
+def _JobRerunDynamics_parser() -> argparse.ArgumentParser:
+    return JobRerunDynamics(_return_parser=True)
+
+
+def _JobRerunEventMap_parser() -> argparse.ArgumentParser:
+    return JobRerunEventMap(_return_parser=True)
+
+
+def _MoveCompleted_parser() -> argparse.ArgumentParser:
+    return MoveCompleted(_return_parser=True)
+
+
+def _Run_parser() -> argparse.ArgumentParser:
+    return Run(_return_parser=True)
+
+
+def _TransformDeprecatedEnsemblePack_parser() -> argparse.ArgumentParser:
+    return TransformDeprecatedEnsemblePack(_return_parser=True)
+
+
+def _TransformDeprecatedEnsemblePack2_parser() -> argparse.ArgumentParser:
+    return TransformDeprecatedEnsemblePack2(_return_parser=True)
+
+
+def _TransformDeprecatedEnsemblePack3_parser() -> argparse.ArgumentParser:
+    return TransformDeprecatedEnsemblePack3(_return_parser=True)
+
+
+# </autodoc>

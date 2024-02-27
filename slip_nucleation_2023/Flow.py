@@ -165,21 +165,14 @@ class DefaultEnsemble:
     n = v.size
 
 
-def Generate(cli_args=None):
+@tools.docstring_append_cli()
+def Generate(cli_args: list = None, _return_parser: bool = False):
     """
     Generate IO files, including job-scripts to run simulations.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("--force", action="store_true", help="Overwrite job")
     parser.add_argument("--develop", action="store_true", help="Development mode")
@@ -196,6 +189,9 @@ def Generate(cli_args=None):
     parser.add_argument("-s", "--start", type=int, default=0, help="Start simulation")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("outdir", type=str, help="Output directory")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert not (len(args.slip_rate) > 0 and len(args.gammadot) > 0)
@@ -434,26 +430,22 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
         meta.attrs["completed"] = 1
 
 
-def Run(cli_args=None):
+@tools.docstring_append_cli()
+def Run(cli_args: list = None, _return_parser: bool = False):
     """
     Run flow simulation.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("-q", "--quiet", action="store_true", help="Suppress progress bar")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("file", type=str, help="Simulation file")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)
@@ -534,21 +526,14 @@ def basic_output(file: h5py.File) -> dict:
     return ret
 
 
-def EnsembleInfo(cli_args=None):
+@tools.docstring_append_cli()
+def EnsembleInfo(cli_args: list = None, _return_parser: bool = False):
     """
     Collect basic ensemble information.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite")
     parser.add_argument(
@@ -556,6 +541,9 @@ def EnsembleInfo(cli_args=None):
     )
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("files", nargs="*", type=str, help="Simulation output")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert len(args.files) > 0
@@ -605,24 +593,17 @@ def EnsembleInfo(cli_args=None):
                 g5.copy(file, output, src, dest)
 
 
-def VelocityJump_Branch(cli_args=None):
+@tools.docstring_append_cli()
+def VelocityJump_Branch(cli_args: list = None, _return_parser: bool = False):
     """
     Branch simulation to a velocity jump experiment:
     Copies a snapshot as restart.
-    To run simply use :py:func:`cli_run`.
+    To run simply use :py:func:`Run`.
     Note that if no new flow rate(s) is specified the default ensemble is again generated.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("-i", "--inc", type=int, required=True, help="Increment to branch")
@@ -631,8 +612,10 @@ def VelocityJump_Branch(cli_args=None):
     parser.add_argument("file", type=str, help="Flow simulation to branch from")
     parser.add_argument("gammadot", type=float, nargs="*", help="New flow rate")
 
-    raise NotImplementedError("Reimplement for v.")
+    if _return_parser:
+        return parser
 
+    raise NotImplementedError("Reimplement for v.")
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)
 
@@ -751,28 +734,25 @@ def moving_average_y(x: ArrayLike, y: ArrayLike, n: int) -> ArrayLike:
     return x[s:], moving_average(y, n)
 
 
-def Paraview(cli_args=None):
+@tools.docstring_append_cli()
+def Paraview(cli_args: list = None, _return_parser: bool = False):
     """
     Prepare snapshots to be viewed with ParaView.
     """
 
     import XDMFWrite_h5py as xh
 
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument("-o", "--output", type=str, required=True, help="Appended xdmf/h5py")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("file", type=str, help="Simulation file")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)
@@ -818,7 +798,8 @@ def Paraview(cli_args=None):
             )
 
 
-def Plot(cli_args=None):
+@tools.docstring_append_cli()
+def Plot(cli_args: list = None, _return_parser: bool = False):
     """
     Plot overview of flow simulation.
     """
@@ -827,23 +808,18 @@ def Plot(cli_args=None):
     import matplotlib.pyplot as plt
 
     plt.style.use(["goose", "goose-latex"])
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("--sigma-max", type=float, help="Set limit of y-axis of left panel")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument("-o", "--output", type=str, help="Save the image")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("file", type=str, help="Simulation file")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)
@@ -904,7 +880,8 @@ def Plot(cli_args=None):
     plt.close(fig)
 
 
-def TransformDeprecated(cli_args=None):
+@tools.docstring_append_cli()
+def TransformDeprecated(cli_args: list = None, _return_parser: bool = False):
     """
     Transform old data structure to the current one.
     This code is considered 'non-maintained'.
@@ -937,21 +914,16 @@ def TransformDeprecated(cli_args=None):
             -r "/meta/Run_generate" "/meta/QuasiStatic_Generate" \
             foo.h5.bak foo.h5
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("file", type=str, help="File to transform: .bak appended")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)
@@ -988,23 +960,19 @@ def TransformDeprecated(cli_args=None):
         assert len(paths) == 0
 
 
-def Rename(cli_args=None):
+@tools.docstring_append_cli()
+def Rename(cli_args: list = None, _return_parser: bool = False):
     """
     Update file name to the current version.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("files", type=str, nargs="*", help="Files")
+    if _return_parser:
+        return parser
+
     args = tools._parse(parser, cli_args)
     newnames = []
 
@@ -1034,3 +1002,41 @@ def Rename(cli_args=None):
 
     for old, new in zip(args.files, newnames):
         os.rename(old, new)
+
+
+# <autodoc> generated by docs/conf.py
+
+
+def _EnsembleInfo_parser() -> argparse.ArgumentParser:
+    return EnsembleInfo(_return_parser=True)
+
+
+def _Generate_parser() -> argparse.ArgumentParser:
+    return Generate(_return_parser=True)
+
+
+def _Paraview_parser() -> argparse.ArgumentParser:
+    return Paraview(_return_parser=True)
+
+
+def _Plot_parser() -> argparse.ArgumentParser:
+    return Plot(_return_parser=True)
+
+
+def _Rename_parser() -> argparse.ArgumentParser:
+    return Rename(_return_parser=True)
+
+
+def _Run_parser() -> argparse.ArgumentParser:
+    return Run(_return_parser=True)
+
+
+def _TransformDeprecated_parser() -> argparse.ArgumentParser:
+    return TransformDeprecated(_return_parser=True)
+
+
+def _VelocityJump_Branch_parser() -> argparse.ArgumentParser:
+    return VelocityJump_Branch(_return_parser=True)
+
+
+# </autodoc>
