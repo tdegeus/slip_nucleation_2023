@@ -138,6 +138,9 @@ def Run(cli_args: list = None, _return_parser: bool = False):
     )
     parser.add_argument("file", type=str, help="Input/output file")
 
+    if _return_parser:
+        return parser
+
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)
     assert args.retry >= 0
@@ -247,6 +250,9 @@ def EnsemblePackMerge(cli_args: list = None, _return_parser: bool = False):
     parser.add_argument("-o", "--output", type=str, required=True, help="Output file")
     parser.add_argument("files", nargs="*", type=str, help="Files to merge")
 
+    if _return_parser:
+        return parser
+
     args = tools._parse(parser, cli_args)
     assert len(args.files) > 0
     assert all([os.path.isfile(file) for file in args.files])
@@ -312,6 +318,9 @@ def MoveCompleted(cli_args: list = None, _return_parser: bool = False):
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("files", nargs="*", type=str, help="<file>... <destination>")
 
+    if _return_parser:
+        return parser
+
     args = tools._parse(parser, cli_args)
     assert len(args.files) >= 2
     dest = pathlib.Path(args.files[-1])
@@ -360,6 +369,9 @@ def EnsemblePack(cli_args: list = None, _return_parser: bool = False):
         "-o", "--output", type=str, default="Trigger_EnsemblePack.h5", help="Output file"
     )
     parser.add_argument("files", nargs="*", type=str, help="Files to read")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert len(args.files) > 0
@@ -423,6 +435,9 @@ def EnsembleInfo(cli_args: list = None, _return_parser: bool = False):
         "-o", "--output", type=str, default="Trigger_EnsembleInfo.h5", help="Output file"
     )
     parser.add_argument("ensemblepack", type=str, help="File to read")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.ensemblepack)
@@ -660,6 +675,9 @@ def JobRerunEventMap(cli_args: list = None, _return_parser: bool = False):
     parser.add_argument("-s", "--sourcedir", type=str, default=".", help="Path to sim-dir.")
     parser.add_argument("ensembleinfo", type=str, help="EnsembleInfo (read)")
 
+    if _return_parser:
+        return parser
+
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.ensembleinfo)
 
@@ -785,6 +803,9 @@ def JobRerunDynamics(cli_args: list = None, _return_parser: bool = False):
     )
 
     parser.add_argument("ensembleinfo", type=str, help="Input, see Trigger_EnsembleInfo")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.ensembleinfo)
@@ -1076,6 +1097,9 @@ def JobDeltaSigma(cli_args: list = None, _return_parser: bool = False):
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("ensembleinfo", type=str, help="EnsembleInfo (read-only)")
 
+    if _return_parser:
+        return parser
+
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.ensembleinfo)
 
@@ -1245,6 +1269,9 @@ def TransformDeprecatedEnsemblePack(cli_args: list = None, _return_parser: bool 
     )
     parser.add_argument("source", type=str, help="Source (read only)")
     parser.add_argument("dest", type=str, help="Destination (overwritten)")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
 

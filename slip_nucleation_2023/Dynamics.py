@@ -96,6 +96,9 @@ def PlotMeshHeight(cli_args: list = None, _return_parser: bool = False):
     parser.add_argument("--height", type=float, action="append", help="Add element row(s)")
     parser.add_argument("file", type=str, help="Simulation from which to run (read-only)")
 
+    if _return_parser:
+        return parser
+
     args = tools._parse(parser, cli_args)
     args.height = [] if args.height is None else args.height
     assert os.path.isfile(args.file)
@@ -182,6 +185,9 @@ def Run(cli_args: list = None, _return_parser: bool = False):
 
     # input files
     parser.add_argument("file", type=str, help="Simulation from which to run (read-only)")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     args.height = [] if args.height is None else args.height
@@ -390,6 +396,9 @@ def RunHighFrequency(cli_args: list = None, _return_parser: bool = False):
     # input files
     parser.add_argument("file", type=str, help="Simulation from which to run (read-only)")
 
+    if _return_parser:
+        return parser
+
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)
     assert args.nx > 0
@@ -581,6 +590,9 @@ def AverageSystemSpanning(cli_args: list = None, _return_parser: bool = False):
         "-o", "--output", type=str, default="Dynamics_AverageSystemSpanning.h5", help="Output file"
     )
     parser.add_argument("files", nargs="*", type=str, help="See Dynamics_Run")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert len(args.files) > 0
@@ -874,6 +886,9 @@ def TransformDeprecated(cli_args: list = None, _return_parser: bool = False):
     parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("file", type=str, help="File to transform: .bak appended")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)

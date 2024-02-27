@@ -197,6 +197,9 @@ def Generate(cli_args: list = None, _return_parser: bool = False):
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("outdir", type=str, help="Output directory")
 
+    if _return_parser:
+        return parser
+
     args = tools._parse(parser, cli_args)
     assert not (len(args.slip_rate) > 0 and len(args.gammadot) > 0)
 
@@ -455,6 +458,9 @@ def Run(cli_args: list = None, _return_parser: bool = False):
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("file", type=str, help="Simulation file")
 
+    if _return_parser:
+        return parser
+
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)
     run(args.file, dev=args.develop, progress=not args.quiet)
@@ -557,6 +563,9 @@ def EnsembleInfo(cli_args: list = None, _return_parser: bool = False):
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("files", nargs="*", type=str, help="Simulation output")
 
+    if _return_parser:
+        return parser
+
     args = tools._parse(parser, cli_args)
     assert len(args.files) > 0
     assert np.all([os.path.isfile(i) for i in args.files])
@@ -632,6 +641,9 @@ def VelocityJump_Branch(cli_args: list = None, _return_parser: bool = False):
     parser.add_argument("gammadot", type=float, nargs="*", help="New flow rate")
 
     raise NotImplementedError("Reimplement for v.")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)
@@ -774,6 +786,9 @@ def Paraview(cli_args: list = None, _return_parser: bool = False):
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("file", type=str, help="Simulation file")
 
+    if _return_parser:
+        return parser
+
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)
     tools._check_overwrite_file(f"{args.output}.h5", args.force)
@@ -844,6 +859,9 @@ def Plot(cli_args: list = None, _return_parser: bool = False):
     parser.add_argument("-o", "--output", type=str, help="Save the image")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("file", type=str, help="Simulation file")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)
@@ -953,6 +971,9 @@ def TransformDeprecated(cli_args: list = None, _return_parser: bool = False):
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("file", type=str, help="File to transform: .bak appended")
 
+    if _return_parser:
+        return parser
+
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)
     assert not os.path.isfile(args.file + ".bak")
@@ -1005,6 +1026,9 @@ def Rename(cli_args: list = None, _return_parser: bool = False):
     parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
 
     parser.add_argument("files", type=str, nargs="*", help="Files")
+    if _return_parser:
+        return parser
+
     args = tools._parse(parser, cli_args)
     newnames = []
 

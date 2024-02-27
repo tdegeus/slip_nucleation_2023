@@ -633,6 +633,9 @@ def Generate(cli_args: list = None, _return_parser: bool = False):
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("outdir", type=str, help="Output directory")
 
+    if _return_parser:
+        return parser
+
     args = tools._parse(parser, cli_args)
 
     outdir = pathlib.Path(args.outdir)
@@ -743,6 +746,9 @@ def MoveMeta(cli_args: list = None, _return_parser: bool = False):
     parser.add_argument("new_name", type=str, help="Former name (overwritten with new versions)")
     parser.add_argument("file", type=str, help="Simulation file")
 
+    if _return_parser:
+        return parser
+
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)
 
@@ -786,6 +792,9 @@ def Run(cli_args: list = None, _return_parser: bool = False):
     parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("file", type=str, help="Simulation file")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)
@@ -878,6 +887,9 @@ def SimulationStatus(cli_args: list = None, _return_parser: bool = False):
     parser.add_argument("-o", "--output", type=str, help="YAML-file")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("files", nargs="*", type=str, help="Simulation files")
+    if _return_parser:
+        return parser
+
     args = tools._parse(parser, cli_args)
     assert np.all([os.path.isfile(file) for file in args.files])
 
@@ -1244,6 +1256,9 @@ def EnsembleInfo(cli_args: list = None, _return_parser: bool = False):
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("files", nargs="*", type=str, help="Files to read")
 
+    if _return_parser:
+        return parser
+
     args = tools._parse(parser, cli_args)
     assert len(args.files) > 0
     assert all([os.path.isfile(file) for file in args.files])
@@ -1387,6 +1402,9 @@ def Plot(cli_args: list = None, _return_parser: bool = False):
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("file", type=str, help="Simulation file")
 
+    if _return_parser:
+        return parser
+
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)
 
@@ -1434,6 +1452,9 @@ def MakeJobEventMapOfSystemSpanning(cli_args: list = None, _return_parser: bool 
     parser.add_argument("-t", "--truncate", action="store_true", help="Truncate at known Smax")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("EnsembleInfo", type=str, help="EnsembleInfo")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.EnsembleInfo)
@@ -1495,6 +1516,9 @@ def MakeJobDynamicsOfSystemSpanning(cli_args: list = None, _return_parser: bool 
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("EnsembleInfo", type=str, help="EnsembleInfo")
 
+    if _return_parser:
+        return parser
+
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.EnsembleInfo)
     tools._create_or_clear_directory(args.outdir, args.force)
@@ -1555,6 +1579,9 @@ def StateAfterSystemSpanning(cli_args: list = None, _return_parser: bool = False
     )
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("EnsembleInfo", type=str, help="EnsembleInfo")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.EnsembleInfo)
@@ -1715,6 +1742,9 @@ def TransformDeprecated(cli_args: list = None, _return_parser: bool = False):
     parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("file", type=str, help="File to transform: .bak appended")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)

@@ -117,6 +117,9 @@ def Run(cli_args: list = None, _return_parser: bool = False):
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("file", type=str, help="Simulation file")
 
+    if _return_parser:
+        return parser
+
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.file)
     tools._check_overwrite_file(args.output, args.force)
@@ -159,6 +162,9 @@ def Info(cli_args: list = None, _return_parser: bool = False):
     )
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("files", nargs="*", type=str, help="Files to read")
+
+    if _return_parser:
+        return parser
 
     args = tools._parse(parser, cli_args)
     assert len(args.files) > 0
