@@ -598,7 +598,7 @@ def VelocityJump_Branch(cli_args: list = None, _return_parser: bool = False):
     """
     Branch simulation to a velocity jump experiment:
     Copies a snapshot as restart.
-    To run simply use :py:func:`cli_run`.
+    To run simply use :py:func:`Run`.
     Note that if no new flow rate(s) is specified the default ensemble is again generated.
     """
     funcname = inspect.getframeinfo(inspect.currentframe()).function

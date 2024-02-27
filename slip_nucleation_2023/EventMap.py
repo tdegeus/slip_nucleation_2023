@@ -145,7 +145,7 @@ def Run(cli_args: list = None, _return_parser: bool = False):
 @tools.docstring_append_cli()
 def Info(cli_args: list = None, _return_parser: bool = False):
     """
-    Collect basic information from :py:func:`cli_run` and combine in a single output file:
+    Collect basic information from :py:func:`Run` and combine in a single output file:
     *   Event duration (``t``).
     *   Event size (``S`` and ``A``)
     """

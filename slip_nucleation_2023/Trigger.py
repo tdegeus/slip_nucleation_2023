@@ -226,7 +226,7 @@ def Run(cli_args: list = None, _return_parser: bool = False):
 @tools.docstring_append_cli()
 def EnsemblePackMerge(cli_args: list = None, _return_parser: bool = False):
     """
-    Merge files created by :py:func:`cli_ensemblepack`.
+    Merge files created by :py:func:`EnsemblePack`.
     """
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
@@ -386,7 +386,7 @@ def EnsemblePack(cli_args: list = None, _return_parser: bool = False):
 def EnsembleInfo(cli_args: list = None, _return_parser: bool = False):
     """
     Read and store basic info from individual pushes.
-    Can only be read from output of :py:func:`cli_ensemblepack`.
+    Can only be read from output of :py:func:`EnsemblePack`.
 
     .. warning::
 
@@ -541,7 +541,7 @@ def restore_from_ensembleinfo(
     """
     Restore the begin state of a specific push.
 
-    :param ensembleinfo: Opened Trigger-EnsembleInfo, see :py:func:`cli_ensembleinfo`.
+    :param ensembleinfo: Opened Trigger-EnsembleInfo, see :py:func:`EnsembleInfo`.
     :param index: Item from ``ensembleinfo``.
     :param destpath: Path where to write restored state.
     :param dev: Allow uncommitted changes.
@@ -691,14 +691,14 @@ def JobRerunDynamics(cli_args: list = None, _return_parser: bool = False):
     Instead of :py:func:`Dynamics.Run` one of the following measurements can be performed:
 
     -    ``--eventmap``: use :py:func:`EventMap.Run`.
-    -    ``--highfreq``: use :py:func:`Dyanmics.cli_RunHighFrequency`.
+    -    ``--highfreq``: use :py:func:`Dyanmics.RunHighFrequency`.
 
     In addition, select ``--avalanche`` and ``--amin`` to run avalanches instead of system spanning
     events.
 
     Possible usage:
 
-        :py:func:`cli_job_rerun_dynamics`
+        Trigger_JobRerunDynamics
             --ibin=1
             --nsim=100
             --height=20
@@ -1378,7 +1378,7 @@ def TransformDeprecatedEnsemblePack2(cli_args: list = None, _return_parser: bool
 @tools.docstring_append_cli()
 def TransformDeprecatedEnsemblePack3(cli_args: list = None, _return_parser: bool = False):
     """
-    Rename triggers. Assumes file that is conform :py:func:`cli_transform_deprecated_pack2`.
+    Rename triggers. Assumes file that is conform :py:func:`TransformDeprecatedEnsemblePack2`.
     """
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))

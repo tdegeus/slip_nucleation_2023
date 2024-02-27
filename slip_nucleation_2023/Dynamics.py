@@ -465,7 +465,7 @@ def RunHighFrequency(cli_args: list = None, _return_parser: bool = False):
 
 class BasicAverage(enstat.static):
     """
-    Support class for :py:func:`cli_average_systemspanning`.
+    Support class for :py:func:`AverageSystemSpanning`.
     This class writes on item at a time using :py:func:`BasicAverage.add_subsample`,
     and it does so by selecting the relevant elements from a field and
     computing the relevant volume average.
@@ -510,7 +510,7 @@ class BasicAverage(enstat.static):
 
 class AlignedAverage(BasicAverage):
     """
-    Support class for :py:func:`cli_average_systemspanning`.
+    Support class for :py:func:`AverageSystemSpanning`.
     Similar to :py:class:`BasicAverage`, but it aligns blocks and averages per blocks
     (not on all blocks).
     """
@@ -551,7 +551,7 @@ class AlignedAverage(BasicAverage):
 @tools.docstring_append_cli()
 def AverageSystemSpanning(cli_args: list = None, _return_parser: bool = False):
     """
-    Compute averages from output of :py:func:`cli_run`:
+    Compute averages from output of :py:func:`Run`:
 
     -   'Simple' averages (macroscopic, per element row, on moving blocks):
 
