@@ -72,17 +72,9 @@ def PlotMeshHeight(cli_args: list = None, _return_parser: bool = False):
     """
     Plot geometry with elements at certain heights marked.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     # developer options
     parser.add_argument("-v", "--version", action="version", version=version)
@@ -164,17 +156,9 @@ def Run(cli_args: list = None, _return_parser: bool = False):
         - "/dynamics/sync-A": List of "iiter" stored due to given "A".
         - "/dynamics/sync-t": List of "iiter" stored due to given "t" after checking for "A".
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     # developer options
     parser.add_argument("--develop", action="store_true", help="Development mode")
@@ -369,17 +353,9 @@ def RunHighFrequency(cli_args: list = None, _return_parser: bool = False):
         These nodes are selected by specifying the number of sensors in each direction.
         The vertical sensors are placed in the top half of the domain.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     # developer options
     parser.add_argument("--develop", action="store_true", help="Development mode")
@@ -584,17 +560,9 @@ def AverageSystemSpanning(cli_args: list = None, _return_parser: bool = False):
 
     -   'Aligned' averages (for different element rows), for fixed A.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument(
@@ -883,17 +851,9 @@ def TransformDeprecated(cli_args: list = None, _return_parser: bool = False):
             -r "/meta/MeasureDynamics_run" "/meta/Dynamics_Run" \
             foo.h5.bak foo.h5
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-v", "--version", action="version", version=version)

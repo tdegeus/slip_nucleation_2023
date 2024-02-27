@@ -170,17 +170,9 @@ def Generate(cli_args: list = None, _return_parser: bool = False):
     """
     Generate IO files, including job-scripts to run simulations.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("--force", action="store_true", help="Overwrite job")
     parser.add_argument("--develop", action="store_true", help="Development mode")
@@ -443,17 +435,9 @@ def Run(cli_args: list = None, _return_parser: bool = False):
     """
     Run flow simulation.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("-q", "--quiet", action="store_true", help="Suppress progress bar")
@@ -547,17 +531,9 @@ def EnsembleInfo(cli_args: list = None, _return_parser: bool = False):
     """
     Collect basic ensemble information.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite")
     parser.add_argument(
@@ -625,17 +601,9 @@ def VelocityJump_Branch(cli_args: list = None, _return_parser: bool = False):
     To run simply use :py:func:`cli_run`.
     Note that if no new flow rate(s) is specified the default ensemble is again generated.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("-i", "--inc", type=int, required=True, help="Increment to branch")
@@ -774,16 +742,9 @@ def Paraview(cli_args: list = None, _return_parser: bool = False):
 
     import XDMFWrite_h5py as xh
 
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument("-o", "--output", type=str, required=True, help="Appended xdmf/h5py")
@@ -847,17 +808,9 @@ def Plot(cli_args: list = None, _return_parser: bool = False):
     import matplotlib.pyplot as plt
 
     plt.style.use(["goose", "goose-latex"])
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("--sigma-max", type=float, help="Set limit of y-axis of left panel")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
@@ -961,17 +914,9 @@ def TransformDeprecated(cli_args: list = None, _return_parser: bool = False):
             -r "/meta/Run_generate" "/meta/QuasiStatic_Generate" \
             foo.h5.bak foo.h5
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-v", "--version", action="version", version=version)
@@ -1020,17 +965,9 @@ def Rename(cli_args: list = None, _return_parser: bool = False):
     """
     Update file name to the current version.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("files", type=str, nargs="*", help="Files")
     if _return_parser:

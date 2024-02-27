@@ -62,5 +62,3 @@
       :members:
    {%- endfor %}
    {% endif %}
-
-

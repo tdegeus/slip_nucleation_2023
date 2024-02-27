@@ -106,13 +106,9 @@ def Run(cli_args: list = None, _return_parser: bool = False):
     Rerun quasistatic step and store basic event info (position and time).
     Tip: truncate when (known) S is reached to not waste time on final stage of energy minimisation.
     """
-
-    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
     parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output file")
     parser.add_argument("--step", required=True, type=int, help="Quasi-static step to rerun")
@@ -153,13 +149,9 @@ def Info(cli_args: list = None, _return_parser: bool = False):
     *   Event duration (``t``).
     *   Event size (``S`` and ``A``)
     """
-
-    class MyFmt(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
     parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument(

@@ -112,17 +112,9 @@ def Run(cli_args: list = None, _return_parser: bool = False):
     In that case the ``truncated`` meta-attribute will be ``True``.
     The displacement field will not correspond to a mechanical equilibrium.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("-v", "--version", action="version", version=version)
@@ -236,17 +228,9 @@ def EnsemblePackMerge(cli_args: list = None, _return_parser: bool = False):
     """
     Merge files created by :py:func:`cli_ensemblepack`.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
@@ -307,17 +291,9 @@ def MoveCompleted(cli_args: list = None, _return_parser: bool = False):
     """
     Check which files are marked completed, and move them to a different directory.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("files", nargs="*", type=str, help="<file>... <destination>")
@@ -357,17 +333,9 @@ def EnsemblePack(cli_args: list = None, _return_parser: bool = False):
 
         /event/filename_of_trigger/param  ->  /param
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument(
@@ -424,17 +392,9 @@ def EnsembleInfo(cli_args: list = None, _return_parser: bool = False):
 
         This function currently just extracts the first push.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument(
@@ -662,17 +622,9 @@ def JobRerunEventMap(cli_args: list = None, _return_parser: bool = False):
     """
     Rerun to get an event-map for avalanches resulting from triggers after system spanning events.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("--amin", type=int, default=20, help="Minimal avalanche size")
@@ -754,17 +706,9 @@ def JobRerunDynamics(cli_args: list = None, _return_parser: bool = False):
             -s ../Run
             Trigger_EnsembleInfo.h5
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     # development mode
     parser.add_argument("--develop", action="store_true", help="Development mode")
@@ -1074,17 +1018,9 @@ def JobDeltaSigma(cli_args: list = None, _return_parser: bool = False):
     ``stress[i] = sigma_c[i] + j * delta_sigma`` with ``j = 0, 1, ...``.
     The highest stress is thereby always lower than that of the next system spanning event.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("--filter", type=str, help="Filter completed jobs. Arg: EnsemblePack")
@@ -1260,17 +1196,9 @@ def TransformDeprecatedEnsemblePack(cli_args: list = None, _return_parser: bool 
     Transform old data structure to the current one.
     This code is considered 'non-maintained'.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-v", "--version", action="version", version=version)
@@ -1419,17 +1347,9 @@ def TransformDeprecatedEnsemblePack2(cli_args: list = None, _return_parser: bool
     Add seed
     This code is considered 'non-maintained'.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("pack", type=str, help="EnsemblePack")
     parser.add_argument("--source", type=str, help="Source dir")
@@ -1460,17 +1380,9 @@ def TransformDeprecatedEnsemblePack3(cli_args: list = None, _return_parser: bool
     """
     Rename triggers. Assumes file that is conform :py:func:`cli_transform_deprecated_pack2`.
     """
-
-    class MyFmt(
-        argparse.RawDescriptionHelpFormatter,
-        argparse.ArgumentDefaultsHelpFormatter,
-        argparse.MetavarTypeHelpFormatter,
-    ):
-        pass
-
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
+    parser = argparse.ArgumentParser(formatter_class=tools.MyFmt, description=tools._fmt_doc(doc))
 
     parser.add_argument("input", type=str, help="EnsemblePack")
     parser.add_argument("output", type=str, help="EnsemblePack")
