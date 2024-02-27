@@ -32,20 +32,6 @@ from . import storage
 from . import tools
 from ._version import version
 
-entry_points = dict(
-    cli_ensembleinfo="Trigger_EnsembleInfo",
-    cli_ensemblepack="Trigger_EnsemblePack",
-    cli_ensemblepack_merge="Trigger_EnsemblePackMerge",
-    cli_job_deltasigma="Trigger_JobDeltaSigma",
-    cli_job_rerun_dynamics="Trigger_JobRerunDynamics",
-    cli_job_rerun_eventmap="Trigger_JobRerunEventMap",
-    cli_run="Trigger_Run",
-    cli_move_completed="Trigger_MoveCompleted",
-    cli_transform_deprecated_pack="Trigger_TransformDeprecatedEnsemblePack",
-    cli_transform_deprecated_pack2="Trigger_TransformDeprecatedEnsemblePack2",
-    cli_transform_deprecated_pack3="Trigger_TransformDeprecatedEnsemblePack3",
-)
-
 file_defaults = dict(
     cli_ensembleinfo="Trigger_EnsembleInfo.h5",
     cli_ensemblepack="Trigger_EnsemblePack.h5",

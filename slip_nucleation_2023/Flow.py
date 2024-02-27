@@ -27,20 +27,6 @@ from . import tag
 from . import tools
 from ._version import version
 
-entry_points = dict(
-    cli_branch_velocityjump="Flow_VelocityJump_Branch",
-    cli_ensembleinfo="Flow_EnsembleInfo",
-    cli_ensembleinfo_velocityjump="Flow_VelocityJump_EnsembleInfo",
-    cli_generate="Flow_Generate",
-    cli_rename="Flow_Rename",
-    cli_paraview="Flow_Paraview",
-    cli_plot="Flow_Plot",
-    cli_plot_velocityjump="Flow_VelocityJump_Plot",
-    cli_run="Flow_Run",
-    cli_update_branch_velocityjump="Flow_VelocityJump_UpdateBranch",
-    cli_transform_deprecated="Flow_TransformDeprecated",
-)
-
 file_defaults = dict(
     cli_ensembleinfo="Flow_EnsembleInfo.h5",
     cli_ensembleinfo_velocityjump="Flow_VelocityJump_EnsembleInfo.h5",

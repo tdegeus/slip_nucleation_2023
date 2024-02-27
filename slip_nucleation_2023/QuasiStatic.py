@@ -39,20 +39,6 @@ from ._version import version
 plt.style.use(["goose", "goose-latex"])
 
 
-entry_points = dict(
-    cli_ensembleinfo="QuasiStatic_EnsembleInfo",
-    cli_generate="QuasiStatic_Generate",
-    cli_plot="QuasiStatic_Plot",
-    cli_rerun_dynamics_job_systemspanning="QuasiStatic_MakeJobDynamicsOfSystemSpanning",
-    cli_rerun_event_job_systemspanning="QuasiStatic_MakeJobEventMapOfSystemSpanning",
-    cli_run="QuasiStatic_Run",
-    cli_state_after_systemspanning="QuasiStatic_StateAfterSystemSpanning",
-    cli_status="QuasiStatic_SimulationStatus",
-    cli_transform_deprecated="QuasiStatic_TransformDeprecated",
-    cli_move_meta="QuasiStatic_MoveMeta",
-)
-
-
 file_defaults = dict(
     cli_ensembleinfo="QuasiStatic_EnsembleInfo.h5",
     cli_rerun_dynamics_job_systemspanning="RunDynamicsOfSystemSpanning",

@@ -26,14 +26,6 @@ from . import tag
 from . import tools
 from ._version import version
 
-entry_points = dict(
-    cli_average_systemspanning="Dynamics_AverageSystemSpanning",
-    cli_plot_height="Dynamics_PlotMeshHeight",
-    cli_run="Dynamics_Run",
-    cli_run_highfrequency="Dynamics_RunHighFrequency",
-    cli_transform_deprecated="Dynamics_TransformDeprecated",
-)
-
 file_defaults = dict(
     cli_average_systemspanning="MeasureDynamics_average_systemspanning.h5",
     cli_plot_height="MeasureDynamics_plot_height",

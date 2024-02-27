@@ -27,12 +27,6 @@ from ._version import version
 plt.style.use(["goose", "goose-latex"])
 
 
-entry_points = dict(
-    cli_run="EventMap_run",
-    cli_basic_output="EventMapInfo",
-)
-
-
 file_defaults = dict(
     cli_run="EventMap.h5",
     cli_basic_output="EventMapInfo.h5",
