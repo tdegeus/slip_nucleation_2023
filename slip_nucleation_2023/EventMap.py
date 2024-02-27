@@ -27,25 +27,10 @@ from ._version import version
 plt.style.use(["goose", "goose-latex"])
 
 
-entry_points = dict(
-    cli_run="EventMap_run",
-    cli_basic_output="EventMapInfo",
-)
-
-
 file_defaults = dict(
-    cli_run="EventMap.h5",
-    cli_basic_output="EventMapInfo.h5",
+    Run="EventMap.h5",
+    Info="EventMapInfo.h5",
 )
-
-
-def replace_ep(doc: str) -> str:
-    """
-    Replace ``:py:func:`...``` with the relevant entry_point name
-    """
-    for ep in entry_points:
-        doc = doc.replace(rf":py:func:`{ep:s}`", entry_points[ep])
-    return doc
 
 
 def run_event_basic(system: QuasiStatic.System, file: h5py.File, step: int, Smax=None) -> dict:
@@ -118,7 +103,7 @@ def run_event_basic(system: QuasiStatic.System, file: h5py.File, step: int, Smax
     return ret
 
 
-def cli_run(cli_args=None):
+def Run(cli_args=None):
     """
     Rerun quasistatic step and store basic event info (position and time).
     Tip: truncate when (known) S is reached to not waste time on final stage of energy minimisation.
@@ -129,8 +114,7 @@ def cli_run(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
-    progname = entry_points[funcname]
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
     output = file_defaults[funcname]
 
     parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
@@ -154,7 +138,7 @@ def cli_run(cli_args=None):
         file["t"] = ret["t"]
         file["S"] = ret["S"]
 
-        meta = QuasiStatic.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
+        meta = QuasiStatic.create_check_meta(file, "/meta/EventMap_Run", dev=args.develop)
         meta.attrs["file"] = args.file
         meta.attrs["step"] = args.step
         meta.attrs["Smax"] = args.smax if args.smax else sys.maxsize
@@ -163,7 +147,7 @@ def cli_run(cli_args=None):
         return ret
 
 
-def cli_basic_output(cli_args=None):
+def Info(cli_args=None):
     """
     Collect basic information from :py:func:`cli_run` and combine in a single output file:
     *   Event duration (``t``).
@@ -175,8 +159,7 @@ def cli_basic_output(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
-    progname = entry_points[funcname]
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
     output = file_defaults[funcname]
 
     parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
@@ -203,11 +186,9 @@ def cli_basic_output(cli_args=None):
         dependencies=[],
     )
 
-    executable = entry_points["cli_run"]
-
     for filepath in tqdm.tqdm(args.files):
         with h5py.File(filepath, "r") as file:
-            meta = file[f"/meta/{executable}"]
+            meta = file["/meta/EventMap_Run"]
             data["t"].append(file["t"][...][-1] - file["t"][...][0])
             data["S"].append(np.sum(file["S"][...]))
             data["A"].append(np.unique(file["r"][...]).size)
@@ -240,4 +221,4 @@ def cli_basic_output(cli_args=None):
             [";".join(i) for i in data["dependencies"]], file, "/dependencies", split=";"
         )
 
-        QuasiStatic.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
+        QuasiStatic.create_check_meta(file, "/meta/EventMap_Info", dev=args.develop)

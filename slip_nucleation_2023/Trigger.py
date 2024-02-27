@@ -25,40 +25,15 @@ import numpy as np
 import shelephant
 import tqdm
 
-from . import Dynamics
-from . import EventMap
 from . import QuasiStatic
 from . import storage
 from . import tools
 from ._version import version
 
-entry_points = dict(
-    cli_ensembleinfo="Trigger_EnsembleInfo",
-    cli_ensemblepack="Trigger_EnsemblePack",
-    cli_ensemblepack_merge="Trigger_EnsemblePackMerge",
-    cli_job_deltasigma="Trigger_JobDeltaSigma",
-    cli_job_rerun_dynamics="Trigger_JobRerunDynamics",
-    cli_job_rerun_eventmap="Trigger_JobRerunEventMap",
-    cli_run="Trigger_Run",
-    cli_move_completed="Trigger_MoveCompleted",
-    cli_transform_deprecated_pack="Trigger_TransformDeprecatedEnsemblePack",
-    cli_transform_deprecated_pack2="Trigger_TransformDeprecatedEnsemblePack2",
-    cli_transform_deprecated_pack3="Trigger_TransformDeprecatedEnsemblePack3",
-)
-
 file_defaults = dict(
-    cli_ensembleinfo="Trigger_EnsembleInfo.h5",
-    cli_ensemblepack="Trigger_EnsemblePack.h5",
+    EnsembleInfo="Trigger_EnsembleInfo.h5",
+    EnsemblePack="Trigger_EnsemblePack.h5",
 )
-
-
-def replace_ep(doc: str) -> str:
-    """
-    Replace ``:py:func:`...``` with the relevant entry_point name
-    """
-    for ep in entry_points:
-        doc = doc.replace(rf":py:func:`{ep:s}`", entry_points[ep])
-    return doc
 
 
 def interpret_filename(path: str, convert: bool = True) -> dict:
@@ -124,7 +99,7 @@ def pack2paths(file: h5py.File) -> list[str]:
     return ret
 
 
-def cli_run(cli_args=None):
+def Run(cli_args=None):
     """
     Trigger event and minimise energy.
 
@@ -150,8 +125,7 @@ def cli_run(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
-    progname = entry_points[funcname]
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("-v", "--version", action="version", version=version)
@@ -186,7 +160,7 @@ def cli_run(cli_args=None):
         try_element = int(root["try_element"][step + 1])
         assert not root["truncated"][step], "Cannot run is last step was not minimised"
 
-        meta = QuasiStatic.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
+        meta = QuasiStatic.create_check_meta(file, "/meta/Trigger_Run", dev=args.develop)
         system = QuasiStatic.System(file)
         system.restore_quasistatic_step(root, step)
         idx_n = np.copy(system.plastic.i[:, 0])
@@ -257,7 +231,7 @@ def cli_run(cli_args=None):
     return args.file
 
 
-def cli_ensemblepack_merge(cli_args=None):
+def EnsemblePackMerge(cli_args=None):
     """
     Merge files created by :py:func:`cli_ensemblepack`.
     """
@@ -271,7 +245,7 @@ def cli_ensemblepack_merge(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
@@ -324,7 +298,7 @@ def cli_ensemblepack_merge(cli_args=None):
                         g5.copy(src, dest, path)
 
 
-def cli_move_completed(cli_args=None):
+def MoveCompleted(cli_args=None):
     """
     Check which files are marked completed, and move them to a different directory.
     """
@@ -338,7 +312,7 @@ def cli_move_completed(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
 
     parser.add_argument("-v", "--version", action="version", version=version)
     parser.add_argument("files", nargs="*", type=str, help="<file>... <destination>")
@@ -362,7 +336,7 @@ def cli_move_completed(cli_args=None):
         os.rename(filename, dest / filename)
 
 
-def cli_ensemblepack(cli_args=None):
+def EnsemblePack(cli_args=None):
     """
     Pack pushes into a single file with soft links.
     The individual pushes are listed as::
@@ -384,7 +358,7 @@ def cli_ensemblepack(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
     output = file_defaults[funcname]
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
@@ -417,9 +391,9 @@ def cli_ensemblepack(cli_args=None):
                     assert path in ["param", "realisation", "meta", "Trigger"]
 
                 # skip non-completed runs
-                if "completed" not in file[f"/meta/{entry_points['cli_run']}"].attrs:
+                if "completed" not in file["/meta/Trigger_Run"].attrs:
                     continue
-                if not file[f"/meta/{entry_points['cli_run']}"].attrs["completed"]:
+                if not file["/meta/Trigger_Run"].attrs["completed"]:
                     continue
 
                 # copy/link event data
@@ -428,7 +402,7 @@ def cli_ensemblepack(cli_args=None):
                 output[g5.join(path, "param", root=True)] = h5py.SoftLink("/param")
 
 
-def cli_ensembleinfo(cli_args=None):
+def EnsembleInfo(cli_args=None):
     """
     Read and store basic info from individual pushes.
     Can only be read from output of :py:func:`cli_ensemblepack`.
@@ -447,8 +421,7 @@ def cli_ensembleinfo(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
-    progname = entry_points[funcname]
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
     output = file_defaults[funcname]
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
@@ -512,7 +485,7 @@ def cli_ensembleinfo(cli_args=None):
             assert file["Trigger"]["branched"][0]
             assert not file["Trigger"]["branched"][1]
 
-            meta = file["meta"][entry_points["cli_run"]]
+            meta = file["meta"]["Trigger_Run"]
             branch = file["meta"]["branch_fixed_stress"]
 
             # see QuasiStatic.branch_fixed_stress
@@ -583,7 +556,7 @@ def cli_ensembleinfo(cli_args=None):
             output[key] = ret[key]
 
         output["/meta/normalisation/N"] = N
-        QuasiStatic.create_check_meta(output, f"/meta/{progname}", dev=args.develop)
+        QuasiStatic.create_check_meta(output, "/meta/Trigger_EnsembleInfo", dev=args.develop)
 
 
 def restore_from_ensembleinfo(
@@ -668,7 +641,7 @@ def __job_rerun(file, sims, basename, executable, args):
     return ret
 
 
-def cli_job_rerun_eventmap(cli_args=None):
+def JobRerunEventMap(cli_args=None):
     """
     Rerun to get an event-map for avalanches resulting from triggers after system spanning events.
     """
@@ -682,7 +655,7 @@ def cli_job_rerun_eventmap(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("--amin", type=int, default=20, help="Minimal avalanche size")
@@ -690,7 +663,7 @@ def cli_job_rerun_eventmap(cli_args=None):
     parser.add_argument("-n", "--nsim", type=int, help="Number of simulations")
     parser.add_argument("-o", "--outdir", type=str, required=True, help="Output directory")
     parser.add_argument("-s", "--sourcedir", type=str, default=".", help="Path to sim-dir.")
-    parser.add_argument("ensembleinfo", type=str, help=f"{entry_points['cli_ensembleinfo']} (read)")
+    parser.add_argument("ensembleinfo", type=str, help="EnsembleInfo (read)")
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.ensembleinfo)
@@ -733,20 +706,19 @@ def cli_job_rerun_eventmap(cli_args=None):
             sims["output"].append(os.path.join(args.outdir, base))
             sims["index"].append(index)
 
-        executable = EventMap.entry_points["cli_run"]
-        ret = __job_rerun(file, sims, "TriggerEventMap", executable, args)
+        ret = __job_rerun(file, sims, "TriggerEventMap", "EventMap_Run", args)
 
     if cli_args is not None:
         return ret
 
 
-def cli_job_rerun_dynamics(cli_args=None):
+def JobRerunDynamics(cli_args=None):
     """
     Create job to rerun and measure the dynamics of system spanning (A == N) events.
-    Instead of :py:func:`Dynamics.cli_run` one of the following measurements can be performed:
+    Instead of :py:func:`Dynamics.Run` one of the following measurements can be performed:
 
-    -    ``--eventmap``: use :py:func:`EventMap.cli_run`.
-    -    ``--highfreq``: use :py:func:`Dyanmics.cli_run_highfrequency`.
+    -    ``--eventmap``: use :py:func:`EventMap.Run`.
+    -    ``--highfreq``: use :py:func:`Dyanmics.cli_RunHighFrequency`.
 
     In addition, select ``--avalanche`` and ``--amin`` to run avalanches instead of system spanning
     events.
@@ -771,7 +743,7 @@ def cli_job_rerun_dynamics(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
 
     # development mode
     parser.add_argument("--develop", action="store_true", help="Development mode")
@@ -794,7 +766,7 @@ def cli_job_rerun_dynamics(cli_args=None):
         "--height",
         type=int,
         action="append",
-        help="Add element row(s), see " + Dynamics.entry_points["cli_run"],
+        help="Add element row(s), see Dynamics_Run",
     )
     parser.add_argument(
         "--avalanche", action="store_true", help="Run avalanches, not system spanning events"
@@ -817,9 +789,7 @@ def cli_job_rerun_dynamics(cli_args=None):
         help="Directory with quasi-static simulations on which pushes were based",
     )
 
-    parser.add_argument(
-        "ensembleinfo", type=str, help="Input, see " + entry_points["cli_ensembleinfo"]
-    )
+    parser.add_argument("ensembleinfo", type=str, help="Input, see Trigger_EnsembleInfo")
 
     args = tools._parse(parser, cli_args)
     assert os.path.isfile(args.ensembleinfo)
@@ -880,11 +850,11 @@ def cli_job_rerun_dynamics(cli_args=None):
                 sims["index"].append(index)
 
         if args.eventmap:
-            executable = EventMap.entry_points["cli_run"]
+            executable = "EventMap_Run"
         elif args.highfreq:
-            executable = Dynamics.entry_points["cli_run_highfrequency"]
+            executable = "Dynamics_RunHighFrequency"
         else:
-            executable = Dynamics.entry_points["cli_run"]
+            executable = "Dynamics_Run"
 
         ret = __job_rerun(file, sims, "TriggerDynamics", executable, args)
 
@@ -1072,7 +1042,7 @@ def _copy_configurations(try_element: int, source: list[str], dest: list[str], f
             dest["/Trigger/try_element"][1] = try_element
 
 
-def cli_job_deltasigma(cli_args=None):
+def JobDeltaSigma(cli_args=None):
     """
     Create jobs to trigger at fixed stress increase ``delta_sigma``
     since the last system-spanning event:
@@ -1089,8 +1059,7 @@ def cli_job_deltasigma(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
-    progname = entry_points[funcname]
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("--filter", type=str, help="Filter completed jobs. Arg: EnsemblePack")
@@ -1119,7 +1088,7 @@ def cli_job_deltasigma(cli_args=None):
         os.makedirs(args.outdir)
 
     basedir = pathlib.Path(args.ensembleinfo).parent
-    executable = entry_points["cli_run"]
+    executable = "Trigger_Run"
 
     with h5py.File(args.ensembleinfo, "r") as file:
         files = [basedir / f for f in file["/files"].asstr()[...]]
@@ -1202,7 +1171,7 @@ def cli_job_deltasigma(cli_args=None):
         "pushes": args.pushes,
     }
 
-    meta = (f"/meta/{progname}", meta)
+    meta = ("/meta/Trigger_JobDeltaSigma", meta)
 
     if args.nmax is not None:
         for key in ret:
@@ -1257,7 +1226,7 @@ def cli_job_deltasigma(cli_args=None):
         return [" ".join(cmd + [i]) for i in outfiles]
 
 
-def cli_transform_deprecated_pack(cli_args=None):
+def TransformDeprecatedEnsemblePack(cli_args=None):
     """
     Transform old data structure to the current one.
     This code is considered 'non-maintained'.
@@ -1272,12 +1241,13 @@ def cli_transform_deprecated_pack(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
-    progname = entry_points[funcname]
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
 
     parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-v", "--version", action="version", version=version)
-    parser.add_argument("--log", default=entry_points[funcname] + ".log", help="Log file")
+    parser.add_argument(
+        "--log", default="Trigger_TransformDeprecatedEnsemblePack.log", help="Log file"
+    )
     parser.add_argument("source", type=str, help="Source (read only)")
     parser.add_argument("dest", type=str, help="Destination (overwritten)")
 
@@ -1389,7 +1359,9 @@ def cli_transform_deprecated_pack(cli_args=None):
                 paths.remove(g5.join(root, "/t"))
 
                 # adding meta data
-                dest.create_group(g5.join(root, f"/meta/{progname}")).attrs["version"] = version
+                dest.create_group(
+                    g5.join(root, "/meta/Trigger_TransformDeprecatedEnsemblePack")
+                ).attrs["version"] = version
 
                 # assertions
                 assert "/param/normalisation" in dest
@@ -1406,7 +1378,7 @@ def cli_transform_deprecated_pack(cli_args=None):
                 assert len(paths) == 0 or allow_nonempty
 
 
-def cli_transform_deprecated_pack2(cli_args=None):
+def TransformDeprecatedEnsemblePack2(cli_args=None):
     """
     Add seed
     This code is considered 'non-maintained'.
@@ -1421,7 +1393,7 @@ def cli_transform_deprecated_pack2(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
 
     parser.add_argument("pack", type=str, help="EnsemblePack")
     parser.add_argument("--source", type=str, help="Source dir")
@@ -1444,7 +1416,7 @@ def cli_transform_deprecated_pack2(cli_args=None):
                     file[f"/event/{event}/realisation/seed"] = src["/realisation/seed"][...]
 
 
-def cli_transform_deprecated_pack3(cli_args=None):
+def TransformDeprecatedEnsemblePack3(cli_args=None):
     """
     Rename triggers. Assumes file that is conform :py:func:`cli_transform_deprecated_pack2`.
     """
@@ -1458,7 +1430,7 @@ def cli_transform_deprecated_pack3(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
 
     parser.add_argument("input", type=str, help="EnsemblePack")
     parser.add_argument("output", type=str, help="EnsemblePack")

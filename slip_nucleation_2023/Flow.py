@@ -27,33 +27,10 @@ from . import tag
 from . import tools
 from ._version import version
 
-entry_points = dict(
-    cli_branch_velocityjump="Flow_VelocityJump_Branch",
-    cli_ensembleinfo="Flow_EnsembleInfo",
-    cli_ensembleinfo_velocityjump="Flow_VelocityJump_EnsembleInfo",
-    cli_generate="Flow_Generate",
-    cli_rename="Flow_Rename",
-    cli_paraview="Flow_Paraview",
-    cli_plot="Flow_Plot",
-    cli_plot_velocityjump="Flow_VelocityJump_Plot",
-    cli_run="Flow_Run",
-    cli_update_branch_velocityjump="Flow_VelocityJump_UpdateBranch",
-    cli_transform_deprecated="Flow_TransformDeprecated",
-)
-
 file_defaults = dict(
-    cli_ensembleinfo="Flow_EnsembleInfo.h5",
-    cli_ensembleinfo_velocityjump="Flow_VelocityJump_EnsembleInfo.h5",
+    EnsembleInfo="Flow_EnsembleInfo.h5",
+    EnsembleInfo_velocityjump="Flow_VelocityJump_EnsembleInfo.h5",
 )
-
-
-def replace_ep(doc):
-    """
-    Replace ":py:func:`...`" with the relevant entry_point name
-    """
-    for ep in entry_points:
-        doc = doc.replace(rf":py:func:`{ep:s}`", entry_points[ep])
-    return doc
 
 
 def _interpret(part: list[str], convert: bool = False) -> dict:
@@ -134,11 +111,10 @@ def generate(*args, **kwargs):
     snapshot = kwargs.pop("snapshot")
     assert v is not None or gammadot is not None
 
-    progname = entry_points["cli_generate"]
     QuasiStatic.generate(*args, **kwargs)
 
     with h5py.File(kwargs["filepath"], "a") as file:
-        meta = file.create_group(f"/meta/{progname}")
+        meta = file.create_group("/meta/Flow_Generate")
         meta.attrs["version"] = version
 
         if gammadot is None:
@@ -194,7 +170,7 @@ class DefaultEnsemble:
     n = v.size
 
 
-def cli_generate(cli_args=None):
+def Generate(cli_args=None):
     """
     Generate IO files, including job-scripts to run simulations.
     """
@@ -208,7 +184,7 @@ def cli_generate(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
 
     parser.add_argument("--force", action="store_true", help="Overwrite job")
     parser.add_argument("--develop", action="store_true", help="Development mode")
@@ -283,8 +259,7 @@ def cli_generate(cli_args=None):
                 **opts,
             )
 
-    executable = entry_points["cli_run"]
-    commands = [f"{executable} {file}" for file in filenames]
+    commands = [f"Flow_Run {file}" for file in filenames]
     shelephant.yaml.dump(outdir / "commands.yaml", commands, args.force)
 
     if cli_args is not None:
@@ -345,14 +320,13 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
     """
 
     basename = os.path.basename(filepath)
-    progname = entry_points["cli_run"]
     opts = {}
     if not progress:
         opts["disable"] = True
 
     with h5py.File(filepath, "a") as file:
         system = QuasiStatic.System(file)
-        meta = QuasiStatic.create_check_meta(file, f"/meta/{progname}", dev=dev)
+        meta = QuasiStatic.create_check_meta(file, "/meta/Flow_Run", dev=dev)
         dV = system.plastic_dV(rank=2)
 
         if "completed" in meta.attrs:
@@ -465,7 +439,7 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
         meta.attrs["completed"] = 1
 
 
-def cli_run(cli_args=None):
+def Run(cli_args=None):
     """
     Run flow simulation.
     """
@@ -479,7 +453,7 @@ def cli_run(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("-q", "--quiet", action="store_true", help="Suppress progress bar")
@@ -565,7 +539,7 @@ def basic_output(file: h5py.File) -> dict:
     return ret
 
 
-def cli_ensembleinfo(cli_args=None):
+def EnsembleInfo(cli_args=None):
     """
     Collect basic ensemble information.
     """
@@ -579,7 +553,7 @@ def cli_ensembleinfo(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
     output = file_defaults[funcname]
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
@@ -636,7 +610,7 @@ def cli_ensembleinfo(cli_args=None):
                 g5.copy(file, output, src, dest)
 
 
-def cli_branch_velocityjump(cli_args=None):
+def VelocityJump(cli_args=None):
     """
     Branch simulation to a velocity jump experiment:
     Copies a snapshot as restart.
@@ -653,8 +627,7 @@ def cli_branch_velocityjump(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
-    progname = entry_points[funcname]
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("-i", "--inc", type=int, required=True, help="Increment to branch")
@@ -694,7 +667,7 @@ def cli_branch_velocityjump(cli_args=None):
     with h5py.File(args.file) as source:
         for out_gammadot, out_path in zip(tqdm.tqdm(out_gammadots), out_paths):
             with h5py.File(out_path, "w") as dest:
-                meta = f"/meta/{entry_points['cli_run']}"
+                meta = "/meta/Flow_Run"
                 paths = g5.getdatapaths(source)
                 paths = [p for p in paths if not re.match(r"(/Flow/snapshot/)(.*)", p)]
                 paths = [p for p in paths if not re.match(r"(/Flow/output/)(.*)", p)]
@@ -708,11 +681,13 @@ def cli_branch_velocityjump(cli_args=None):
                 g5.copy(
                     source,
                     dest,
-                    f"/meta/{entry_points['cli_run']}",
-                    f"/meta/{entry_points['cli_run']}_source",
+                    "/meta/Flow_Run",
+                    "/meta/Flow_Run_source",
                 )
 
-                meta = QuasiStatic.create_check_meta(dest, f"/meta/{progname}", dev=args.develop)
+                meta = QuasiStatic.create_check_meta(
+                    dest, "/meta/Flow_VelocityJump", dev=args.develop
+                )
                 meta.attrs["inc"] = args.inc
 
                 dest["/Flow/gammadot"][...] = out_gammadot
@@ -740,8 +715,7 @@ def cli_branch_velocityjump(cli_args=None):
                     dest[key].resize((3, 1))
                     dest[key][:, 0] = source[key][:, i]
 
-    executable = entry_points["cli_run"]
-    commands = [f"{executable} {file}" for file in out_names]
+    commands = ["Flow_Run {file}" for file in out_names]
     shelephant.yaml.dump(str(outdir / "commands.yaml"), commands, args.develop)
 
     if cli_args is not None:
@@ -782,7 +756,7 @@ def moving_average_y(x: ArrayLike, y: ArrayLike, n: int) -> ArrayLike:
     return x[s:], moving_average(y, n)
 
 
-def cli_paraview(cli_args=None):
+def Paraview(cli_args=None):
     """
     Prepare snapshots to be viewed with ParaView.
     """
@@ -798,7 +772,7 @@ def cli_paraview(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
 
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument("-o", "--output", type=str, required=True, help="Appended xdmf/h5py")
@@ -849,7 +823,7 @@ def cli_paraview(cli_args=None):
             )
 
 
-def cli_plot(cli_args=None):
+def Plot(cli_args=None):
     """
     Plot overview of flow simulation.
     """
@@ -868,7 +842,7 @@ def cli_plot(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
 
     parser.add_argument("--sigma-max", type=float, help="Set limit of y-axis of left panel")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
@@ -935,7 +909,7 @@ def cli_plot(cli_args=None):
     plt.close(fig)
 
 
-def cli_transform_deprecated(cli_args=None):
+def TransformDeprecated(cli_args=None):
     """
     Transform old data structure to the current one.
     This code is considered 'non-maintained'.
@@ -978,8 +952,7 @@ def cli_transform_deprecated(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
-    progname = entry_points[funcname]
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
 
     parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-v", "--version", action="version", version=version)
@@ -1011,7 +984,7 @@ def cli_transform_deprecated(cli_args=None):
 
         assert "/param/normalisation" in dest
 
-        dest.create_group(f"/meta/{progname}").attrs["version"] = version
+        dest.create_group("/meta/Flow_TransformDeprecated").attrs["version"] = version
 
         if "Flow_Run" in dest["meta"]:
             if "uuid" not in dest["/meta/Flow_Run"].attrs:
@@ -1020,7 +993,7 @@ def cli_transform_deprecated(cli_args=None):
         assert len(paths) == 0
 
 
-def cli_rename(cli_args=None):
+def Rename(cli_args=None):
     """
     Update file name to the current version.
     """
@@ -1034,7 +1007,7 @@ def cli_rename(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
 
     parser.add_argument("files", type=str, nargs="*", help="Files")
     args = tools._parse(parser, cli_args)

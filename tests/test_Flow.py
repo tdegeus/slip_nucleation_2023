@@ -71,7 +71,7 @@ def test_small(tmp_path):
     *   Branch of velocity-jump experiments and run one, and read output.
     """
     N = 9
-    files = Flow.cli_generate(["-N", N, "--dev", tmp_path, "--gammadot", "2e-9"])
+    files = Flow.Generate(["-N", N, "--dev", tmp_path, "--gammadot", "2e-9"])
 
     with h5py.File(files[-1], "a") as file:
         file["/param/cusp/epsy/nchunk"][...] = 200
@@ -79,9 +79,9 @@ def test_small(tmp_path):
     with h5py.File(files[-1], "a") as file:
         file["/Flow/boundcheck"][...] = 193
 
-    Flow.cli_run(["--dev", files[-1]])
-    Flow.cli_ensembleinfo(["-o", os.path.join(tmp_path, "einfo.h5"), files[-1]])
-    Flow.cli_paraview(["-o", os.path.join(tmp_path, "tmp"), files[-1]])
+    Flow.Run(["--dev", files[-1]])
+    Flow.EnsembleInfo(["-o", os.path.join(tmp_path, "einfo.h5"), files[-1]])
+    Flow.Paraview(["-o", os.path.join(tmp_path, "tmp"), files[-1]])
 
-    # branch = Flow.cli_branch_velocityjump(["--dev", "-o", tmp_path, "-i", "250000", files[-1]])
-    # Flow.cli_run(["--dev", branch[-1]])
+    # branch = Flow.VelocityJump(["--dev", "-o", tmp_path, "-i", "250000", files[-1]])
+    # Flow.Run(["--dev", branch[-1]])

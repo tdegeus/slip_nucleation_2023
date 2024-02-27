@@ -49,8 +49,8 @@ def mydata():
     with h5py.File(paths["quasistatic"]["realisation"], "a") as file:
         file["/param/cusp/epsy/nchunk"][...] = 200
 
-    QuasiStatic.cli_run(["--dev", paths["quasistatic"]["realisation"]])
-    QuasiStatic.cli_ensembleinfo(
+    QuasiStatic.Run(["--dev", paths["quasistatic"]["realisation"]])
+    QuasiStatic.EnsembleInfo(
         ["--dev", "-o", paths["quasistatic"]["info"], paths["quasistatic"]["realisation"]]
     )
 
@@ -66,7 +66,7 @@ def mydata():
         [paths["quasistatic"]["info"]],
     ]
     opts = list(itertools.chain(*opts))
-    commands = Trigger.cli_job_deltasigma(opts)
+    commands = Trigger.JobDeltaSigma(opts)
     paths["trigger"]["opts"] = opts
     paths["trigger"]["commands"] = commands
 
@@ -96,15 +96,13 @@ def mydata():
 
     paths["trigger"]["files"] = []
     for command in paths["trigger"]["commands"]:
-        paths["trigger"]["files"].append(Trigger.cli_run(command.split(" ")[1:]))
+        paths["trigger"]["files"].append(Trigger.Run(command.split(" ")[1:]))
 
     paths["trigger"]["pack"] = paths["trigger"]["dirname"] / "ensemblepack.h5"
     paths["trigger"]["info"] = paths["trigger"]["dirname"] / "ensembleinfo.h5"
 
-    Trigger.cli_ensemblepack(["-f", "-o", paths["trigger"]["pack"], *paths["trigger"]["files"]])
-    Trigger.cli_ensembleinfo(
-        ["--dev", "-f", "-o", paths["trigger"]["info"], paths["trigger"]["pack"]]
-    )
+    Trigger.EnsemblePack(["-f", "-o", paths["trigger"]["pack"], *paths["trigger"]["files"]])
+    Trigger.EnsembleInfo(["--dev", "-f", "-o", paths["trigger"]["info"], paths["trigger"]["pack"]])
 
     # return
 
@@ -138,7 +136,7 @@ def test_quasistatic_generate(tmp_path):
     Generate a simulation (not a unittest)
     """
     with shelephant.path.cwd(tmp_path):
-        QuasiStatic.cli_generate(["--dev", "mygen"])
+        QuasiStatic.Generate(["--dev", "mygen"])
 
 
 def test_quasistatic_meta_move(mydata, tmp_path):
@@ -147,16 +145,16 @@ def test_quasistatic_meta_move(mydata, tmp_path):
     """
     fname = tmp_path / "mycopy.h5"
     shutil.copy(mydata["quasistatic"]["realisation"], fname)
-    old = f"/meta/{QuasiStatic.entry_points['cli_run']}"
+    old = "/meta/QuasiStatic_Run"
     new = f"{old}_new"
-    QuasiStatic.cli_move_meta(["--dev", old, new, fname])
+    QuasiStatic.MoveMeta(["--dev", old, new, fname])
     with h5py.File(fname) as file:
         assert file[old].attrs["version"] == file[new].attrs["version"]
 
 
 def test_quasistatic_status(mydata):
-    ret = QuasiStatic.cli_status(
-        ["-k", f"/meta/{QuasiStatic.entry_points['cli_run']}", mydata["quasistatic"]["realisation"]]
+    ret = QuasiStatic.SimulationStatus(
+        ["-k", "/meta/QuasiStatic_Run", mydata["quasistatic"]["realisation"]]
     )
     assert ret == {
         "completed": [str(mydata["quasistatic"]["realisation"])],
@@ -205,7 +203,7 @@ def test_quasistatic_rerun_dynamics(mydata, tmp_path):
     Rerun a quasistatic step with Dynamics, check the macroscopic stress.
     """
 
-    commands = QuasiStatic.cli_rerun_dynamics_job_systemspanning(
+    commands = QuasiStatic.MakeJobDynamicsOfSystemSpanning(
         ["-f", "-o", tmp_path, mydata["quasistatic"]["info"]]
     )
     _, _, outpath, _, step, inpath = commands[0].split(" ")
@@ -217,20 +215,20 @@ def test_quasistatic_rerun_dynamics(mydata, tmp_path):
         check = file[f"/full/{inpath}/sig"][step]
 
     with shelephant.path.cwd(tmp_path):
-        Dynamics.cli_run(commands[0].split(" ")[1:] + ["--dev"])
+        Dynamics.Run(commands[0].split(" ")[1:] + ["--dev"])
 
         with h5py.File(outpath) as file:
             sig = GMat.Sigd(storage.symtens2_read(file, "/Dynamics/Sigbar")[-1, ...])
             assert np.isclose(sig / sig0, check)
 
-        Dynamics.cli_average_systemspanning([outpath, "-o", tmp_path / "average.h5", "--dev"])
+        Dynamics.AverageSystemSpanning([outpath, "-o", tmp_path / "average.h5", "--dev"])
 
 
-def test_quasistatic_rerun_dynamics_run_highfrequency(mydata, tmp_path):
+def test_quasistatic_rerun_dynamics_RunHighFrequency(mydata, tmp_path):
     """
     Rerun a quasistatic step with Dynamics, check the macroscopic stress.
     """
-    commands = QuasiStatic.cli_rerun_dynamics_job_systemspanning(
+    commands = QuasiStatic.MakeJobDynamicsOfSystemSpanning(
         ["-f", "-o", tmp_path, mydata["quasistatic"]["info"]]
     )
     _, _, outpath, _, step, inpath = commands[0].split(" ")
@@ -242,7 +240,7 @@ def test_quasistatic_rerun_dynamics_run_highfrequency(mydata, tmp_path):
         check = np.average(system.Sig(), weights=system.dV(rank=2), axis=(0, 1))[0, 1]
 
     with shelephant.path.cwd(tmp_path):
-        Dynamics.cli_run_highfrequency(commands[0].split(" ")[1:] + ["--dev"])
+        Dynamics.RunHighFrequency(commands[0].split(" ")[1:] + ["--dev"])
 
         with h5py.File(outpath) as file:
             sig = file["/DynamicsHighFrequency/fext"][0]
@@ -253,7 +251,7 @@ def test_quasistatic_rerun_eventmap(mydata, tmp_path):
     """
     Rerun a quasistatic step with EventMap, check the event size
     """
-    commands = QuasiStatic.cli_rerun_dynamics_job_systemspanning(
+    commands = QuasiStatic.MakeJobDynamicsOfSystemSpanning(
         ["-f", "-o", tmp_path, mydata["quasistatic"]["info"]]
     )
     _, _, outpath, _, step, inpath = commands[0].split(" ")
@@ -264,7 +262,7 @@ def test_quasistatic_rerun_eventmap(mydata, tmp_path):
         check = file[f"/full/{inpath}/S"][step]
 
     with shelephant.path.cwd(tmp_path):
-        EventMap.cli_run(commands[0].split(" ")[1:] + ["--dev"])
+        EventMap.Run(commands[0].split(" ")[1:] + ["--dev"])
 
         with h5py.File(outpath) as file:
             S = file["S"][...]
@@ -275,7 +273,7 @@ def test_quasistatic_state_after_systemspanning(mydata, tmp_path):
     """
     Read the state of systemspanning events (not a unittest)
     """
-    QuasiStatic.cli_state_after_systemspanning(
+    QuasiStatic.StateAfterSystemSpanning(
         ["-f", "-o", tmp_path / "state", mydata["quasistatic"]["info"]]
     )
 
@@ -289,9 +287,9 @@ def test_trigger_ensemblepack(mydata, tmp_path):
     p1 = tmp_path / "ensemblepack_a.h5"
     p2 = tmp_path / "ensemblepack_b.h5"
 
-    Trigger.cli_ensemblepack(["-f", "-o", p1, *mydata["trigger"]["files"][:2]])
-    Trigger.cli_ensemblepack(["-f", "-o", p2, *mydata["trigger"]["files"][2:]])
-    Trigger.cli_ensemblepack_merge(["-f", "-o", t2, p1, p2])
+    Trigger.EnsemblePack(["-f", "-o", p1, *mydata["trigger"]["files"][:2]])
+    Trigger.EnsemblePack(["-f", "-o", p2, *mydata["trigger"]["files"][2:]])
+    Trigger.EnsemblePackMerge(["-f", "-o", t2, p1, p2])
     assert np.abs(t1.stat().st_size - t2.stat().st_size) / t1.stat().st_size < 1e-2
 
     with h5py.File(t1) as file, h5py.File(t2) as dest:
@@ -307,7 +305,7 @@ def test_trigger_filter(mydata, tmp_path):
     Pack the ensemble, check filtering new generation.
     """
 
-    extra = Trigger.cli_job_deltasigma(
+    extra = Trigger.JobDeltaSigma(
         mydata["trigger"]["opts"] + ["--filter", mydata["trigger"]["pack"]]
     )
     assert not np.any(np.in1d(extra, mydata["trigger"]["commands"]))
@@ -328,7 +326,7 @@ def test_trigger_ensembleinfo(mydata, tmp_path):
             dev=True,
         )
 
-    Trigger.cli_run(["--dev", "--rerun", clonename])
+    Trigger.Run(["--dev", "--rerun", clonename])
 
     with h5py.File(mydata["trigger"]["files"][0]) as source, h5py.File(clonename) as dest:
         paths = list(g5.getdatapaths(source))
@@ -359,7 +357,7 @@ def test_trigger_rerun_dynamics_ensemble(mydata, tmp_path):
         ["-o", tmp_path],
         [mydata["trigger"]["info"]],
     ]
-    commands = Trigger.cli_job_rerun_dynamics(list(itertools.chain(*opts)))
+    commands = Trigger.JobRerunDynamics(list(itertools.chain(*opts)))
 
     _, _, outpath, _, step, _, _, inpath = commands[0].split(" ")
     step = int(step)
@@ -382,7 +380,7 @@ def test_trigger_rerun_dynamics_ensemble(mydata, tmp_path):
         trigger.restore_quasistatic_step(file["Trigger"], 1)
 
     with shelephant.path.cwd(tmp_path):
-        Dynamics.cli_run(commands[0].split(" ")[1:] + ["--dev"])
+        Dynamics.Run(commands[0].split(" ")[1:] + ["--dev"])
 
         with h5py.File(outpath) as file:
             root = file["Dynamics"]
@@ -405,7 +403,7 @@ def test_trigger_rerun_dynamics(mydata, tmp_path):
     """
     Rerun one trigger with Dynamics, check the macroscopic stress.
     """
-    commands = Trigger.cli_job_deltasigma(
+    commands = Trigger.JobDeltaSigma(
         [
             "--dev",
             "-f",
@@ -420,17 +418,17 @@ def test_trigger_rerun_dynamics(mydata, tmp_path):
             10,
         ]
     )
-    triggername = Trigger.cli_run(["--dev"] + commands[-1].split(" ")[1:])
+    triggername = Trigger.Run(["--dev"] + commands[-1].split(" ")[1:])
     triggerpack = tmp_path / "tmp_Pack.h5"
     triggerinfo = tmp_path / "tmp_Info.h5"
-    Trigger.cli_ensemblepack(["-f", "-o", triggerpack, triggername])
-    Trigger.cli_ensembleinfo(["--dev", "-f", "-o", triggerinfo, triggerpack])
+    Trigger.EnsemblePack(["-f", "-o", triggerpack, triggername])
+    Trigger.EnsembleInfo(["--dev", "-f", "-o", triggerinfo, triggerpack])
 
     with h5py.File(triggerinfo) as file:
         A = file["A"][0]
 
     outname = tmp_path / "rerun_trigger.h5"
-    Dynamics.cli_run(["--dev", "-f", "--step", 1, "-o", outname, triggername])
+    Dynamics.Run(["--dev", "-f", "--step", 1, "-o", outname, triggername])
 
     with h5py.File(outname) as file:
         a = file["/Dynamics/A"][-1]
@@ -460,7 +458,7 @@ def test_trigger_rerun_eventmap(mydata, tmp_path):
     """
     Rerun one trigger with EventMap, check the macroscopic stress.
     """
-    commands = Trigger.cli_job_rerun_eventmap(
+    commands = Trigger.JobRerunEventMap(
         [
             "--dev",
             "-f",
@@ -476,7 +474,7 @@ def test_trigger_rerun_eventmap(mydata, tmp_path):
         ]
     )
     outpath = commands[0].split(" ")[2]
-    EventMap.cli_run(["--dev", "-f"] + commands[0].split(" ")[1:])
+    EventMap.Run(["--dev", "-f"] + commands[0].split(" ")[1:])
 
     # todo: make filename automatic
     with h5py.File(

@@ -29,8 +29,6 @@ import shelephant
 import tqdm
 from numpy.typing import ArrayLike
 
-from . import Dynamics
-from . import EventMap
 from . import storage
 from . import tag
 from . import tools
@@ -39,25 +37,11 @@ from ._version import version
 plt.style.use(["goose", "goose-latex"])
 
 
-entry_points = dict(
-    cli_ensembleinfo="QuasiStatic_EnsembleInfo",
-    cli_generate="QuasiStatic_Generate",
-    cli_plot="QuasiStatic_Plot",
-    cli_rerun_dynamics_job_systemspanning="QuasiStatic_MakeJobDynamicsOfSystemSpanning",
-    cli_rerun_event_job_systemspanning="QuasiStatic_MakeJobEventMapOfSystemSpanning",
-    cli_run="QuasiStatic_Run",
-    cli_state_after_systemspanning="QuasiStatic_StateAfterSystemSpanning",
-    cli_status="QuasiStatic_SimulationStatus",
-    cli_transform_deprecated="QuasiStatic_TransformDeprecated",
-    cli_move_meta="QuasiStatic_MoveMeta",
-)
-
-
 file_defaults = dict(
-    cli_ensembleinfo="QuasiStatic_EnsembleInfo.h5",
-    cli_rerun_dynamics_job_systemspanning="RunDynamicsOfSystemSpanning",
-    cli_rerun_event_job_systemspanning="RunEventMapOfSystemSpanning",
-    cli_state_after_systemspanning="QuasiStatic_StateAfterSystemSpanning.h5",
+    EnsembleInfo="QuasiStatic_EnsembleInfo.h5",
+    MakeJobDynamicsOfSystemSpanning="RunDynamicsOfSystemSpanning",
+    MakeJobEventMapOfSystemSpanning="RunEventMapOfSystemSpanning",
+    StateAfterSystemSpanning="QuasiStatic_StateAfterSystemSpanning.h5",
 )
 
 
@@ -167,15 +151,6 @@ class System(model.System):
         return self.quad.AsTensor(rank, ret)
 
 
-def replace_ep(doc: str) -> str:
-    """
-    Replace ``:py:func:`...``` with the relevant entry_point name
-    """
-    for ep in entry_points:
-        doc = doc.replace(rf":py:func:`{ep:s}`", entry_points[ep])
-    return doc
-
-
 def interpret_filename(filename: str) -> dict:
     """
     Split filename in useful information.
@@ -281,9 +256,6 @@ def branch_fixed_stress(
     :param output: Output of :py:func:`basic_output` (read if not specified).
     :param dev: Allow uncommitted changes.
     """
-
-    funcname = inspect.getframeinfo(inspect.currentframe()).function
-
     if system is None:
         system = System(source)
     elif init_system:
@@ -353,13 +325,13 @@ def branch_fixed_stress(
     # store branch
     dest[root]["u"]["0"][...] = system.u
 
-    metaname = funcname
+    metaname = "branch_fixed_stress"
     i = 1
     while f"/meta/{metaname}" in dest:
-        metaname = f"{funcname}_{i:d}"
+        metaname = f"branch_fixed_stress_{i:d}"
         i += 1
 
-    meta = create_check_meta(dest, f"/meta/{metaname}", dev=dev)
+    meta = create_check_meta(dest, "/meta/branch_fixed_stress", dev=dev)
     meta.attrs["file"] = os.path.basename(source.filename)
     if stress is not None:
         meta.attrs["stress"] = stress
@@ -396,7 +368,6 @@ def generate(
     """
 
     assert not os.path.isfile(filepath)
-    progname = entry_points["cli_generate"]
 
     # parameters
     h = np.pi
@@ -641,13 +612,13 @@ def generate(
             desc="== 2 G eps0",
         )
 
-        create_check_meta(file, f"/meta/{progname}", dev=dev)
+        create_check_meta(file, "/meta/QuasiStatic_Generate", dev=dev)
 
         if init_run:
             _init_run_state(root=file.create_group("QuasiStatic"), u=np.zeros_like(coor))
 
 
-def cli_generate(cli_args=None):
+def Generate(cli_args=None):
     """
     Generate IO files (including job-scripts) to run simulations.
     """
@@ -661,7 +632,7 @@ def cli_generate(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
 
     parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-n", "--nsim", type=int, default=1, help="#simulations")
@@ -686,8 +657,7 @@ def cli_generate(cli_args=None):
             dev=args.develop,
         )
 
-    executable = entry_points["cli_run"]
-    commands = [f"{executable} {file}" for file in files]
+    commands = [f"QuasiStatic_Run {file}" for file in files]
     shelephant.yaml.dump(outdir / "commands_run.yaml", commands)
 
 
@@ -757,7 +727,7 @@ def create_check_meta(
     return meta
 
 
-def cli_move_meta(cli_args=None):
+def MoveMeta(cli_args=None):
     """
     Create a copy of meta-data, and overwrite the version information with the current information
     and a new UUID.
@@ -772,7 +742,7 @@ def cli_move_meta(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
 
     parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-v", "--version", action="version", version=version)
@@ -805,7 +775,7 @@ def cli_move_meta(cli_args=None):
             meta.attrs["completed"] = 0
 
 
-def cli_run(cli_args=None):
+def Run(cli_args=None):
     """
     Run simulation.
     """
@@ -819,8 +789,7 @@ def cli_run(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
-    progname = entry_points[funcname]
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
 
     parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-v", "--version", action="version", version=version)
@@ -832,7 +801,7 @@ def cli_run(cli_args=None):
 
     with h5py.File(args.file, "a") as file:
         system = System(file)
-        meta = create_check_meta(file, f"/meta/{progname}", dev=args.develop)
+        meta = create_check_meta(file, "/meta/QuasiStatic_Run", dev=args.develop)
 
         if "completed" in meta.attrs:
             if meta.attrs["completed"]:
@@ -881,7 +850,7 @@ def cli_run(cli_args=None):
         meta.attrs["completed"] = 1
 
 
-def cli_status(cli_args=None):
+def SimulationStatus(cli_args=None):
     """
     Find status for files.
 
@@ -907,7 +876,7 @@ def cli_status(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
 
     parser.add_argument("-c", "--completed", action="store_true", help="List completed simulations")
     parser.add_argument("-e", "--partial", action="store_true", help="List partial simulations")
@@ -1256,7 +1225,7 @@ def basic_output(
     return ret
 
 
-def cli_ensembleinfo(cli_args=None):
+def EnsembleInfo(cli_args=None):
     """
     Read information (avalanche size, stress, strain, ...) of an ensemble,
     see :py:func:`basic_output`.
@@ -1265,7 +1234,6 @@ def cli_ensembleinfo(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    progname = entry_points[funcname]
     output = file_defaults[funcname]
 
     class MyFmt(
@@ -1275,7 +1243,7 @@ def cli_ensembleinfo(cli_args=None):
     ):
         pass
 
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
 
     parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
@@ -1333,7 +1301,7 @@ def cli_ensembleinfo(cli_args=None):
 
                 info["seed"].append(out["seed"])
 
-                meta = file[f"/meta/{entry_points['cli_run']}"]
+                meta = file["/meta/QuasiStatic_Run"]
                 for key in ["uuid", "version", "dependencies"]:
                     info[key].append(meta.attrs[key])
 
@@ -1402,10 +1370,10 @@ def cli_ensembleinfo(cli_args=None):
 
         # metadata for this program
 
-        meta = create_check_meta(output, f"/meta/{progname}", dev=args.develop)
+        meta = create_check_meta(output, "/meta/QuasiStatic_EnsembleInfo", dev=args.develop)
 
 
-def cli_plot(cli_args=None):
+def Plot(cli_args=None):
     """
     Plot overview of simulation.
     Plots the stress-strain response and the identified steady-state.
@@ -1420,7 +1388,7 @@ def cli_plot(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
 
     parser.add_argument("-m", "--marker", type=str, help="Use marker")
     parser.add_argument("-v", "--version", action="version", version=version)
@@ -1451,7 +1419,7 @@ def cli_plot(cli_args=None):
     plt.show()
 
 
-def cli_rerun_event_job_systemspanning(cli_args=None):
+def MakeJobEventMapOfSystemSpanning(cli_args=None):
     """
     Generate a job to rerun all system-spanning events and generate an event-map.
     """
@@ -1461,7 +1429,7 @@ def cli_rerun_event_job_systemspanning(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
     output = file_defaults[funcname]
 
     parser.add_argument("-f", "--force", action="store_true", help="Force clean output directory")
@@ -1489,7 +1457,6 @@ def cli_rerun_event_job_systemspanning(cli_args=None):
     ifile = ifile[keep]
 
     commands = []
-    executable = EventMap.entry_points["cli_run"]
     basedir = os.path.dirname(args.EnsembleInfo)
     basedir = basedir if basedir else "."
     relpath = os.path.relpath(basedir, args.outdir)
@@ -1497,7 +1464,7 @@ def cli_rerun_event_job_systemspanning(cli_args=None):
     for s, step, f in zip(S, steps, ifile):
         fname = files[f]
         basename = os.path.splitext(os.path.basename(fname))[0]
-        cmd = [executable, "-o", f"{basename}_step={step:d}.h5", "--step", f"{step:d}"]
+        cmd = ["EventMap_Run -o", f"{basename}_step={step:d}.h5", "--step", f"{step:d}"]
         if args.truncate:
             cmd += ["-s", f"{s:d}"]
         cmd += [os.path.join(relpath, fname)]
@@ -1509,7 +1476,7 @@ def cli_rerun_event_job_systemspanning(cli_args=None):
         return commands
 
 
-def cli_rerun_dynamics_job_systemspanning(cli_args=None):
+def MakeJobDynamicsOfSystemSpanning(cli_args=None):
     """
     Generate a job to rerun all system-spanning events and measure the dynamics.
     """
@@ -1519,7 +1486,7 @@ def cli_rerun_dynamics_job_systemspanning(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
     output = file_defaults[funcname]
 
     parser.add_argument("-f", "--force", action="store_true", help="Force clean output directory")
@@ -1544,7 +1511,6 @@ def cli_rerun_dynamics_job_systemspanning(cli_args=None):
     ifile = ifile[keep]
 
     commands = []
-    executable = Dynamics.entry_points["cli_run"]
     basedir = os.path.dirname(args.EnsembleInfo)
     basedir = basedir if basedir else "."
     relpath = os.path.relpath(basedir, args.outdir)
@@ -1552,7 +1518,7 @@ def cli_rerun_dynamics_job_systemspanning(cli_args=None):
     for step, f in zip(steps, ifile):
         fname = files[f]
         basename = os.path.splitext(os.path.basename(fname))[0]
-        cmd = [executable, "-o", f"{basename}_step={step:d}.h5", "--step", f"{step:d}"]
+        cmd = ["Dynamics_Run -o", f"{basename}_step={step:d}.h5", "--step", f"{step:d}"]
         cmd += [os.path.join(relpath, fname)]
         commands.append(" ".join(cmd))
 
@@ -1562,7 +1528,7 @@ def cli_rerun_dynamics_job_systemspanning(cli_args=None):
         return commands
 
 
-def cli_state_after_systemspanning(cli_args=None):
+def StateAfterSystemSpanning(cli_args=None):
     """
     Extract state after system-spanning avalanches.
     """
@@ -1572,7 +1538,7 @@ def cli_state_after_systemspanning(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
     output = file_defaults[funcname]
 
     parser.add_argument("--all", action="store_true", help="Store all output")
@@ -1699,7 +1665,7 @@ def transform_deprecated_param(src, dest, paths, source_root: str = "/"):
     return paths
 
 
-def cli_transform_deprecated(cli_args=None):
+def TransformDeprecated(cli_args=None):
     """
     Transform old data structure to the current one.
     This code is considered 'non-maintained'.
@@ -1739,8 +1705,7 @@ def cli_transform_deprecated(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
-    progname = entry_points[funcname]
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
 
     parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-v", "--version", action="version", version=version)
@@ -1777,7 +1742,7 @@ def cli_transform_deprecated(cli_args=None):
         paths.remove("/stored")
         paths.remove("/disp")
 
-        dest.create_group(f"/meta/{progname}").attrs["version"] = version
+        dest.create_group("/meta/QuasiStatic_TransformDeprecated").attrs["version"] = version
 
         if "uuid" not in dest["/meta/QuasiStatic_Run"].attrs:
             dest["/meta/QuasiStatic_Run"].attrs["uuid"] = str(uuid.uuid4())

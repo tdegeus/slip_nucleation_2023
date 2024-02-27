@@ -26,27 +26,10 @@ from . import tag
 from . import tools
 from ._version import version
 
-entry_points = dict(
-    cli_average_systemspanning="Dynamics_AverageSystemSpanning",
-    cli_plot_height="Dynamics_PlotMeshHeight",
-    cli_run="Dynamics_Run",
-    cli_run_highfrequency="Dynamics_RunHighFrequency",
-    cli_transform_deprecated="Dynamics_TransformDeprecated",
-)
-
 file_defaults = dict(
-    cli_average_systemspanning="MeasureDynamics_average_systemspanning.h5",
-    cli_plot_height="MeasureDynamics_plot_height",
+    AverageSystemSpanning="MeasureDynamics_average_systemspanning.h5",
+    PlotMeshHeight="MeasureDynamics_plot_height",
 )
-
-
-def replace_ep(doc: str) -> str:
-    """
-    Replace ``:py:func:`...``` with the relevant entry_point name
-    """
-    for ep in entry_points:
-        doc = doc.replace(rf":py:func:`{ep:s}`", entry_points[ep])
-    return doc
 
 
 def elements_at_height(
@@ -89,7 +72,7 @@ def elements_at_height(
     return mesh.elementsLayer(mid + i)
 
 
-def cli_plot_height(cli_args=None):
+def PlotMeshHeight(cli_args=None):
     """
     Plot geometry with elements at certain heights marked.
     """
@@ -103,7 +86,7 @@ def cli_plot_height(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
 
     # developer options
     parser.add_argument("-v", "--version", action="version", version=version)
@@ -149,7 +132,7 @@ def cli_plot_height(cli_args=None):
         xh.write(grid, args.output + ".xdmf")
 
 
-def cli_run(cli_args=None):
+def Run(cli_args=None):
     """
     Rerun an event and store output at different increments that are selected at:
     *   Given event sizes "A" unit the event is system spanning (``--A-step`` controls interval).
@@ -184,8 +167,7 @@ def cli_run(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
-    progname = entry_points[funcname]
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
 
     # developer options
     parser.add_argument("--develop", action="store_true", help="Development mode")
@@ -214,7 +196,7 @@ def cli_run(cli_args=None):
     with h5py.File(args.file) as src, h5py.File(args.output, "w") as file:
         g5.copy(src, file, ["/param", "/realisation", "/meta"])
 
-        meta = QuasiStatic.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
+        meta = QuasiStatic.create_check_meta(file, "/meta/Dynamics_Run", dev=args.develop)
         meta.attrs["file"] = os.path.basename(args.file)
         meta.attrs["step"] = args.step
         meta.attrs["A-step"] = args.A_step
@@ -364,10 +346,10 @@ def cli_run(cli_args=None):
                 t_istore += 1
                 store = True
 
-        file[f"/meta/{progname}"].attrs["completed"] = 1
+        file["/meta/Dynamics_Run"].attrs["completed"] = 1
 
 
-def cli_run_highfrequency(cli_args=None):
+def RunHighFrequency(cli_args=None):
     """
     Perform a high-frequency measurement on very few observables:
 
@@ -386,8 +368,7 @@ def cli_run_highfrequency(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
-    progname = entry_points[funcname]
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
 
     # developer options
     parser.add_argument("--develop", action="store_true", help="Development mode")
@@ -422,7 +403,9 @@ def cli_run_highfrequency(cli_args=None):
     with h5py.File(args.file) as src, h5py.File(args.output, "w") as file:
         g5.copy(src, file, ["/param", "/realisation", "/meta"])
 
-        meta = QuasiStatic.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
+        meta = QuasiStatic.create_check_meta(
+            file, "/meta/Dynamics_RunHighFrequency", dev=args.develop
+        )
         meta.attrs["file"] = os.path.basename(args.file)
         meta.attrs["step"] = args.step
 
@@ -575,7 +558,7 @@ class AlignedAverage(BasicAverage):
             self.norm[index, incl, ...] += 1
 
 
-def cli_average_systemspanning(cli_args=None):
+def AverageSystemSpanning(cli_args=None):
     """
     Compute averages from output of :py:func:`cli_run`:
 
@@ -596,14 +579,13 @@ def cli_average_systemspanning(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
-    progname = entry_points[funcname]
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
     output = file_defaults[funcname]
 
     parser.add_argument("--develop", action="store_true", help="Development mode")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite output")
     parser.add_argument("-o", "--output", type=str, default=output, help="Output file")
-    parser.add_argument("files", nargs="*", type=str, help="See " + entry_points["cli_run"])
+    parser.add_argument("files", nargs="*", type=str, help="See Dynamics_Run")
 
     args = tools._parse(parser, cli_args)
     assert len(args.files) > 0
@@ -626,8 +608,8 @@ def cli_average_systemspanning(cli_args=None):
                 dV = system.dV()
                 dV2 = system.dV(rank=2)
 
-                height = file[f"/meta/{entry_points['cli_run']}"].attrs["height"]
-                t_step = file[f"/meta/{entry_points['cli_run']}"].attrs["t-step"]
+                height = file["/meta/Dynamics_Run"].attrs["height"]
+                t_step = file["/meta/Dynamics_Run"].attrs["t-step"]
                 dt = float(file["/param/dt"][...])
 
                 element_list = [system.plastic_elem]
@@ -644,10 +626,8 @@ def cli_average_systemspanning(cli_args=None):
 
             else:
                 assert N == system.N
-                assert np.all(
-                    np.equal(height, file[f"/meta/{entry_points['cli_run']}"].attrs["height"])
-                )
-                assert t_step == file[f"/meta/{entry_points['cli_run']}"].attrs["t-step"]
+                assert np.all(np.equal(height, file["/meta/Dynamics_Run"].attrs["height"]))
+                assert t_step == file["/meta/Dynamics_Run"].attrs["t-step"]
                 assert dt == float(file["/param/dt"][...])
                 assert np.all(np.equal(doflist, root["doflist"][...]))
 
@@ -720,7 +700,7 @@ def cli_average_systemspanning(cli_args=None):
             # determine duration bin, ensure that only one measurement per bin is added
             # (take the one closest to the middle of the bin)
 
-            ver = file[f"/meta/{entry_points['cli_run']}"].attrs["version"]
+            ver = file["/meta/Dynamics_Run"].attrs["version"]
 
             nitem = root["inc"].size
             items_syncA = root["sync-A"][...]
@@ -832,7 +812,9 @@ def cli_average_systemspanning(cli_args=None):
                     syncA["align_moving"][0]["s"].add_subsample(j, s, roll, broken)
 
     with h5py.File(args.output, "w") as file:
-        QuasiStatic.create_check_meta(file, f"/meta/{progname}", dev=args.develop)
+        QuasiStatic.create_check_meta(
+            file, "/meta/Dynamics_AverageSystemSpanning", dev=args.develop
+        )
 
         for title, data in zip(["sync-t", "sync-A"], [synct, syncA]):
             for key in ["delta_t", "Epsbar", "Sigbar"]:
@@ -854,7 +836,7 @@ def cli_average_systemspanning(cli_args=None):
                     file[f"/sync-A/{title}/{i}/{key}/norm"] = syncA[title][i][key].norm
 
 
-def cli_transform_deprecated(cli_args=None):
+def TransformDeprecated(cli_args=None):
     """
     Transform old data structure to the current one.
     This code is considered 'non-maintained'.
@@ -892,8 +874,7 @@ def cli_transform_deprecated(cli_args=None):
 
     funcname = inspect.getframeinfo(inspect.currentframe()).function
     doc = textwrap.dedent(inspect.getdoc(globals()[funcname]))
-    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=replace_ep(doc))
-    progname = entry_points[funcname]
+    parser = argparse.ArgumentParser(formatter_class=MyFmt, description=textwrap.dedent(doc))
 
     parser.add_argument("--develop", action="store_true", help="Allow uncommitted")
     parser.add_argument("-v", "--version", action="version", version=version)
@@ -933,7 +914,7 @@ def cli_transform_deprecated(cli_args=None):
         dest["/Dynamics/inc"] = np.round(t / dt).astype(np.uint64)
         paths.remove("/t")
 
-        dest[f"/meta/{entry_points['cli_run']}"].attrs["element"] = src["/trigger/element"][1]
+        dest["/meta/Dynamics_Run"].attrs["element"] = src["/trigger/element"][1]
         paths.remove("/trigger/element")
         paths.remove("/trigger/branched")
         paths.remove("/trigger/truncated")
@@ -947,7 +928,7 @@ def cli_transform_deprecated(cli_args=None):
         if "/dynamics" in paths:
             paths.remove("/dynamics")
 
-        dest.create_group(f"/meta/{progname}").attrs["version"] = version
+        dest.create_group("/meta/Dynamics_TransformDeprecated").attrs["version"] = version
 
         if len(paths) != 0:
             print(paths)
