@@ -445,7 +445,7 @@ def cli_run_highfrequency(cli_args=None):
             idx = np.round(np.linspace(0, len(nds) - 1, args.nx)).astype(int)
             nodes += list(nds[idx])
         nodes = np.unique(np.sort(nodes))
-        top = mesh.nodesTopEdge()
+        top = mesh.nodesTopEdge
         L = coor[top[1], 0] - coor[top[0], 0]
 
         meta.attrs["nodes"] = nodes
@@ -760,7 +760,7 @@ def cli_average_systemspanning(cli_args=None):
                 if item not in items_syncA and t_ibin[item] < 0 and item > 0:
                     continue
 
-                udof = np.zeros(system.vector.shape_dofval())
+                udof = np.zeros(system.vector.shape_dofval)
                 udof[doflist] = root["u"][str(item)][...]
                 system.u = system.vector.AsNode(udof)
 
