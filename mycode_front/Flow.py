@@ -27,7 +27,6 @@ from . import tag
 from . import tools
 from ._version import version
 
-
 entry_points = dict(
     cli_branch_velocityjump="Flow_VelocityJump_Branch",
     cli_ensembleinfo="Flow_EnsembleInfo",
@@ -855,8 +854,8 @@ def cli_plot(cli_args=None):
     Plot overview of flow simulation.
     """
 
-    import matplotlib.pyplot as plt
     import GooseMPL as gplt
+    import matplotlib.pyplot as plt
 
     plt.style.use(["goose", "goose-latex"])
 

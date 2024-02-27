@@ -1,6 +1,7 @@
 """
 Rerun step (quasi-static step, or trigger) to extract the dynamic evolution of fields.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -451,7 +452,7 @@ def cli_run_highfrequency(cli_args=None):
         meta.attrs["nodes"] = nodes
         meta.attrs["top"] = top
 
-        # type of triggering
+        # sort of triggering
 
         if "QuasiStatic" in src:
             typename = "QuasiStatic"
