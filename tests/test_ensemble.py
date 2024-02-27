@@ -13,12 +13,12 @@ import numpy as np
 import pytest
 import shelephant
 
-from mycode_front import Dynamics
-from mycode_front import EventMap
-from mycode_front import QuasiStatic
-from mycode_front import Trigger
-from mycode_front import storage
-from mycode_front import tools
+from slip_nucleation_2023 import Dynamics
+from slip_nucleation_2023 import EventMap
+from slip_nucleation_2023 import QuasiStatic
+from slip_nucleation_2023 import Trigger
+from slip_nucleation_2023 import storage
+from slip_nucleation_2023 import tools
 
 
 @pytest.fixture(scope="module")

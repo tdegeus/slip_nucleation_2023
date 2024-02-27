@@ -4,7 +4,7 @@ import GMatTensor.Cartesian2d as tensor
 import h5py
 import numpy as np
 
-from mycode_front import storage
+from slip_nucleation_2023 import storage
 
 
 def test_symtens2(tmp_path):

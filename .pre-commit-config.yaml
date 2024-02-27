@@ -1,9 +1,10 @@
 repos:
-- repo: https://github.com/psf/black
-  rev: 24.2.0
+- repo: https://github.com/tdegeus/conda_envfile
+  rev: v0.5.2
   hooks:
-  - id: black
-    args: [--safe, --quiet, --line-length=100]
+  - id: conda_envfile_pyproject
+    files: environment.yaml
+    args: [--format]
 - repo: https://github.com/pre-commit/pre-commit-hooks
   rev: v4.5.0
   hooks:
@@ -63,8 +64,3 @@ repos:
   rev: v1.1.1
   hooks:
   - id: doc8
-- repo: https://github.com/tdegeus/conda_envfile
-  rev: v0.5.2
-  hooks:
-  - id: conda_envfile_parse
-    files: "environment.yaml"

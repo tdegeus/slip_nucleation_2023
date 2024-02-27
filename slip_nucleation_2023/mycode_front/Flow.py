@@ -118,7 +118,7 @@ def interpret_filename(filepath: str, convert: bool = False) -> dict:
 def generate(*args, **kwargs):
     """
     Generate input file.
-    See :py:func:`mycode_front.QuasiStatic.generate`. On top of that:
+    See :py:func:`slip_nucleation_2023.QuasiStatic.generate`. On top of that:
 
     :param v: Slip-rate to apply.
     :param output: Output storage interval.

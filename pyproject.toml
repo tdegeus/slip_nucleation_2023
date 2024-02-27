@@ -6,12 +6,11 @@ authors = [{name = "Tom de Geus", email = "tom@geus.me"}]
 classifiers = ["License :: OSI Approved :: MIT License"]
 dependencies = [
     "click",
-    "enstat",
-    "FrictionQPotFEM",
-    "GooseEYE",
-    "GooseFEM",
-    "GooseHDF5",
-    "GMatElastoPlasticQPot"
+    "enstat >=0.5.0",
+    "FrictionQPotFEM >=0.23.1",
+    "GMatElastoPlasticQPot >=0.18.2",
+    "GooseFEM >=1.4.0",
+    "GooseHDF5 >=0.22.0",
     "h5py",
     "numpy",
     "prettytable",
@@ -26,7 +25,6 @@ dynamic = ["version"]
 name = "slip_nucleation_2023"
 readme = "README.md"
 requires-python = ">=3.6"
-
 
 [project.urls]
 Source = "https://github.com/tdegeus/slip_nucleation_2023"

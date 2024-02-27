@@ -6,8 +6,8 @@ import GooseFEM
 import h5py
 import numpy as np
 
-from mycode_front import Flow
-from mycode_front import QuasiStatic
+from slip_nucleation_2023 import Flow
+from slip_nucleation_2023 import QuasiStatic
 
 
 def test_fext():

@@ -6,27 +6,27 @@ API
 System
 ======
 
-.. automodule:: mycode_front.System
+.. automodule:: slip_nucleation_2023.System
     :members:
     :autosummary:
 
 Flow
 ====
 
-.. automodule:: mycode_front.Flow
+.. automodule:: slip_nucleation_2023.Flow
     :members:
     :autosummary:
 
 Trigger
 =======
 
-.. automodule:: mycode_front.Trigger
+.. automodule:: slip_nucleation_2023.Trigger
     :members:
     :autosummary:
 
 PinAndTrigger
 =============
 
-.. automodule:: mycode_front.PinAndTrigger
+.. automodule:: slip_nucleation_2023.PinAndTrigger
     :members:
     :autosummary:
