@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=45", "setuptools_scm[toml]>=6.2"]
+
+[project]
+authors = [{name = "Tom de Geus", email = "tom@geus.me"}]
+classifiers = ["License :: OSI Approved :: MIT License"]
+dependencies = [
+    "click",
+    "enstat",
+    "FrictionQPotFEM",
+    "GooseEYE",
+    "GooseFEM",
+    "GooseHDF5",
+    "GMatElastoPlasticQPot"
+    "h5py",
+    "numpy",
+    "prettytable",
+    "prrng",
+    "pyyaml",
+    "shelephant",
+    "tqdm",
+    "XDMFWrite_h5py",
+]
+description = "Shell between data and FrictionQPotFEM"
+dynamic = ["version"]
+name = "slip_nucleation_2023"
+readme = "README.md"
+requires-python = ">=3.6"
+
+
+[project.urls]
+Source = "https://github.com/tdegeus/slip_nucleation_2023"
+
+[tool.setuptools_scm]
+write_to = "slip_nucleation_2023/_version.py"
