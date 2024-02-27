@@ -94,7 +94,7 @@ def pack2paths(file: h5py.File) -> list[str]:
     return ret
 
 
-def Run(cli_args=None):
+def Run(cli_args: list = None, _return_parser: bool = False):
     """
     Trigger event and minimise energy.
 
@@ -226,7 +226,7 @@ def Run(cli_args=None):
     return args.file
 
 
-def EnsemblePackMerge(cli_args=None):
+def EnsemblePackMerge(cli_args: list = None, _return_parser: bool = False):
     """
     Merge files created by :py:func:`cli_ensemblepack`.
     """
@@ -293,7 +293,7 @@ def EnsemblePackMerge(cli_args=None):
                         g5.copy(src, dest, path)
 
 
-def MoveCompleted(cli_args=None):
+def MoveCompleted(cli_args: list = None, _return_parser: bool = False):
     """
     Check which files are marked completed, and move them to a different directory.
     """
@@ -331,7 +331,7 @@ def MoveCompleted(cli_args=None):
         os.rename(filename, dest / filename)
 
 
-def EnsemblePack(cli_args=None):
+def EnsemblePack(cli_args: list = None, _return_parser: bool = False):
     """
     Pack pushes into a single file with soft links.
     The individual pushes are listed as::
@@ -397,7 +397,7 @@ def EnsemblePack(cli_args=None):
                 output[g5.join(path, "param", root=True)] = h5py.SoftLink("/param")
 
 
-def EnsembleInfo(cli_args=None):
+def EnsembleInfo(cli_args: list = None, _return_parser: bool = False):
     """
     Read and store basic info from individual pushes.
     Can only be read from output of :py:func:`cli_ensemblepack`.
@@ -636,7 +636,7 @@ def __job_rerun(file, sims, basename, executable, args):
     return ret
 
 
-def JobRerunEventMap(cli_args=None):
+def JobRerunEventMap(cli_args: list = None, _return_parser: bool = False):
     """
     Rerun to get an event-map for avalanches resulting from triggers after system spanning events.
     """
@@ -707,7 +707,7 @@ def JobRerunEventMap(cli_args=None):
         return ret
 
 
-def JobRerunDynamics(cli_args=None):
+def JobRerunDynamics(cli_args: list = None, _return_parser: bool = False):
     """
     Create job to rerun and measure the dynamics of system spanning (A == N) events.
     Instead of :py:func:`Dynamics.Run` one of the following measurements can be performed:
@@ -1037,7 +1037,7 @@ def _copy_configurations(try_element: int, source: list[str], dest: list[str], f
             dest["/Trigger/try_element"][1] = try_element
 
 
-def JobDeltaSigma(cli_args=None):
+def JobDeltaSigma(cli_args: list = None, _return_parser: bool = False):
     """
     Create jobs to trigger at fixed stress increase ``delta_sigma``
     since the last system-spanning event:
@@ -1221,7 +1221,7 @@ def JobDeltaSigma(cli_args=None):
         return [" ".join(cmd + [i]) for i in outfiles]
 
 
-def TransformDeprecatedEnsemblePack(cli_args=None):
+def TransformDeprecatedEnsemblePack(cli_args: list = None, _return_parser: bool = False):
     """
     Transform old data structure to the current one.
     This code is considered 'non-maintained'.
@@ -1373,7 +1373,7 @@ def TransformDeprecatedEnsemblePack(cli_args=None):
                 assert len(paths) == 0 or allow_nonempty
 
 
-def TransformDeprecatedEnsemblePack2(cli_args=None):
+def TransformDeprecatedEnsemblePack2(cli_args: list = None, _return_parser: bool = False):
     """
     Add seed
     This code is considered 'non-maintained'.
@@ -1411,7 +1411,7 @@ def TransformDeprecatedEnsemblePack2(cli_args=None):
                     file[f"/event/{event}/realisation/seed"] = src["/realisation/seed"][...]
 
 
-def TransformDeprecatedEnsemblePack3(cli_args=None):
+def TransformDeprecatedEnsemblePack3(cli_args: list = None, _return_parser: bool = False):
     """
     Rename triggers. Assumes file that is conform :py:func:`cli_transform_deprecated_pack2`.
     """

@@ -67,7 +67,7 @@ def elements_at_height(
     return mesh.elementsLayer(mid + i)
 
 
-def PlotMeshHeight(cli_args=None):
+def PlotMeshHeight(cli_args: list = None, _return_parser: bool = False):
     """
     Plot geometry with elements at certain heights marked.
     """
@@ -127,7 +127,7 @@ def PlotMeshHeight(cli_args=None):
         xh.write(grid, args.output + ".xdmf")
 
 
-def Run(cli_args=None):
+def Run(cli_args: list = None, _return_parser: bool = False):
     """
     Rerun an event and store output at different increments that are selected at:
     *   Given event sizes "A" unit the event is system spanning (``--A-step`` controls interval).
@@ -344,7 +344,7 @@ def Run(cli_args=None):
         file["/meta/Dynamics_Run"].attrs["completed"] = 1
 
 
-def RunHighFrequency(cli_args=None):
+def RunHighFrequency(cli_args: list = None, _return_parser: bool = False):
     """
     Perform a high-frequency measurement on very few observables:
 
@@ -553,7 +553,7 @@ class AlignedAverage(BasicAverage):
             self.norm[index, incl, ...] += 1
 
 
-def AverageSystemSpanning(cli_args=None):
+def AverageSystemSpanning(cli_args: list = None, _return_parser: bool = False):
     """
     Compute averages from output of :py:func:`cli_run`:
 
@@ -831,7 +831,7 @@ def AverageSystemSpanning(cli_args=None):
                     file[f"/sync-A/{title}/{i}/{key}/norm"] = syncA[title][i][key].norm
 
 
-def TransformDeprecated(cli_args=None):
+def TransformDeprecated(cli_args: list = None, _return_parser: bool = False):
     """
     Transform old data structure to the current one.
     This code is considered 'non-maintained'.

@@ -165,7 +165,7 @@ class DefaultEnsemble:
     n = v.size
 
 
-def Generate(cli_args=None):
+def Generate(cli_args: list = None, _return_parser: bool = False):
     """
     Generate IO files, including job-scripts to run simulations.
     """
@@ -434,7 +434,7 @@ def run(filepath: str, dev: bool = False, progress: bool = True):
         meta.attrs["completed"] = 1
 
 
-def Run(cli_args=None):
+def Run(cli_args: list = None, _return_parser: bool = False):
     """
     Run flow simulation.
     """
@@ -534,7 +534,7 @@ def basic_output(file: h5py.File) -> dict:
     return ret
 
 
-def EnsembleInfo(cli_args=None):
+def EnsembleInfo(cli_args: list = None, _return_parser: bool = False):
     """
     Collect basic ensemble information.
     """
@@ -605,7 +605,7 @@ def EnsembleInfo(cli_args=None):
                 g5.copy(file, output, src, dest)
 
 
-def VelocityJump_Branch(cli_args=None):
+def VelocityJump_Branch(cli_args: list = None, _return_parser: bool = False):
     """
     Branch simulation to a velocity jump experiment:
     Copies a snapshot as restart.
@@ -751,7 +751,7 @@ def moving_average_y(x: ArrayLike, y: ArrayLike, n: int) -> ArrayLike:
     return x[s:], moving_average(y, n)
 
 
-def Paraview(cli_args=None):
+def Paraview(cli_args: list = None, _return_parser: bool = False):
     """
     Prepare snapshots to be viewed with ParaView.
     """
@@ -818,7 +818,7 @@ def Paraview(cli_args=None):
             )
 
 
-def Plot(cli_args=None):
+def Plot(cli_args: list = None, _return_parser: bool = False):
     """
     Plot overview of flow simulation.
     """
@@ -904,7 +904,7 @@ def Plot(cli_args=None):
     plt.close(fig)
 
 
-def TransformDeprecated(cli_args=None):
+def TransformDeprecated(cli_args: list = None, _return_parser: bool = False):
     """
     Transform old data structure to the current one.
     This code is considered 'non-maintained'.
@@ -988,7 +988,7 @@ def TransformDeprecated(cli_args=None):
         assert len(paths) == 0
 
 
-def Rename(cli_args=None):
+def Rename(cli_args: list = None, _return_parser: bool = False):
     """
     Update file name to the current version.
     """

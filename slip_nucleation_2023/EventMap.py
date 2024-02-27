@@ -97,7 +97,7 @@ def run_event_basic(system: QuasiStatic.System, file: h5py.File, step: int, Smax
     return ret
 
 
-def Run(cli_args=None):
+def Run(cli_args: list = None, _return_parser: bool = False):
     """
     Rerun quasistatic step and store basic event info (position and time).
     Tip: truncate when (known) S is reached to not waste time on final stage of energy minimisation.
@@ -139,7 +139,7 @@ def Run(cli_args=None):
         return ret
 
 
-def Info(cli_args=None):
+def Info(cli_args: list = None, _return_parser: bool = False):
     """
     Collect basic information from :py:func:`cli_run` and combine in a single output file:
     *   Event duration (``t``).

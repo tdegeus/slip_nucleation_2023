@@ -610,7 +610,7 @@ def generate(
             _init_run_state(root=file.create_group("QuasiStatic"), u=np.zeros_like(coor))
 
 
-def Generate(cli_args=None):
+def Generate(cli_args: list = None, _return_parser: bool = False):
     """
     Generate IO files (including job-scripts) to run simulations.
     """
@@ -719,7 +719,7 @@ def create_check_meta(
     return meta
 
 
-def MoveMeta(cli_args=None):
+def MoveMeta(cli_args: list = None, _return_parser: bool = False):
     """
     Create a copy of meta-data, and overwrite the version information with the current information
     and a new UUID.
@@ -767,7 +767,7 @@ def MoveMeta(cli_args=None):
             meta.attrs["completed"] = 0
 
 
-def Run(cli_args=None):
+def Run(cli_args: list = None, _return_parser: bool = False):
     """
     Run simulation.
     """
@@ -842,7 +842,7 @@ def Run(cli_args=None):
         meta.attrs["completed"] = 1
 
 
-def SimulationStatus(cli_args=None):
+def SimulationStatus(cli_args: list = None, _return_parser: bool = False):
     """
     Find status for files.
 
@@ -1217,7 +1217,7 @@ def basic_output(
     return ret
 
 
-def EnsembleInfo(cli_args=None):
+def EnsembleInfo(cli_args: list = None, _return_parser: bool = False):
     """
     Read information (avalanche size, stress, strain, ...) of an ensemble,
     see :py:func:`basic_output`.
@@ -1366,7 +1366,7 @@ def EnsembleInfo(cli_args=None):
         meta = create_check_meta(output, "/meta/QuasiStatic_EnsembleInfo", dev=args.develop)
 
 
-def Plot(cli_args=None):
+def Plot(cli_args: list = None, _return_parser: bool = False):
     """
     Plot overview of simulation.
     Plots the stress-strain response and the identified steady-state.
@@ -1412,7 +1412,7 @@ def Plot(cli_args=None):
     plt.show()
 
 
-def MakeJobEventMapOfSystemSpanning(cli_args=None):
+def MakeJobEventMapOfSystemSpanning(cli_args: list = None, _return_parser: bool = False):
     """
     Generate a job to rerun all system-spanning events and generate an event-map.
     """
@@ -1473,7 +1473,7 @@ def MakeJobEventMapOfSystemSpanning(cli_args=None):
         return commands
 
 
-def MakeJobDynamicsOfSystemSpanning(cli_args=None):
+def MakeJobDynamicsOfSystemSpanning(cli_args: list = None, _return_parser: bool = False):
     """
     Generate a job to rerun all system-spanning events and measure the dynamics.
     """
@@ -1529,7 +1529,7 @@ def MakeJobDynamicsOfSystemSpanning(cli_args=None):
         return commands
 
 
-def StateAfterSystemSpanning(cli_args=None):
+def StateAfterSystemSpanning(cli_args: list = None, _return_parser: bool = False):
     """
     Extract state after system-spanning avalanches.
     """
@@ -1670,7 +1670,7 @@ def transform_deprecated_param(src, dest, paths, source_root: str = "/"):
     return paths
 
 
-def TransformDeprecated(cli_args=None):
+def TransformDeprecated(cli_args: list = None, _return_parser: bool = False):
     """
     Transform old data structure to the current one.
     This code is considered 'non-maintained'.
