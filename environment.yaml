@@ -9,14 +9,11 @@ dependencies:
 - goosempl
 - gooseslurm
 - h5py
-- nested_dict
 - numpy
-- openscienceplot_matplotlib
 - parallel
-- path
 - pre-commit
 - pytest
-- python
+- python >=3.6
 - python-cppcolormap
 - python-frictionqpotfem >=0.23.1
 - python-gmatelastic >0.5.0

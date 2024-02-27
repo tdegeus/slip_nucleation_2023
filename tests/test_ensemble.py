@@ -10,16 +10,15 @@ import GooseFEM
 import GooseHDF5 as g5
 import h5py
 import numpy as np
-import path
 import pytest
 import shelephant
 
-from mycode_front import Dynamics
-from mycode_front import EventMap
-from mycode_front import QuasiStatic
-from mycode_front import Trigger
-from mycode_front import storage
-from mycode_front import tools
+from slip_nucleation_2023 import Dynamics
+from slip_nucleation_2023 import EventMap
+from slip_nucleation_2023 import QuasiStatic
+from slip_nucleation_2023 import Trigger
+from slip_nucleation_2023 import storage
+from slip_nucleation_2023 import tools
 
 
 @pytest.fixture(scope="module")
@@ -217,7 +216,7 @@ def test_quasistatic_rerun_dynamics(mydata, tmp_path):
         sig0 = file["/normalisation/sig0"][...]
         check = file[f"/full/{inpath}/sig"][step]
 
-    with path.Path(tmp_path):
+    with shelephant.path.cwd(tmp_path):
         Dynamics.cli_run(commands[0].split(" ")[1:] + ["--dev"])
 
         with h5py.File(outpath) as file:
@@ -242,7 +241,7 @@ def test_quasistatic_rerun_dynamics_run_highfrequency(mydata, tmp_path):
         system.restore_quasistatic_step(file["QuasiStatic"], step - 1)
         check = np.average(system.Sig(), weights=system.dV(rank=2), axis=(0, 1))[0, 1]
 
-    with path.Path(tmp_path):
+    with shelephant.path.cwd(tmp_path):
         Dynamics.cli_run_highfrequency(commands[0].split(" ")[1:] + ["--dev"])
 
         with h5py.File(outpath) as file:
@@ -264,7 +263,7 @@ def test_quasistatic_rerun_eventmap(mydata, tmp_path):
     with h5py.File(mydata["quasistatic"]["info"]) as file:
         check = file[f"/full/{inpath}/S"][step]
 
-    with path.Path(tmp_path):
+    with shelephant.path.cwd(tmp_path):
         EventMap.cli_run(commands[0].split(" ")[1:] + ["--dev"])
 
         with h5py.File(outpath) as file:
@@ -382,7 +381,7 @@ def test_trigger_rerun_dynamics_ensemble(mydata, tmp_path):
 
         trigger.restore_quasistatic_step(file["Trigger"], 1)
 
-    with path.Path(tmp_path):
+    with shelephant.path.cwd(tmp_path):
         Dynamics.cli_run(commands[0].split(" ")[1:] + ["--dev"])
 
         with h5py.File(outpath) as file:
