@@ -146,6 +146,7 @@ def Run(cli_args: list = None, _return_parser: bool = False):
 def Info(cli_args: list = None, _return_parser: bool = False):
     """
     Collect basic information from :py:func:`Run` and combine in a single output file:
+
     *   Event duration (``t``).
     *   Event size (``S`` and ``A``)
     """
