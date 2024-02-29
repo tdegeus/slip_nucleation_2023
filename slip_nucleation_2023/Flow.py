@@ -1,3 +1,7 @@
+"""
+Measure at fixed strain rate.
+"""
+
 from __future__ import annotations
 
 import argparse

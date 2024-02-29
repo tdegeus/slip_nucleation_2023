@@ -1,3 +1,7 @@
+"""
+Functions to compare versions and check for uncommitted changes.
+"""
+
 import packaging.version
 
 

@@ -1,7 +1,5 @@
 """
--   Initialise system.
--   Write IO file.
--   Run quasi-static simulation and get basic output.
+Event-driven quasi-static shear.
 """
 
 from __future__ import annotations
